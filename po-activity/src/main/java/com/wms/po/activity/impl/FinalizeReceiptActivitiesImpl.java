@@ -1,7 +1,12 @@
 package com.wms.po.activity.impl;
 
 import com.wms.po.activity.*;
-import com.wms.po.domain.model.*;
+import com.wms.po.domain.model.FinalizeRequest;
+import com.wms.po.domain.model.PluginResult;
+import com.wms.po.domain.model.PopulateRequest;
+import com.wms.po.domain.model.TradeReturnRequest;
+import com.wms.po.domain.model.ValidationResult;
+import com.wms.po.domain.model.VariationContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -205,5 +210,24 @@ public class FinalizeReceiptActivitiesImpl implements FinalizeReceiptActivities 
     @Override
     public void sendFinalizeCancelled(String receiptKey, FinalizeRequest request) {
         notificationActivity.sendFinalizeCancelled(receiptKey, request);
+    }
+
+    @Override
+    public void sendTradeReturnComplete(String orderKey, String receiptKey) {
+        notificationActivity.sendTradeReturnComplete(orderKey, receiptKey);
+    }
+
+    @Override
+    public void sendTradeReturnFailed(String receiptKey, String errorMessage) {
+        notificationActivity.sendTradeReturnFailed(receiptKey, errorMessage);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // ValidationActivity - Trade Return delegation
+    // ═══════════════════════════════════════════════════════════════
+
+    @Override
+    public VariationContext resolveTradeReturnContext(TradeReturnRequest request) {
+        return validationActivity.resolveTradeReturnContext(request);
     }
 }

@@ -183,4 +183,57 @@ public class NotificationActivityImpl implements NotificationActivity {
         String receiptKey,
         String storerKey
     ) {}
+
+    // ═══════════════════════════════════════════════════════════════
+    // Trade Return Notifications
+    // ═══════════════════════════════════════════════════════════════
+
+    @Override
+    public void sendTradeReturnComplete(String orderKey, String receiptKey) {
+        log.info("Sending trade return complete notification: orderKey={}, receiptKey={}",
+            orderKey, receiptKey);
+
+        try {
+            sendKafkaEvent("trade.return.complete", new TradeReturnCompleteEvent(
+                orderKey,
+                receiptKey
+            ));
+
+            log.info("EVENT: TRADE_RETURN_COMPLETE orderKey={} receiptKey={}",
+                orderKey, receiptKey);
+
+        } catch (Exception e) {
+            log.warn("Failed to send trade return complete notification: {}", e.getMessage());
+        }
+    }
+
+    @Override
+    public void sendTradeReturnFailed(String receiptKey, String errorMessage) {
+        log.warn("Sending trade return failed notification: receiptKey={}, error={}",
+            receiptKey, errorMessage);
+
+        try {
+            sendKafkaEvent("trade.return.failed", new TradeReturnFailedEvent(
+                receiptKey,
+                errorMessage
+            ));
+
+            log.error("ALERT: TRADE_RETURN_FAILED receiptKey={} error={}",
+                receiptKey, errorMessage);
+
+        } catch (Exception e) {
+            log.warn("Failed to send trade return failed notification: {}", e.getMessage());
+        }
+    }
+
+    // Trade return event records
+    record TradeReturnCompleteEvent(
+        String orderKey,
+        String receiptKey
+    ) {}
+
+    record TradeReturnFailedEvent(
+        String receiptKey,
+        String errorMessage
+    ) {}
 }
