@@ -1,5 +1,7 @@
 package com.wms.po.plugin.allocation;
 
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -10,6 +12,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * Registry for Post-Allocation Plugins.
  *
  * Manages plugin registration, discovery, and execution ordering.
+ *
+ * Error codes:
+ * - PLG_001 (69500) - Plugin Not Found
+ * - PLG_004 (69503) - Plugin Registration Failed
  */
 @Component
 @Slf4j
@@ -21,18 +27,50 @@ public class PostAllocationPluginRegistry {
 
     /**
      * Register a plugin.
+     *
+     * Error codes:
+     * - PLG_004 (69503) - Plugin Registration Failed
+     *
+     * @param plugin Plugin to register
+     * @throws BusinessException if plugin is invalid
      */
     public void register(PostAllocationPlugin plugin) {
-        log.info("Registering post-allocation plugin: {}", plugin.getPluginId());
-        plugins.put(plugin.getPluginId(), plugin);
+        if (plugin == null) {
+            log.error("Cannot register null plugin (legacy error 69503)");
+            throw new BusinessException(ErrorCode.PLUGIN_REGISTRATION_FAILED,
+                "Cannot register null plugin")
+                .withDetail("plugin", "null");
+        }
+
+        String pluginId = plugin.getPluginId();
+        if (pluginId == null || pluginId.isBlank()) {
+            log.error("Cannot register plugin with null/blank ID (legacy error 69503)");
+            throw new BusinessException(ErrorCode.PLUGIN_REGISTRATION_FAILED,
+                "Plugin must have a valid ID")
+                .withDetail("pluginId", "null or blank")
+                .withDetail("pluginClass", plugin.getClass().getSimpleName());
+        }
+
+        log.info("Registering post-allocation plugin: {}", pluginId);
+        plugins.put(pluginId, plugin);
     }
 
     /**
      * Unregister a plugin.
+     *
+     * @param pluginId Plugin ID to unregister
      */
     public void unregister(String pluginId) {
+        if (pluginId == null || pluginId.isBlank()) {
+            log.warn("Cannot unregister plugin with null/blank ID");
+            return;
+        }
+
         log.info("Unregistering post-allocation plugin: {}", pluginId);
-        plugins.remove(pluginId);
+        PostAllocationPlugin removed = plugins.remove(pluginId);
+        if (removed == null) {
+            log.debug("Plugin {} was not registered", pluginId);
+        }
     }
 
     /**

@@ -1,5 +1,7 @@
 package com.wms.po.plugin.finalize;
 
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -13,6 +15,10 @@ import java.util.stream.Collectors;
  *
  * Manages plugin registration, lookup, and resolution by client/storer.
  * Replaces the dynamic SP lookup from StorerConfig tables.
+ *
+ * Error codes:
+ * - PLG_001 (69500) - Plugin Not Found
+ * - PLG_004 (69503) - Plugin Registration Failed
  */
 @Component
 @Slf4j
@@ -51,30 +57,58 @@ public class FinalizePluginRegistry {
     /**
      * Register a plugin.
      *
+     * Error codes:
+     * - PLG_004 (69503) - Plugin Registration Failed
+     *
      * @param plugin The plugin to register
+     * @throws BusinessException if plugin is invalid or registration fails
      */
     public void registerPlugin(FinalizePlugin plugin) {
-        String pluginId = plugin.getPluginId();
-
-        // Register by ID
-        pluginsById.put(pluginId, plugin);
-
-        // Register by type
-        pluginsByType
-            .computeIfAbsent(plugin.getType(), k -> new ArrayList<>())
-            .add(plugin);
-
-        // Register client mapping
-        String clientKey = plugin.getClientKey();
-        if (clientKey != null && !clientKey.equals("*")) {
-            clientPluginMap
-                .computeIfAbsent(clientKey, k -> new HashMap<>())
-                .computeIfAbsent(plugin.getType(), k -> new ArrayList<>())
-                .add(pluginId);
+        if (plugin == null) {
+            log.error("Cannot register null plugin (legacy error 69503)");
+            throw new BusinessException(ErrorCode.PLUGIN_REGISTRATION_FAILED,
+                "Cannot register null plugin")
+                .withDetail("plugin", "null");
         }
 
-        log.debug("Registered finalize plugin: id={}, type={}, client={}",
-            pluginId, plugin.getType(), clientKey);
+        String pluginId = plugin.getPluginId();
+        if (pluginId == null || pluginId.isBlank()) {
+            log.error("Cannot register plugin with null/blank ID (legacy error 69503)");
+            throw new BusinessException(ErrorCode.PLUGIN_REGISTRATION_FAILED,
+                "Plugin must have a valid ID")
+                .withDetail("pluginId", "null or blank")
+                .withDetail("pluginClass", plugin.getClass().getSimpleName());
+        }
+
+        try {
+            // Register by ID
+            pluginsById.put(pluginId, plugin);
+
+            // Register by type
+            pluginsByType
+                .computeIfAbsent(plugin.getType(), k -> new ArrayList<>())
+                .add(plugin);
+
+            // Register client mapping
+            String clientKey = plugin.getClientKey();
+            if (clientKey != null && !clientKey.equals("*")) {
+                clientPluginMap
+                    .computeIfAbsent(clientKey, k -> new HashMap<>())
+                    .computeIfAbsent(plugin.getType(), k -> new ArrayList<>())
+                    .add(pluginId);
+            }
+
+            log.debug("Registered finalize plugin: id={}, type={}, client={}",
+                pluginId, plugin.getType(), clientKey);
+
+        } catch (Exception e) {
+            log.error("Failed to register plugin {}: {} (legacy error 69503)",
+                pluginId, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.PLUGIN_REGISTRATION_FAILED,
+                "Failed to register plugin: " + e.getMessage(), e)
+                .withDetail("pluginId", pluginId)
+                .withDetail("pluginClass", plugin.getClass().getSimpleName());
+        }
     }
 
     /**

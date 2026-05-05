@@ -1,5 +1,7 @@
 package com.wms.po.variation.rule;
 
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import com.wms.po.domain.model.PopulateRequest;
 import com.wms.po.domain.model.ValidationResult;
 import com.wms.po.domain.model.VariationContext;
@@ -16,6 +18,11 @@ import java.util.List;
  * Rule engine for business validations.
  * In production, this would integrate with Drools.
  * For now, implements rules in Java as a fallback.
+ *
+ * Error codes:
+ * - VAL_001 (69100) - Required Field Missing
+ * - VAL_020 (69120) - Extended Validation Failed
+ * - RUL_001 (69600) - Drools Rule Failed
  */
 @Service
 @RequiredArgsConstructor
@@ -28,10 +35,33 @@ public class RuleEngine {
     // private final KieContainer kieContainer;
 
     /**
-     * Validate the populate request using rules
+     * Validate the populate request using rules.
+     *
+     * Error codes:
+     * - VAL_020 (69120) - Extended Validation Failed
+     * - RUL_001 (69600) - Drools Rule Failed
+     *
+     * @param request Populate request to validate
+     * @param context Variation context
+     * @return Validation result with errors and warnings
+     * @throws BusinessException if rule execution fails critically
      */
     public ValidationResult validate(PopulateRequest request, VariationContext context) {
         log.debug("Running rule engine validation for context: {}", context);
+
+        if (request == null) {
+            log.error("Populate request is null for rule validation (legacy error 69120)");
+            throw new BusinessException(ErrorCode.VALIDATION_EXTENDED_FAILED,
+                "Populate request is required for validation")
+                .withDetail("request", "null");
+        }
+
+        if (context == null) {
+            log.error("Variation context is null for rule validation (legacy error 69120)");
+            throw new BusinessException(ErrorCode.VALIDATION_EXTENDED_FAILED,
+                "Variation context is required for validation")
+                .withDetail("context", "null");
+        }
 
         List<String> errors = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
@@ -44,8 +74,15 @@ public class RuleEngine {
             runRegionRules(request, context, config, errors, warnings);
             runClientRules(request, context, config, errors, warnings);
 
+            log.debug("Rule validation complete: {} errors, {} warnings", errors.size(), warnings.size());
+
+        } catch (BusinessException e) {
+            log.error("Rule engine validation failed: {} (legacy error 69600)", e.getMessage(), e);
+            throw BusinessException.droolsRuleFailed("Validation", e);
         } catch (Exception e) {
-            log.warn("Rule engine error, continuing without rules: {}", e.getMessage());
+            log.warn("Rule engine error, continuing with partial results: {} (legacy warning 69600)",
+                e.getMessage());
+            warnings.add("Rule engine partially failed: " + e.getMessage());
         }
 
         return ValidationResult.builder()

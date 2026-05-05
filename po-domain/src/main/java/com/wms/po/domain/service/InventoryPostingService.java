@@ -1,7 +1,10 @@
 package com.wms.po.domain.service;
 
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +22,12 @@ import java.util.*;
  *
  * This service implements the core inventory posting logic from
  * ispFinalizeReceipt stored procedure.
+ *
+ * Error codes:
+ * - INV_007 (68706) - Inventory Posting Failed
+ * - INV_002 (68701) - Insufficient Inventory
+ * - INV_003 (68702) - Inventory Already Allocated
+ * - INV_005 (68704) - Inventory Adjustment Failed
  */
 @Service
 @RequiredArgsConstructor
@@ -36,6 +45,9 @@ public class InventoryPostingService {
     /**
      * Post a single inventory record to LOTxLOCxID.
      *
+     * Error codes:
+     * - INV_007 (68706) - Inventory Posting Failed
+     *
      * @param posting Inventory posting details
      * @return Created inventory key
      */
@@ -45,17 +57,20 @@ public class InventoryPostingService {
             posting.getSku(), posting.getQuantity(),
             posting.getLocation(), posting.getLicensePlate());
 
-        // Generate unique key for LOTxLOCxID
-        String lotxlocxidKey = keyGeneratorService.generateKey("LOTXLOCXID");
+        String lotxlocxidKey = null;
 
-        // Generate or use provided LOT key
-        String lotKey = posting.getLotKey();
-        if (lotKey == null || lotKey.isEmpty()) {
-            lotKey = getOrCreateLotKey(posting);
-        }
+        try {
+            // Generate unique key for LOTxLOCxID
+            lotxlocxidKey = keyGeneratorService.generateKey("LOTXLOCXID");
 
-        // Insert into LOTxLOCxID
-        jdbcTemplate.update(
+            // Generate or use provided LOT key
+            String lotKey = posting.getLotKey();
+            if (lotKey == null || lotKey.isEmpty()) {
+                lotKey = getOrCreateLotKey(posting);
+            }
+
+            // Insert into LOTxLOCxID
+            jdbcTemplate.update(
             """
             INSERT INTO dbo.lotxlocxid (
                 lotxlocxidkey, storerkey, sku, lot, loc, id,
@@ -96,11 +111,21 @@ public class InventoryPostingService {
             posting.getUserId()
         );
 
-        // Create transaction record (ITRN)
-        createInventoryTransaction(lotxlocxidKey, posting, "RCPT");
+            // Create transaction record (ITRN)
+            createInventoryTransaction(lotxlocxidKey, posting, "RCPT");
 
-        log.info("Inventory posted: key={}, sku={}, qty={}", lotxlocxidKey, posting.getSku(), posting.getQuantity());
-        return lotxlocxidKey;
+            log.info("Inventory posted: key={}, sku={}, qty={}", lotxlocxidKey, posting.getSku(), posting.getQuantity());
+            return lotxlocxidKey;
+
+        } catch (DataAccessException e) {
+            log.error("Failed to post inventory for sku {}: {} (legacy error 68706)",
+                posting.getSku(), e.getMessage(), e);
+            throw new BusinessException(ErrorCode.INVENTORY_POSTING_FAILED,
+                "Failed to post inventory for SKU: " + posting.getSku(), e)
+                .withDetail("sku", posting.getSku())
+                .withDetail("location", posting.getLocation())
+                .withDetail("quantity", posting.getQuantity());
+        }
     }
 
     /**
@@ -129,6 +154,10 @@ public class InventoryPostingService {
     /**
      * Delete an inventory record (for compensation).
      *
+     * Error codes:
+     * - INV_004 (68651) - Insufficient Inventory (has allocations/picks)
+     * - INV_005 (68652) - Inventory Deletion Failed
+     *
      * @param lotxlocxidKey Inventory key to delete
      * @param userId User performing deletion
      * @param reason Reason for deletion
@@ -150,7 +179,7 @@ public class InventoryPostingService {
                 lotxlocxidKey
             );
         } catch (Exception e) {
-            log.warn("Inventory record not found: {}", lotxlocxidKey);
+            log.warn("Inventory record not found: {} (legacy error 68652)", lotxlocxidKey);
             return false;
         }
 
@@ -158,13 +187,21 @@ public class InventoryPostingService {
         BigDecimal qtyPicked = (BigDecimal) record.get("qtypicked");
 
         if (qtyAllocated != null && qtyAllocated.compareTo(BigDecimal.ZERO) > 0) {
-            log.error("Cannot delete inventory {} - has allocated quantity: {}", lotxlocxidKey, qtyAllocated);
-            return false;
+            log.error("Cannot delete inventory {} - has allocated quantity: {} (legacy error 68702)",
+                lotxlocxidKey, qtyAllocated);
+            throw new BusinessException(ErrorCode.INVENTORY_ALREADY_ALLOCATED,
+                "Cannot delete inventory with allocated quantity")
+                .withDetail("lotxlocxidKey", lotxlocxidKey)
+                .withDetail("qtyAllocated", qtyAllocated);
         }
 
         if (qtyPicked != null && qtyPicked.compareTo(BigDecimal.ZERO) > 0) {
-            log.error("Cannot delete inventory {} - has picked quantity: {}", lotxlocxidKey, qtyPicked);
-            return false;
+            log.error("Cannot delete inventory {} - has picked quantity: {} (legacy error 68701)",
+                lotxlocxidKey, qtyPicked);
+            throw new BusinessException(ErrorCode.INVENTORY_INSUFFICIENT,
+                "Cannot delete inventory with picked quantity")
+                .withDetail("lotxlocxidKey", lotxlocxidKey)
+                .withDetail("qtyPicked", qtyPicked);
         }
 
         // Create reversal transaction before deletion

@@ -1,7 +1,10 @@
 package com.wms.po.domain.service;
 
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +30,12 @@ import java.util.*;
  * - blockPutaway: Prevents putaway task release
  * - blockAllocation: Prevents order allocation
  * - expiryDate: Auto-release date (optional)
+ *
+ * Error codes:
+ * - INV_001 (68700) - Inventory Not Found
+ * - INV_008 (68707) - Hold Application Failed
+ * - INV_009 (68708) - Hold Release Failed
+ * - INV_009b (68709) - Hold Evaluation Failed
  */
 @Service
 @RequiredArgsConstructor
@@ -52,6 +61,10 @@ public class InventoryHoldService {
     /**
      * Create a hold record for an inventory item.
      *
+     * Error codes:
+     * - INV_001 (68700) - Inventory Not Found
+     * - INV_008 (68707) - Hold Application Failed
+     *
      * @param request Hold creation request
      * @return Created hold ID
      */
@@ -59,52 +72,78 @@ public class InventoryHoldService {
     public String createHold(HoldCreateRequest request) {
         log.info("Creating hold: type={}, inventory={}", request.getHoldType(), request.getInventoryId());
 
-        String holdKey = keyGeneratorService.generateKey("INVENTORYHOLD");
+        String holdKey = null;
 
-        jdbcTemplate.update(
-            """
-            INSERT INTO dbo.inventoryhold (
-                holdkey, storerkey, sku, lot, loc, id,
-                holdcode, holdtype, holdreason, status,
-                holddate, holdwho, releasedate, releasewho,
-                notes, qty, blockpick, blockputaway,
-                lottable01, lottable02, lottable03, lottable04, lottable05,
-                lottable06, lottable07, lottable08, lottable09, lottable10,
-                adddate, addwho, editdate, editwho
-            )
-            SELECT
-                ?, l.storerkey, l.sku, l.lot, l.loc, l.id,
-                ?, ?, ?, '1',
-                CURRENT_TIMESTAMP, ?, NULL, NULL,
-                ?, l.qty, ?, ?,
-                l.lottable01, l.lottable02, l.lottable03, l.lottable04, l.lottable05,
-                l.lottable06, l.lottable07, l.lottable08, l.lottable09, l.lottable10,
-                CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP, ?
-            FROM dbo.lotxlocxid l
-            WHERE l.lotxlocxidkey = ?
-            """,
-            holdKey,
-            request.getHoldCode(),
-            request.getHoldType(),
-            request.getHoldReason(),
-            request.getUserId(),
-            request.getNotes(),
-            request.isBlockAllocation() ? "1" : "0",
-            request.isBlockPutaway() ? "1" : "0",
-            request.getUserId(),
-            request.getUserId(),
-            request.getInventoryId()
-        );
+        try {
+            holdKey = keyGeneratorService.generateKey("INVENTORYHOLD");
 
-        // Update the inventory record to mark as held
-        updateInventoryHoldFlag(request.getInventoryId(), true);
+            int inserted = jdbcTemplate.update(
+                """
+                INSERT INTO dbo.inventoryhold (
+                    holdkey, storerkey, sku, lot, loc, id,
+                    holdcode, holdtype, holdreason, status,
+                    holddate, holdwho, releasedate, releasewho,
+                    notes, qty, blockpick, blockputaway,
+                    lottable01, lottable02, lottable03, lottable04, lottable05,
+                    lottable06, lottable07, lottable08, lottable09, lottable10,
+                    adddate, addwho, editdate, editwho
+                )
+                SELECT
+                    ?, l.storerkey, l.sku, l.lot, l.loc, l.id,
+                    ?, ?, ?, '1',
+                    CURRENT_TIMESTAMP, ?, NULL, NULL,
+                    ?, l.qty, ?, ?,
+                    l.lottable01, l.lottable02, l.lottable03, l.lottable04, l.lottable05,
+                    l.lottable06, l.lottable07, l.lottable08, l.lottable09, l.lottable10,
+                    CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP, ?
+                FROM dbo.lotxlocxid l
+                WHERE l.lotxlocxidkey = ?
+                """,
+                holdKey,
+                request.getHoldCode(),
+                request.getHoldType(),
+                request.getHoldReason(),
+                request.getUserId(),
+                request.getNotes(),
+                request.isBlockAllocation() ? "1" : "0",
+                request.isBlockPutaway() ? "1" : "0",
+                request.getUserId(),
+                request.getUserId(),
+                request.getInventoryId()
+            );
 
-        log.info("Created hold: {} for inventory {}", holdKey, request.getInventoryId());
-        return holdKey;
+            if (inserted == 0) {
+                log.error("Inventory not found for hold creation: {} (legacy error 68700)",
+                    request.getInventoryId());
+                throw new BusinessException(ErrorCode.INVENTORY_NOT_FOUND,
+                    "Inventory not found for hold creation")
+                    .withDetail("inventoryId", request.getInventoryId());
+            }
+
+            // Update the inventory record to mark as held
+            updateInventoryHoldFlag(request.getInventoryId(), true);
+
+            log.info("Created hold: {} for inventory {}", holdKey, request.getInventoryId());
+            return holdKey;
+
+        } catch (BusinessException e) {
+            throw e;
+        } catch (DataAccessException e) {
+            log.error("Failed to create hold for inventory {}: {} (legacy error 68707)",
+                request.getInventoryId(), e.getMessage(), e);
+            throw new BusinessException(ErrorCode.HOLD_APPLICATION_FAILED,
+                "Failed to apply hold: " + e.getMessage(), e)
+                .withDetail("inventoryId", request.getInventoryId())
+                .withDetail("holdType", request.getHoldType())
+                .withDetail("holdCode", request.getHoldCode());
+        }
     }
 
     /**
      * Create multiple holds for a batch of inventory records.
+     *
+     * Error codes:
+     * - INV_008 (68707) - Hold Application Failed (batch)
      *
      * @param inventoryIds Inventory IDs to hold
      * @param holdSpec Hold specification
@@ -121,29 +160,43 @@ public class InventoryHoldService {
             inventoryIds.size(), holdSpec.getHoldType());
 
         List<String> holdIds = new ArrayList<>();
+        List<String> failedIds = new ArrayList<>();
 
         for (String inventoryId : inventoryIds) {
-            HoldCreateRequest request = HoldCreateRequest.builder()
-                .inventoryId(inventoryId)
-                .holdCode(holdSpec.getHoldCode())
-                .holdType(holdSpec.getHoldType())
-                .holdReason(holdSpec.getHoldReason())
-                .blockAllocation(holdSpec.isBlockAllocation())
-                .blockPutaway(holdSpec.isBlockPutaway())
-                .notes(holdSpec.getNotes())
-                .userId(userId)
-                .build();
+            try {
+                HoldCreateRequest request = HoldCreateRequest.builder()
+                    .inventoryId(inventoryId)
+                    .holdCode(holdSpec.getHoldCode())
+                    .holdType(holdSpec.getHoldType())
+                    .holdReason(holdSpec.getHoldReason())
+                    .blockAllocation(holdSpec.isBlockAllocation())
+                    .blockPutaway(holdSpec.isBlockPutaway())
+                    .notes(holdSpec.getNotes())
+                    .userId(userId)
+                    .build();
 
-            String holdId = createHold(request);
-            holdIds.add(holdId);
+                String holdId = createHold(request);
+                holdIds.add(holdId);
+            } catch (BusinessException e) {
+                log.warn("Failed to create hold for inventory {}: {}", inventoryId, e.getMessage());
+                failedIds.add(inventoryId);
+            }
         }
 
-        log.info("Created {} batch holds", holdIds.size());
+        if (!failedIds.isEmpty()) {
+            log.warn("Batch hold creation had {} failures out of {} (legacy error 68707)",
+                failedIds.size(), inventoryIds.size());
+        }
+
+        log.info("Created {} batch holds ({} failed)", holdIds.size(), failedIds.size());
         return holdIds;
     }
 
     /**
      * Release a hold.
+     *
+     * Error codes:
+     * - INV_009 (68708) - Hold Release Failed
      *
      * @param holdKey Hold to release
      * @param userId User releasing the hold
@@ -154,38 +207,47 @@ public class InventoryHoldService {
     public boolean releaseHold(String holdKey, String userId, String reason) {
         log.info("Releasing hold: {}", holdKey);
 
-        // Get the inventory ID before updating
-        String inventoryId = getInventoryIdForHold(holdKey);
+        try {
+            // Get the inventory ID before updating
+            String inventoryId = getInventoryIdForHold(holdKey);
 
-        int updated = jdbcTemplate.update(
-            """
-            UPDATE dbo.inventoryhold
-            SET status = ?,
-                releasedate = CURRENT_TIMESTAMP,
-                releasewho = ?,
-                notes = COALESCE(notes, '') || ' Release: ' || ?,
-                editdate = CURRENT_TIMESTAMP,
-                editwho = ?
-            WHERE holdkey = ?
-            AND status = ?
-            """,
-            HOLD_STATUS_RELEASED,
-            userId,
-            reason,
-            userId,
-            holdKey,
-            HOLD_STATUS_ACTIVE
-        );
+            int updated = jdbcTemplate.update(
+                """
+                UPDATE dbo.inventoryhold
+                SET status = ?,
+                    releasedate = CURRENT_TIMESTAMP,
+                    releasewho = ?,
+                    notes = COALESCE(notes, '') || ' Release: ' || ?,
+                    editdate = CURRENT_TIMESTAMP,
+                    editwho = ?
+                WHERE holdkey = ?
+                AND status = ?
+                """,
+                HOLD_STATUS_RELEASED,
+                userId,
+                reason,
+                userId,
+                holdKey,
+                HOLD_STATUS_ACTIVE
+            );
 
-        if (updated > 0 && inventoryId != null) {
-            // Check if there are other active holds on this inventory
-            if (!hasActiveHolds(inventoryId)) {
-                updateInventoryHoldFlag(inventoryId, false);
+            if (updated > 0 && inventoryId != null) {
+                // Check if there are other active holds on this inventory
+                if (!hasActiveHolds(inventoryId)) {
+                    updateInventoryHoldFlag(inventoryId, false);
+                }
             }
-        }
 
-        log.info("Released hold: {} (updated={})", holdKey, updated > 0);
-        return updated > 0;
+            log.info("Released hold: {} (updated={})", holdKey, updated > 0);
+            return updated > 0;
+
+        } catch (DataAccessException e) {
+            log.error("Failed to release hold {}: {} (legacy error 68708)", holdKey, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.HOLD_RELEASE_FAILED,
+                "Failed to release hold: " + e.getMessage(), e)
+                .withDetail("holdKey", holdKey)
+                .withDetail("reason", reason);
+        }
     }
 
     /**
@@ -214,6 +276,9 @@ public class InventoryHoldService {
     /**
      * Cancel a hold (different from release - indicates error/invalid hold).
      *
+     * Error codes:
+     * - INV_009b (68709) - Hold Evaluation Failed (used for cancel failures)
+     *
      * @param holdKey Hold to cancel
      * @param userId User cancelling
      * @param reason Reason for cancellation
@@ -223,142 +288,201 @@ public class InventoryHoldService {
     public boolean cancelHold(String holdKey, String userId, String reason) {
         log.info("Cancelling hold: {} - {}", holdKey, reason);
 
-        String inventoryId = getInventoryIdForHold(holdKey);
+        try {
+            String inventoryId = getInventoryIdForHold(holdKey);
 
-        int updated = jdbcTemplate.update(
-            """
-            UPDATE dbo.inventoryhold
-            SET status = ?,
-                notes = COALESCE(notes, '') || ' CANCELLED: ' || ?,
-                editdate = CURRENT_TIMESTAMP,
-                editwho = ?
-            WHERE holdkey = ?
-            AND status = ?
-            """,
-            HOLD_STATUS_CANCELLED,
-            reason,
-            userId,
-            holdKey,
-            HOLD_STATUS_ACTIVE
-        );
+            int updated = jdbcTemplate.update(
+                """
+                UPDATE dbo.inventoryhold
+                SET status = ?,
+                    notes = COALESCE(notes, '') || ' CANCELLED: ' || ?,
+                    editdate = CURRENT_TIMESTAMP,
+                    editwho = ?
+                WHERE holdkey = ?
+                AND status = ?
+                """,
+                HOLD_STATUS_CANCELLED,
+                reason,
+                userId,
+                holdKey,
+                HOLD_STATUS_ACTIVE
+            );
 
-        if (updated > 0 && inventoryId != null && !hasActiveHolds(inventoryId)) {
-            updateInventoryHoldFlag(inventoryId, false);
+            if (updated > 0 && inventoryId != null && !hasActiveHolds(inventoryId)) {
+                updateInventoryHoldFlag(inventoryId, false);
+            }
+
+            log.info("Cancelled hold: {} (updated={})", holdKey, updated > 0);
+            return updated > 0;
+
+        } catch (DataAccessException e) {
+            log.error("Failed to cancel hold {}: {} (legacy error 68709)", holdKey, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.HOLD_EVALUATION_FAILED,
+                "Failed to cancel hold: " + e.getMessage(), e)
+                .withDetail("holdKey", holdKey)
+                .withDetail("reason", reason);
         }
-
-        return updated > 0;
     }
 
     /**
      * Check if inventory has any active holds.
+     *
+     * Error codes:
+     * - INV_009b (68709) - Hold Evaluation Failed
      *
      * @param inventoryId Inventory to check
      * @return true if has active holds
      */
     @Transactional(readOnly = true)
     public boolean hasActiveHolds(String inventoryId) {
-        Integer count = jdbcTemplate.queryForObject(
-            """
-            SELECT COUNT(*) FROM dbo.inventoryhold h
-            JOIN dbo.lotxlocxid l ON h.storerkey = l.storerkey
-                AND h.sku = l.sku AND h.lot = l.lot
-                AND h.loc = l.loc AND h.id = l.id
-            WHERE l.lotxlocxidkey = ?
-            AND h.status = '1'
-            """,
-            Integer.class,
-            inventoryId
-        );
-        return count != null && count > 0;
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*) FROM dbo.inventoryhold h
+                JOIN dbo.lotxlocxid l ON h.storerkey = l.storerkey
+                    AND h.sku = l.sku AND h.lot = l.lot
+                    AND h.loc = l.loc AND h.id = l.id
+                WHERE l.lotxlocxidkey = ?
+                AND h.status = '1'
+                """,
+                Integer.class,
+                inventoryId
+            );
+            return count != null && count > 0;
+        } catch (DataAccessException e) {
+            log.error("Failed to check active holds for inventory {}: {} (legacy error 68709)",
+                inventoryId, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.HOLD_EVALUATION_FAILED,
+                "Failed to check active holds: " + e.getMessage(), e)
+                .withDetail("inventoryId", inventoryId);
+        }
     }
 
     /**
      * Check if inventory is blocked for allocation.
+     *
+     * Error codes:
+     * - INV_009b (68709) - Hold Evaluation Failed
      *
      * @param inventoryId Inventory to check
      * @return true if allocation is blocked
      */
     @Transactional(readOnly = true)
     public boolean isBlockedForAllocation(String inventoryId) {
-        Integer count = jdbcTemplate.queryForObject(
-            """
-            SELECT COUNT(*) FROM dbo.inventoryhold h
-            JOIN dbo.lotxlocxid l ON h.storerkey = l.storerkey
-                AND h.sku = l.sku AND h.lot = l.lot
-                AND h.loc = l.loc AND h.id = l.id
-            WHERE l.lotxlocxidkey = ?
-            AND h.status = '1'
-            AND h.blockpick = '1'
-            """,
-            Integer.class,
-            inventoryId
-        );
-        return count != null && count > 0;
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*) FROM dbo.inventoryhold h
+                JOIN dbo.lotxlocxid l ON h.storerkey = l.storerkey
+                    AND h.sku = l.sku AND h.lot = l.lot
+                    AND h.loc = l.loc AND h.id = l.id
+                WHERE l.lotxlocxidkey = ?
+                AND h.status = '1'
+                AND h.blockpick = '1'
+                """,
+                Integer.class,
+                inventoryId
+            );
+            return count != null && count > 0;
+        } catch (DataAccessException e) {
+            log.error("Failed to check allocation block for inventory {}: {} (legacy error 68709)",
+                inventoryId, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.HOLD_EVALUATION_FAILED,
+                "Failed to check allocation block: " + e.getMessage(), e)
+                .withDetail("inventoryId", inventoryId)
+                .withDetail("checkType", "ALLOCATION");
+        }
     }
 
     /**
      * Check if inventory is blocked for putaway.
+     *
+     * Error codes:
+     * - INV_009b (68709) - Hold Evaluation Failed
      *
      * @param inventoryId Inventory to check
      * @return true if putaway is blocked
      */
     @Transactional(readOnly = true)
     public boolean isBlockedForPutaway(String inventoryId) {
-        Integer count = jdbcTemplate.queryForObject(
-            """
-            SELECT COUNT(*) FROM dbo.inventoryhold h
-            JOIN dbo.lotxlocxid l ON h.storerkey = l.storerkey
-                AND h.sku = l.sku AND h.lot = l.lot
-                AND h.loc = l.loc AND h.id = l.id
-            WHERE l.lotxlocxidkey = ?
-            AND h.status = '1'
-            AND h.blockputaway = '1'
-            """,
-            Integer.class,
-            inventoryId
-        );
-        return count != null && count > 0;
+        try {
+            Integer count = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*) FROM dbo.inventoryhold h
+                JOIN dbo.lotxlocxid l ON h.storerkey = l.storerkey
+                    AND h.sku = l.sku AND h.lot = l.lot
+                    AND h.loc = l.loc AND h.id = l.id
+                WHERE l.lotxlocxidkey = ?
+                AND h.status = '1'
+                AND h.blockputaway = '1'
+                """,
+                Integer.class,
+                inventoryId
+            );
+            return count != null && count > 0;
+        } catch (DataAccessException e) {
+            log.error("Failed to check putaway block for inventory {}: {} (legacy error 68709)",
+                inventoryId, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.HOLD_EVALUATION_FAILED,
+                "Failed to check putaway block: " + e.getMessage(), e)
+                .withDetail("inventoryId", inventoryId)
+                .withDetail("checkType", "PUTAWAY");
+        }
     }
 
     /**
      * Get all active holds for an inventory item.
+     *
+     * Error codes:
+     * - INV_009b (68709) - Hold Evaluation Failed
      *
      * @param inventoryId Inventory to check
      * @return List of active holds
      */
     @Transactional(readOnly = true)
     public List<HoldInfo> getActiveHolds(String inventoryId) {
-        return jdbcTemplate.query(
-            """
-            SELECT h.holdkey, h.holdcode, h.holdtype, h.holdreason,
-                   h.holddate, h.holdwho, h.blockpick, h.blockputaway,
-                   h.qty, h.notes
-            FROM dbo.inventoryhold h
-            JOIN dbo.lotxlocxid l ON h.storerkey = l.storerkey
-                AND h.sku = l.sku AND h.lot = l.lot
-                AND h.loc = l.loc AND h.id = l.id
-            WHERE l.lotxlocxidkey = ?
-            AND h.status = '1'
-            ORDER BY h.holddate
-            """,
-            (rs, rowNum) -> HoldInfo.builder()
-                .holdKey(rs.getString("holdkey"))
-                .holdCode(rs.getString("holdcode"))
-                .holdType(rs.getString("holdtype"))
-                .holdReason(rs.getString("holdreason"))
-                .holdDate(rs.getTimestamp("holddate").toLocalDateTime())
-                .holdBy(rs.getString("holdwho"))
-                .blockAllocation("1".equals(rs.getString("blockpick")))
-                .blockPutaway("1".equals(rs.getString("blockputaway")))
-                .quantity(rs.getBigDecimal("qty"))
-                .notes(rs.getString("notes"))
-                .build(),
-            inventoryId
-        );
+        try {
+            return jdbcTemplate.query(
+                """
+                SELECT h.holdkey, h.holdcode, h.holdtype, h.holdreason,
+                       h.holddate, h.holdwho, h.blockpick, h.blockputaway,
+                       h.qty, h.notes
+                FROM dbo.inventoryhold h
+                JOIN dbo.lotxlocxid l ON h.storerkey = l.storerkey
+                    AND h.sku = l.sku AND h.lot = l.lot
+                    AND h.loc = l.loc AND h.id = l.id
+                WHERE l.lotxlocxidkey = ?
+                AND h.status = '1'
+                ORDER BY h.holddate
+                """,
+                (rs, rowNum) -> HoldInfo.builder()
+                    .holdKey(rs.getString("holdkey"))
+                    .holdCode(rs.getString("holdcode"))
+                    .holdType(rs.getString("holdtype"))
+                    .holdReason(rs.getString("holdreason"))
+                    .holdDate(rs.getTimestamp("holddate").toLocalDateTime())
+                    .holdBy(rs.getString("holdwho"))
+                    .blockAllocation("1".equals(rs.getString("blockpick")))
+                    .blockPutaway("1".equals(rs.getString("blockputaway")))
+                    .quantity(rs.getBigDecimal("qty"))
+                    .notes(rs.getString("notes"))
+                    .build(),
+                inventoryId
+            );
+        } catch (DataAccessException e) {
+            log.error("Failed to get active holds for inventory {}: {} (legacy error 68709)",
+                inventoryId, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.HOLD_EVALUATION_FAILED,
+                "Failed to get active holds: " + e.getMessage(), e)
+                .withDetail("inventoryId", inventoryId);
+        }
     }
 
     /**
      * Evaluate which holds should be applied based on rules.
+     *
+     * Error codes:
+     * - INV_009b (68709) - Hold Evaluation Failed
      *
      * @param request Evaluation request
      * @return List of holds to apply
@@ -368,64 +492,77 @@ public class InventoryHoldService {
         log.debug("Evaluating holds for storer={}, sku={}",
             request.getStorerKey(), request.getSku());
 
-        List<HoldSpec> holdsToApply = new ArrayList<>();
+        try {
+            List<HoldSpec> holdsToApply = new ArrayList<>();
 
-        // Check QC hold requirement
-        if (requiresQCHold(request.getStorerKey(), request.getSku())) {
-            holdsToApply.add(HoldSpec.builder()
-                .holdCode("QC")
-                .holdType(HOLD_TYPE_QC)
-                .holdReason("Quality inspection required per storer configuration")
-                .blockAllocation(true)
-                .blockPutaway(true)
-                .build());
-        }
-
-        // Check customs hold requirement
-        if (request.isCustomsRequired()) {
-            holdsToApply.add(HoldSpec.builder()
-                .holdCode("CUSTOMS")
-                .holdType(HOLD_TYPE_CUSTOMS)
-                .holdReason("Customs clearance required")
-                .blockAllocation(true)
-                .blockPutaway(false)
-                .build());
-        }
-
-        // Check quarantine requirement (food items, perishables)
-        if (requiresQuarantine(request.getStorerKey(), request.getSku())) {
-            int quarantineDays = getQuarantineDays(request.getStorerKey(), request.getSku());
-            holdsToApply.add(HoldSpec.builder()
-                .holdCode("QUARANTINE")
-                .holdType(HOLD_TYPE_QUARANTINE)
-                .holdReason("Quarantine period: " + quarantineDays + " days")
-                .blockAllocation(true)
-                .blockPutaway(true)
-                .expiryDate(LocalDateTime.now().plusDays(quarantineDays))
-                .build());
-        }
-
-        // Check supplier-specific holds
-        if (request.getSupplierKey() != null) {
-            HoldSpec supplierHold = checkSupplierHold(request.getSupplierKey());
-            if (supplierHold != null) {
-                holdsToApply.add(supplierHold);
+            // Check QC hold requirement
+            if (requiresQCHold(request.getStorerKey(), request.getSku())) {
+                holdsToApply.add(HoldSpec.builder()
+                    .holdCode("QC")
+                    .holdType(HOLD_TYPE_QC)
+                    .holdReason("Quality inspection required per storer configuration")
+                    .blockAllocation(true)
+                    .blockPutaway(true)
+                    .build());
             }
-        }
 
-        // Check client-specific holds
-        HoldSpec clientHold = checkClientHold(request.getStorerKey(), request.getSku());
-        if (clientHold != null) {
-            holdsToApply.add(clientHold);
-        }
+            // Check customs hold requirement
+            if (request.isCustomsRequired()) {
+                holdsToApply.add(HoldSpec.builder()
+                    .holdCode("CUSTOMS")
+                    .holdType(HOLD_TYPE_CUSTOMS)
+                    .holdReason("Customs clearance required")
+                    .blockAllocation(true)
+                    .blockPutaway(false)
+                    .build());
+            }
 
-        log.info("Evaluated holds: {} holds to apply", holdsToApply.size());
-        return holdsToApply;
+            // Check quarantine requirement (food items, perishables)
+            if (requiresQuarantine(request.getStorerKey(), request.getSku())) {
+                int quarantineDays = getQuarantineDays(request.getStorerKey(), request.getSku());
+                holdsToApply.add(HoldSpec.builder()
+                    .holdCode("QUARANTINE")
+                    .holdType(HOLD_TYPE_QUARANTINE)
+                    .holdReason("Quarantine period: " + quarantineDays + " days")
+                    .blockAllocation(true)
+                    .blockPutaway(true)
+                    .expiryDate(LocalDateTime.now().plusDays(quarantineDays))
+                    .build());
+            }
+
+            // Check supplier-specific holds
+            if (request.getSupplierKey() != null) {
+                HoldSpec supplierHold = checkSupplierHold(request.getSupplierKey());
+                if (supplierHold != null) {
+                    holdsToApply.add(supplierHold);
+                }
+            }
+
+            // Check client-specific holds
+            HoldSpec clientHold = checkClientHold(request.getStorerKey(), request.getSku());
+            if (clientHold != null) {
+                holdsToApply.add(clientHold);
+            }
+
+            log.info("Evaluated holds: {} holds to apply", holdsToApply.size());
+            return holdsToApply;
+
+        } catch (DataAccessException e) {
+            log.error("Failed to evaluate holds for storer={}, sku={}: {} (legacy error 68709)",
+                request.getStorerKey(), request.getSku(), e.getMessage(), e);
+            throw new BusinessException(ErrorCode.HOLD_EVALUATION_FAILED,
+                "Failed to evaluate holds: " + e.getMessage(), e)
+                .withDetail("storerKey", request.getStorerKey())
+                .withDetail("sku", request.getSku());
+        }
     }
 
     /**
      * Process expired holds (auto-release).
      * Should be called by a scheduled job.
+     *
+     * Error codes:
+     * - INV_009b (68709) - Hold Evaluation Failed
      *
      * @return Number of holds released
      */
@@ -433,25 +570,44 @@ public class InventoryHoldService {
     public int processExpiredHolds() {
         log.info("Processing expired holds");
 
-        List<String> expiredHoldKeys = jdbcTemplate.queryForList(
-            """
-            SELECT holdkey FROM dbo.inventoryhold
-            WHERE status = '1'
-            AND expirydate IS NOT NULL
-            AND expirydate <= CURRENT_TIMESTAMP
-            """,
-            String.class
-        );
+        try {
+            List<String> expiredHoldKeys = jdbcTemplate.queryForList(
+                """
+                SELECT holdkey FROM dbo.inventoryhold
+                WHERE status = '1'
+                AND expirydate IS NOT NULL
+                AND expirydate <= CURRENT_TIMESTAMP
+                """,
+                String.class
+            );
 
-        int releasedCount = 0;
-        for (String holdKey : expiredHoldKeys) {
-            if (releaseHold(holdKey, "SYSTEM", "Auto-released due to expiry")) {
-                releasedCount++;
+            int releasedCount = 0;
+            List<String> failedKeys = new ArrayList<>();
+
+            for (String holdKey : expiredHoldKeys) {
+                try {
+                    if (releaseHold(holdKey, "SYSTEM", "Auto-released due to expiry")) {
+                        releasedCount++;
+                    }
+                } catch (BusinessException e) {
+                    log.warn("Failed to auto-release expired hold {}: {}", holdKey, e.getMessage());
+                    failedKeys.add(holdKey);
+                }
             }
-        }
 
-        log.info("Auto-released {} expired holds", releasedCount);
-        return releasedCount;
+            if (!failedKeys.isEmpty()) {
+                log.warn("Failed to release {} expired holds: {} (legacy error 68709)",
+                    failedKeys.size(), failedKeys);
+            }
+
+            log.info("Auto-released {} expired holds ({} failed)", releasedCount, failedKeys.size());
+            return releasedCount;
+
+        } catch (DataAccessException e) {
+            log.error("Failed to query expired holds: {} (legacy error 68709)", e.getMessage(), e);
+            throw new BusinessException(ErrorCode.HOLD_EVALUATION_FAILED,
+                "Failed to process expired holds: " + e.getMessage(), e);
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════

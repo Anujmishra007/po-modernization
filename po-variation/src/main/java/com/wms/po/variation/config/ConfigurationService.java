@@ -4,7 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
+import com.wms.po.domain.exception.BusinessException;
 import com.wms.po.domain.exception.ConfigurationException;
+import com.wms.po.domain.exception.ErrorCode;
 import com.wms.po.domain.model.VariationContext;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,6 +21,11 @@ import java.util.*;
 /**
  * Service for loading and caching variation configuration from YAML files.
  * Supports hierarchical configuration with base -> region -> client overrides.
+ *
+ * Error codes:
+ * - CFG_001 (69980) - Configuration Not Found
+ * - CFG_002 (69981) - Configuration Invalid
+ * - CFG_005 (69984) - Configuration Mapping Failed
  */
 @Service
 @Slf4j
@@ -42,11 +49,44 @@ public class ConfigurationService {
     }
 
     /**
-     * Get configuration for the given variation context
+     * Get configuration for the given variation context.
+     *
+     * Error codes:
+     * - CFG_001 (69980) - Configuration Not Found
+     * - CFG_005 (69984) - Configuration Mapping Failed
+     *
+     * @param context Variation context
+     * @return Configuration for the context
+     * @throws BusinessException if configuration cannot be loaded
      */
     public VariationConfig getConfig(VariationContext context) {
-        ConfigKey key = new ConfigKey(context.getRegion(), context.getClient());
-        return configCache.get(key);
+        if (context == null) {
+            log.error("Variation context is null (legacy error 69980)");
+            throw new BusinessException(ErrorCode.CONFIG_NOT_FOUND,
+                "Variation context is required")
+                .withDetail("context", "null");
+        }
+
+        try {
+            ConfigKey key = new ConfigKey(context.getRegion(), context.getClient());
+            VariationConfig config = configCache.get(key);
+
+            if (config == null) {
+                log.warn("No configuration found for region={}, client={}, using default (legacy warning 69980)",
+                    context.getRegion(), context.getClient());
+                return createDefaultConfig();
+            }
+
+            return config;
+
+        } catch (Exception e) {
+            log.error("Failed to get configuration for context {}: {} (legacy error 69984)",
+                context, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.CONFIG_MAPPING_FAILED,
+                "Failed to get configuration: " + e.getMessage(), e)
+                .withDetail("region", context.getRegion())
+                .withDetail("client", context.getClient());
+        }
     }
 
     /**

@@ -1,7 +1,10 @@
 package com.wms.po.domain.service;
 
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +26,13 @@ import java.util.Map;
  * - CLOSEASNSTATUS
  * - CloseASNUponFinalize
  * - ChkASNVarianceTolerance
+ *
+ * Error codes:
+ * - ASN_009b (68809) - ASN Close Failed
+ * - PO_001 (68800) - PO Not Found
+ * - RCV_001 (68900) - Receipt Not Found
+ * - RCV_023 (68923) - Receipt Close Failed
+ * - PO_016 (68816) - PO Variance Tolerance Exceeded
  */
 @Service
 @RequiredArgsConstructor
@@ -75,6 +85,10 @@ public class ASNCloseService {
     /**
      * Close a receipt after finalization.
      *
+     * Error codes:
+     * - RCV_001 (68900) - Receipt Not Found
+     * - RCV_023 (68923) - Receipt Close Failed
+     *
      * @param receiptKey Receipt to close
      * @param userId User performing the close
      * @return true if closed successfully
@@ -83,29 +97,37 @@ public class ASNCloseService {
     public boolean closeReceipt(String receiptKey, String userId) {
         log.info("Closing receipt {}", receiptKey);
 
-        // Update receipt status and close date
-        int updated = jdbcTemplate.update(
-            """
-            UPDATE dbo.receipt
-            SET status = ?,
-                closedate = CURRENT_DATE,
-                editdate = CURRENT_TIMESTAMP,
-                editwho = ?
-            WHERE receiptkey = ?
-            AND status = ?
-            """,
-            STATUS_CLOSED,
-            userId,
-            receiptKey,
-            STATUS_FINALIZED
-        );
+        try {
+            // Update receipt status and close date
+            int updated = jdbcTemplate.update(
+                """
+                UPDATE dbo.receipt
+                SET status = ?,
+                    closedate = CURRENT_DATE,
+                    editdate = CURRENT_TIMESTAMP,
+                    editwho = ?
+                WHERE receiptkey = ?
+                AND status = ?
+                """,
+                STATUS_CLOSED,
+                userId,
+                receiptKey,
+                STATUS_FINALIZED
+            );
 
-        if (updated > 0) {
-            log.info("Receipt {} closed successfully", receiptKey);
-            return true;
-        } else {
-            log.warn("Receipt {} could not be closed (wrong status or not found)", receiptKey);
-            return false;
+            if (updated > 0) {
+                log.info("Receipt {} closed successfully", receiptKey);
+                return true;
+            } else {
+                log.warn("Receipt {} could not be closed (wrong status or not found) (legacy error 68900)", receiptKey);
+                return false;
+            }
+
+        } catch (DataAccessException e) {
+            log.error("Failed to close receipt {}: {} (legacy error 68923)", receiptKey, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.FINALIZE_CLOSE_RECEIPT_FAILED,
+                "Failed to close receipt: " + e.getMessage(), e)
+                .withDetail("receiptKey", receiptKey);
         }
     }
 
@@ -180,37 +202,58 @@ public class ASNCloseService {
 
     /**
      * Close a PO.
+     *
+     * Error codes:
+     * - PO_001 (68800) - PO Not Found
+     * - ASN_009b (68809) - ASN Close Failed
      */
     @Transactional
     public void closePO(String poKey, String userId) {
         log.info("Closing PO {}", poKey);
 
-        jdbcTemplate.update(
-            """
-            UPDATE dbo.po
-            SET status = ?,
-                closedate = CURRENT_TIMESTAMP,
-                editdate = CURRENT_TIMESTAMP,
-                editwho = ?
-            WHERE pokey = ?
-            """,
-            PO_STATUS_CLOSED,
-            userId,
-            poKey
-        );
+        try {
+            int updated = jdbcTemplate.update(
+                """
+                UPDATE dbo.po
+                SET status = ?,
+                    closedate = CURRENT_TIMESTAMP,
+                    editdate = CURRENT_TIMESTAMP,
+                    editwho = ?
+                WHERE pokey = ?
+                """,
+                PO_STATUS_CLOSED,
+                userId,
+                poKey
+            );
 
-        // Update all PO lines to closed status
-        jdbcTemplate.update(
-            """
-            UPDATE dbo.podetail
-            SET polinestatus = 'CLOSED',
-                editdate = CURRENT_TIMESTAMP,
-                editwho = ?
-            WHERE pokey = ?
-            """,
-            userId,
-            poKey
-        );
+            if (updated == 0) {
+                log.error("PO not found for closure: {} (legacy error 68800)", poKey);
+                throw BusinessException.poNotFound(poKey);
+            }
+
+            // Update all PO lines to closed status
+            jdbcTemplate.update(
+                """
+                UPDATE dbo.podetail
+                SET polinestatus = 'CLOSED',
+                    editdate = CURRENT_TIMESTAMP,
+                    editwho = ?
+                WHERE pokey = ?
+                """,
+                userId,
+                poKey
+            );
+
+            log.info("PO {} closed successfully", poKey);
+
+        } catch (BusinessException e) {
+            throw e;
+        } catch (DataAccessException e) {
+            log.error("Failed to close PO {}: {} (legacy error 68809)", poKey, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.ASN_CLOSE_FAILED,
+                "Failed to close PO: " + e.getMessage(), e)
+                .withDetail("poKey", poKey);
+        }
     }
 
     /**

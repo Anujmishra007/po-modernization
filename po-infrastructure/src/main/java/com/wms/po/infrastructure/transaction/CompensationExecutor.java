@@ -1,9 +1,12 @@
 package com.wms.po.infrastructure.transaction;
 
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import lombok.Data;
 import lombok.Builder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -27,6 +30,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * Step 4 compensation: deleteReceiptDetails(detailKeys)
  * Step 3 compensation: deleteReceiptHeader(receiptKey)
  * Step 2 compensation: restorePOStatus(poKey, originalStatus)
+ *
+ * Error codes:
+ * - INT_024 (69024) - Transaction Rollback
  */
 @Service
 @RequiredArgsConstructor
@@ -43,9 +49,21 @@ public class CompensationExecutor {
     // ═══════════════════════════════════════════════════════════════
 
     /**
-     * Compensate receipt header creation (maps to dsp_Receipt equivalent)
+     * Compensate receipt header creation (maps to dsp_Receipt equivalent).
+     *
+     * Error codes:
+     * - INT_024 (69024) - Transaction Rollback
+     *
+     * @param receiptKey Receipt key to delete
+     * @param sagaId Saga identifier for tracking
+     * @return Compensation result
      */
     public CompensationResult compensateReceiptHeader(String receiptKey, String sagaId) {
+        if (receiptKey == null || receiptKey.isBlank()) {
+            log.warn("Receipt key is null/blank for compensation, skipping");
+            return CompensationResult.failure("null", "Receipt key is null or blank");
+        }
+
         log.info("Compensating receipt header: {} (saga: {})", receiptKey, sagaId);
 
         CompensationRecord record = startCompensation(sagaId, "DELETE_RECEIPT_HEADER", receiptKey);
@@ -69,8 +87,9 @@ public class CompensationExecutor {
             log.info("Compensated receipt header: {} (deleted {} rows)", receiptKey, rowsDeleted);
             return CompensationResult.success(receiptKey, rowsDeleted);
 
-        } catch (Exception e) {
-            log.error("Failed to compensate receipt header: {}", e.getMessage());
+        } catch (DataAccessException e) {
+            log.error("Failed to compensate receipt header: receiptKey={}, error={} (legacy error 69024)",
+                receiptKey, e.getMessage(), e);
             record.setSuccess(false);
             record.setError(e.getMessage());
             return CompensationResult.failure(receiptKey, e.getMessage());

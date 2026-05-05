@@ -2,6 +2,8 @@ package com.wms.po.activity.impl;
 
 import com.wms.po.activity.ValidationActivity;
 import com.wms.po.domain.entity.POEntity;
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import com.wms.po.domain.model.PopulateRequest;
 import com.wms.po.domain.model.TradeReturnRequest;
 import com.wms.po.domain.model.ValidationResult;
@@ -17,7 +19,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Implementation of ValidationActivity
+ * Implementation of ValidationActivity.
+ *
+ * Maps to legacy SPs:
+ * - SP-009: WM.lsp_Validate_Receipt_Std (error code 69100+)
+ * - SP-010: WM.lsp_Validate_Receiptdetail_Std (error code 69106+)
+ * - SP-065: isp_ASN_ExtendedValidation (error code 69120)
+ *
+ * @see ErrorCode for error code mappings
  */
 @Component
 @RequiredArgsConstructor
@@ -33,10 +42,19 @@ public class ValidationActivityImpl implements ValidationActivity {
         log.info("Resolving variation context for storerKey={}, facility={}",
             request.getStorerKey(), request.getFacility());
 
-        return variationResolver.resolve(
-            request.getStorerKey(),
-            request.getFacility()
-        );
+        try {
+            return variationResolver.resolve(
+                request.getStorerKey(),
+                request.getFacility()
+            );
+        } catch (Exception e) {
+            log.error("Failed to resolve variation context: {}", e.getMessage(), e);
+            throw new BusinessException(ErrorCode.CONFIG_STORER_NOT_FOUND,
+                String.format("Failed to resolve context for storer %s: %s",
+                    request.getStorerKey(), e.getMessage()), e)
+                .withDetail("storerKey", request.getStorerKey())
+                .withDetail("facility", request.getFacility());
+        }
     }
 
     @Override
@@ -46,14 +64,14 @@ public class ValidationActivityImpl implements ValidationActivity {
 
         ValidationResult result = new ValidationResult();
 
-        // Basic validations
+        // Basic validations - throws BusinessException for missing required fields
         validateBasicRequirements(request, result);
 
         if (!result.isValid()) {
             return result;
         }
 
-        // PO existence and status validation
+        // PO existence and status validation - throws BusinessException for not found/invalid status
         validatePOs(request, result);
 
         if (!result.isValid()) {
@@ -69,7 +87,8 @@ public class ValidationActivityImpl implements ValidationActivity {
                 result.setValid(false);
             }
         } catch (Exception e) {
-            log.warn("Rule engine validation failed, continuing without rules: {}", e.getMessage());
+            log.warn("Rule engine validation failed: {}", e.getMessage());
+            throw BusinessException.droolsRuleFailed("Validation", e);
         }
 
         log.info("Validation result: valid={}, errors={}, warnings={}",
@@ -78,25 +97,38 @@ public class ValidationActivityImpl implements ValidationActivity {
         return result;
     }
 
+    /**
+     * Validates basic required fields.
+     * Error codes: VAL_001 (69100) - Required Field Missing
+     */
     private void validateBasicRequirements(PopulateRequest request, ValidationResult result) {
         if (request.getPoKeys() == null || request.getPoKeys().isEmpty()) {
-            result.addError("At least one PO key is required");
+            // Throw immediately for critical validation failures
+            throw BusinessException.validationFailed("poKeys", "At least one PO key is required");
         }
 
         if (request.getStorerKey() == null || request.getStorerKey().isBlank()) {
-            result.addError("Storer key is required");
+            throw BusinessException.validationFailed("storerKey", "Storer key is required");
         }
 
         if (request.getFacility() == null || request.getFacility().isBlank()) {
-            result.addError("Facility is required");
+            throw BusinessException.validationFailed("facility", "Facility is required");
         }
     }
 
+    /**
+     * Validates PO existence and status.
+     * Error codes:
+     * - PO_001 (68800) - PO Not Found
+     * - PO_002 (68801) - PO Already Closed
+     * - PO_003 (68802) - PO Cancelled
+     * - PO_010 (68810) - Storer Key Mismatch
+     */
     private void validatePOs(PopulateRequest request, ValidationResult result) {
         List<String> poKeys = request.getPoKeys();
         List<POEntity> foundPOs = poRepository.findByPoKeyIn(poKeys);
 
-        // Check all POs exist
+        // Check all POs exist - throw PO_NOT_FOUND for first missing
         if (foundPOs.size() != poKeys.size()) {
             List<String> foundKeys = foundPOs.stream()
                 .map(POEntity::getPoKey)
@@ -105,28 +137,36 @@ public class ValidationActivityImpl implements ValidationActivity {
             List<String> missingKeys = new ArrayList<>(poKeys);
             missingKeys.removeAll(foundKeys);
 
-            for (String missingKey : missingKeys) {
-                result.addError("PO not found: " + missingKey);
+            // Throw exception for first missing PO (legacy code 68800)
+            if (!missingKeys.isEmpty()) {
+                String firstMissing = missingKeys.get(0);
+                log.error("PO not found: {} (legacy error 68800)", firstMissing);
+                throw BusinessException.poNotFound(firstMissing);
             }
         }
 
         // Check PO statuses
         for (POEntity po : foundPOs) {
             String status = po.getStatus();
+            String poKey = po.getPoKey();
 
-            // Status 9 = Closed, cannot populate
+            // Status 9 = Closed, cannot populate (legacy code 68801)
             if ("9".equals(status)) {
-                result.addError("PO " + po.getPoKey() + " is closed (status=9)");
+                log.error("PO {} is closed (status=9) - legacy error 68801", poKey);
+                throw BusinessException.poAlreadyClosed(poKey);
             }
 
-            // Status 8 = Cancelled
+            // Status 8 = Cancelled (legacy code 68802)
             if ("8".equals(status)) {
-                result.addError("PO " + po.getPoKey() + " is cancelled (status=8)");
+                log.error("PO {} is cancelled (status=8) - legacy error 68802", poKey);
+                throw BusinessException.poCancelled(poKey);
             }
 
-            // Check storer key matches
+            // Check storer key matches (legacy code 68810)
             if (!request.getStorerKey().equals(po.getStorerKey())) {
-                result.addError("PO " + po.getPoKey() + " belongs to different storer: " + po.getStorerKey());
+                log.error("PO {} belongs to different storer: {} vs {} - legacy error 68810",
+                    poKey, po.getStorerKey(), request.getStorerKey());
+                throw BusinessException.storerMismatch(request.getStorerKey(), po.getStorerKey());
             }
         }
     }
@@ -136,9 +176,14 @@ public class ValidationActivityImpl implements ValidationActivity {
         log.info("Resolving trade return context for storerKey={}, facility={}",
             request.getStorerKey(), request.getFacility());
 
-        return variationResolver.resolve(
-            request.getStorerKey(),
-            request.getFacility()
-        );
+        try {
+            return variationResolver.resolve(
+                request.getStorerKey(),
+                request.getFacility()
+            );
+        } catch (Exception e) {
+            log.error("Failed to resolve trade return context: {}", e.getMessage(), e);
+            throw BusinessException.storerConfigNotFound(request.getStorerKey(), "TradeReturn");
+        }
     }
 }

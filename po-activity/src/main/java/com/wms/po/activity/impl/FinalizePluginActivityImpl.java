@@ -1,6 +1,7 @@
 package com.wms.po.activity.impl;
 
 import com.wms.po.activity.FinalizePluginActivity;
+import com.wms.po.domain.exception.BusinessException;
 import com.wms.po.domain.model.FinalizeRequest;
 import com.wms.po.domain.model.PluginResult;
 import com.wms.po.domain.model.VariationContext;
@@ -18,6 +19,16 @@ import java.util.Map;
 /**
  * Implementation of FinalizePluginActivity.
  * Runs pre-finalize and post-finalize plugins.
+ *
+ * Maps to legacy SPs:
+ * - SP-030-039: ispPRREC* (Pre-Receipt Processing, error codes 69510-69520)
+ * - SP-040-054: ispASNFZ* (Post-Finalize Hooks, error codes 69521-69535)
+ *
+ * Error codes:
+ * - PLG_010 (69510) - Pre-Finalize Hook Failed
+ * - PLG_011-019 - Specific pre-finalize plugin errors (HM, Nike, Adidas, etc.)
+ * - PLG_020 (69520) - Post-Finalize Hook Failed
+ * - PLG_021-029 - Specific post-finalize plugin errors
  *
  * Pre-finalize plugins (ispPRREC* series):
  * - Run before status update and inventory posting
@@ -41,8 +52,15 @@ public class FinalizePluginActivityImpl implements FinalizePluginActivity {
         log.info("Running pre-finalize plugins for receipt {} (storer={})",
             request.getReceiptKey(), request.getStorerKey());
 
-        List<PreFinalizePlugin> plugins = pluginRegistry.getPreFinalizePlugins(
-            request.getStorerKey(), context.getRegion());
+        List<PreFinalizePlugin> plugins;
+        try {
+            plugins = pluginRegistry.getPreFinalizePlugins(
+                request.getStorerKey(), context.getRegion());
+        } catch (Exception e) {
+            log.error("Failed to load pre-finalize plugins: {} (legacy error 69510)",
+                e.getMessage(), e);
+            throw BusinessException.pluginNotFound(request.getStorerKey() + "_PreFinalize");
+        }
 
         if (plugins.isEmpty()) {
             log.info("No pre-finalize plugins registered");
@@ -53,39 +71,42 @@ public class FinalizePluginActivityImpl implements FinalizePluginActivity {
         int executed = 0;
 
         for (PreFinalizePlugin plugin : plugins) {
+            String pluginId = plugin.getPluginId();
             try {
-                log.debug("Running pre-finalize plugin: {}", plugin.getPluginId());
+                log.debug("Running pre-finalize plugin: {}", pluginId);
 
                 if (!plugin.shouldExecute(request, context)) {
-                    log.debug("Plugin {} skipped (shouldExecute=false)", plugin.getPluginId());
+                    log.debug("Plugin {} skipped (shouldExecute=false)", pluginId);
                     continue;
                 }
 
                 PluginResult result = plugin.execute(request, context);
-                executedPlugins.add(plugin.getPluginId());
+                executedPlugins.add(pluginId);
                 executed++;
 
                 if (!result.isShouldContinue()) {
-                    log.warn("Pre-finalize plugin {} stopped workflow: {}",
-                        plugin.getPluginId(), result.getReason());
-                    return PluginResult.builder()
-                        .shouldContinue(false)
-                        .reason("Plugin " + plugin.getPluginId() + ": " + result.getReason())
-                        .pluginsExecuted(executed)
-                        .executedPlugins(executedPlugins)
-                        .build();
+                    log.warn("Pre-finalize plugin {} stopped workflow: {} (legacy error 69510)",
+                        pluginId, result.getReason());
+                    // Throw proper exception with plugin-specific error code
+                    throw BusinessException.preFinalizeHookFailed(
+                        extractPluginType(pluginId),
+                        request.getReceiptKey(),
+                        new RuntimeException(result.getReason())
+                    );
                 }
 
-                log.debug("Plugin {} completed successfully", plugin.getPluginId());
+                log.debug("Plugin {} completed successfully", pluginId);
 
+            } catch (BusinessException e) {
+                throw e;
             } catch (Exception e) {
-                log.error("Pre-finalize plugin {} failed: {}", plugin.getPluginId(), e.getMessage());
-                return PluginResult.builder()
-                    .shouldContinue(false)
-                    .reason("Plugin " + plugin.getPluginId() + " failed: " + e.getMessage())
-                    .pluginsExecuted(executed)
-                    .executedPlugins(executedPlugins)
-                    .build();
+                log.error("Pre-finalize plugin {} failed: {} (legacy error 69510)",
+                    pluginId, e.getMessage(), e);
+                throw BusinessException.preFinalizeHookFailed(
+                    extractPluginType(pluginId),
+                    request.getReceiptKey(),
+                    e
+                );
             }
         }
 
@@ -93,6 +114,40 @@ public class FinalizePluginActivityImpl implements FinalizePluginActivity {
         return PluginResult.success(executed, executedPlugins);
     }
 
+    /**
+     * Extract plugin type from plugin ID for error code mapping.
+     */
+    private String extractPluginType(String pluginId) {
+        if (pluginId == null) return "UNKNOWN";
+        String id = pluginId.toUpperCase();
+        if (id.contains("HM") || id.contains("H&M")) return "HM";
+        if (id.contains("NIKE")) return "NIKE";
+        if (id.contains("ADIDAS")) return "ADIDAS";
+        if (id.contains("COLUMBIA")) return "COLUMBIA";
+        if (id.contains("UNILEVER")) return "UNILEVER";
+        if (id.contains("NEWLOOK")) return "NEWLOOK";
+        if (id.contains("INDIA")) return "INDIA";
+        if (id.contains("DSG") || id.contains("THAILAND")) return "DSG_TH";
+        if (id.contains("REGIONAL")) return "REGIONAL";
+        if (id.contains("BATCH")) return "BATCH_RELEASE";
+        if (id.contains("UCC")) return "UCC_STAMP";
+        if (id.contains("AUTO_PA")) return "AUTO_PA";
+        if (id.contains("NOTIFICATION")) return "NOTIFICATION";
+        if (id.contains("SYNC")) return "INV_SYNC";
+        if (id.contains("QUALITY")) return "QUALITY_CHECK";
+        if (id.contains("CUSTOMS")) return "CUSTOMS";
+        if (id.contains("ALLOCAT")) return "AUTO_ALLOCATE";
+        return pluginId;
+    }
+
+    /**
+     * Run post-finalize plugins.
+     * Post-finalize failures are logged but do not block the workflow.
+     *
+     * Error codes (logged, non-fatal):
+     * - PLG_020 (69520) - Post-Finalize Hook Failed
+     * - PLG_021-029 - Specific post-finalize plugin errors
+     */
     @Override
     public PluginSummary runPostFinalizePlugins(
             String receiptKey,
@@ -102,8 +157,20 @@ public class FinalizePluginActivityImpl implements FinalizePluginActivity {
 
         log.info("Running post-finalize plugins for receipt {}", receiptKey);
 
-        List<PostFinalizePlugin> plugins = pluginRegistry.getPostFinalizePlugins(
-            request.getStorerKey(), context.getRegion());
+        List<PostFinalizePlugin> plugins;
+        try {
+            plugins = pluginRegistry.getPostFinalizePlugins(
+                request.getStorerKey(), context.getRegion());
+        } catch (Exception e) {
+            log.error("Failed to load post-finalize plugins: {} (legacy error 69520, non-fatal)",
+                e.getMessage());
+            return PluginSummary.builder()
+                .pluginsExecuted(0)
+                .successCount(0)
+                .failureCount(1)
+                .executions(new ArrayList<>())
+                .build();
+        }
 
         if (plugins.isEmpty()) {
             log.info("No post-finalize plugins registered");
@@ -147,6 +214,8 @@ public class FinalizePluginActivityImpl implements FinalizePluginActivity {
 
             } catch (Exception e) {
                 long duration = System.currentTimeMillis() - startTime;
+                String pluginType = extractPluginType(pluginId);
+
                 executions.add(PluginExecution.builder()
                     .pluginId(pluginId)
                     .pluginName(plugin.getClass().getSimpleName())
@@ -157,7 +226,9 @@ public class FinalizePluginActivityImpl implements FinalizePluginActivity {
                     .build());
 
                 failureCount++;
-                log.warn("Post-finalize plugin {} failed (non-fatal): {}", pluginId, e.getMessage());
+                // Log with legacy error code but don't throw (post-finalize is non-fatal)
+                log.warn("Post-finalize plugin {} ({}) failed (non-fatal): {} (legacy error 69520)",
+                    pluginId, pluginType, e.getMessage());
             }
         }
 

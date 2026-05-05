@@ -1,7 +1,10 @@
 package com.wms.po.domain.service;
 
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +25,11 @@ import java.util.*;
  * 2. Create task in TASKDETAIL table
  * 3. Assign to user/equipment if configured
  * 4. Track completion status
+ *
+ * Error codes:
+ * - PA_005 (69204) - Putaway Task Creation Failed
+ * - PA_001 (69200) - Putaway Strategy Not Found
+ * - PA_006 (69205) - Putaway Task Release Failed
  */
 @Service
 @RequiredArgsConstructor
@@ -47,6 +55,9 @@ public class PutawayTaskService {
     /**
      * Create a putaway task for an inventory record.
      *
+     * Error codes:
+     * - PA_001 (69100) - Putaway Task Creation Failed
+     *
      * @param request Task creation request
      * @return Created task key
      */
@@ -55,14 +66,17 @@ public class PutawayTaskService {
         log.debug("Creating putaway task: sku={}, from={}, qty={}",
             request.getSku(), request.getFromLocation(), request.getQuantity());
 
-        // Determine target location using putaway strategy
-        String targetLocation = determinePutawayLocation(request);
+        String taskKey = null;
 
-        // Generate task key
-        String taskKey = keyGeneratorService.generateKey("TASKDETAIL");
+        try {
+            // Determine target location using putaway strategy
+            String targetLocation = determinePutawayLocation(request);
 
-        // Insert task into TASKDETAIL
-        jdbcTemplate.update(
+            // Generate task key
+            taskKey = keyGeneratorService.generateKey("TASKDETAIL");
+
+            // Insert task into TASKDETAIL
+            jdbcTemplate.update(
             """
             INSERT INTO dbo.taskdetail (
                 taskdetailkey, tasktype, storerkey, sku,
@@ -99,10 +113,20 @@ public class PutawayTaskService {
             request.getUserId()
         );
 
-        log.info("Created putaway task: key={}, from={}, to={}, sku={}, qty={}",
-            taskKey, request.getFromLocation(), targetLocation, request.getSku(), request.getQuantity());
+            log.info("Created putaway task: key={}, from={}, to={}, sku={}, qty={}",
+                taskKey, request.getFromLocation(), targetLocation, request.getSku(), request.getQuantity());
 
-        return taskKey;
+            return taskKey;
+
+        } catch (DataAccessException e) {
+            log.error("Failed to create putaway task for sku {}: {} (legacy error 69204)",
+                request.getSku(), e.getMessage(), e);
+            throw new BusinessException(ErrorCode.PUTAWAY_TASK_CREATE_FAILED,
+                "Failed to create putaway task: " + e.getMessage(), e)
+                .withDetail("sku", request.getSku())
+                .withDetail("receiptKey", request.getReceiptKey())
+                .withDetail("fromLocation", request.getFromLocation());
+        }
     }
 
     /**

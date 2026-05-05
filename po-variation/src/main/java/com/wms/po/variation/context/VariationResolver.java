@@ -1,5 +1,7 @@
 package com.wms.po.variation.context;
 
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import com.wms.po.domain.model.VariationContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -7,7 +9,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
- * Resolves the variation context (V0/V2, region, client) from request parameters
+ * Resolves the variation context (V0/V2, region, client) from request parameters.
+ *
+ * Error codes:
+ * - CFG_004 (69983) - Storer Configuration Not Found
+ * - CFG_001 (69980) - Configuration Not Found (for facility)
+ * - CFG_005 (69984) - Configuration Mapping Failed
  */
 @Service
 @RequiredArgsConstructor
@@ -21,27 +28,66 @@ public class VariationResolver {
     private String defaultVersion;
 
     /**
-     * Resolve variation context from storer key and facility
+     * Resolve variation context from storer key and facility.
+     *
+     * Error codes:
+     * - CFG_004 (69983) - Storer Configuration Not Found
+     * - CFG_001 (69980) - Configuration Not Found (for facility)
+     * - CFG_005 (69984) - Configuration Mapping Failed
+     *
+     * @param storerKey Storer key (required)
+     * @param facility Facility code (required)
+     * @return Resolved variation context
+     * @throws BusinessException if resolution fails
      */
     public VariationContext resolve(String storerKey, String facility) {
-        String version = determineVersion(storerKey);
-        String region = determineRegion(facility);
-        String client = determineClient(storerKey);
-        boolean dualWrite = isDualWriteEnabled(storerKey);
+        log.debug("Resolving variation context for storer={}, facility={}", storerKey, facility);
 
-        VariationContext context = VariationContext.builder()
-            .version(version)
-            .region(region)
-            .client(client)
-            .facility(facility)
-            .storerKey(storerKey)
-            .dualWriteEnabled(dualWrite)
-            .build();
+        // Validate required inputs
+        if (storerKey == null || storerKey.isBlank()) {
+            log.error("Storer key is required for variation resolution (legacy error 69800)");
+            throw new BusinessException(ErrorCode.CONFIG_STORER_NOT_FOUND,
+                "Storer key is required for variation resolution")
+                .withDetail("storerKey", storerKey);
+        }
 
-        log.info("Resolved variation context: version={}, region={}, client={}, dualWrite={}",
-            version, region, client, dualWrite);
+        if (facility == null || facility.isBlank()) {
+            log.error("Facility is required for variation resolution (legacy error 69980)");
+            throw new BusinessException(ErrorCode.CONFIG_NOT_FOUND,
+                "Facility is required for variation resolution")
+                .withDetail("facility", facility);
+        }
 
-        return context;
+        try {
+            String version = determineVersion(storerKey);
+            String region = determineRegion(facility);
+            String client = determineClient(storerKey);
+            boolean dualWrite = isDualWriteEnabled(storerKey);
+
+            VariationContext context = VariationContext.builder()
+                .version(version)
+                .region(region)
+                .client(client)
+                .facility(facility)
+                .storerKey(storerKey)
+                .dualWriteEnabled(dualWrite)
+                .build();
+
+            log.info("Resolved variation context: version={}, region={}, client={}, dualWrite={}",
+                version, region, client, dualWrite);
+
+            return context;
+
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Failed to resolve variation context for storer={}, facility={}: {} (legacy error 69984)",
+                storerKey, facility, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.CONFIG_MAPPING_FAILED,
+                "Failed to resolve variation context: " + e.getMessage(), e)
+                .withDetail("storerKey", storerKey)
+                .withDetail("facility", facility);
+        }
     }
 
     /**

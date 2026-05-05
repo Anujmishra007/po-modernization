@@ -1,11 +1,15 @@
 package com.wms.po.api.service;
 
 import com.wms.po.api.controller.FinalizeController.WorkflowStatusResponse;
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import com.wms.po.domain.model.FinalizeRequest;
 import com.wms.po.domain.model.FinalizeResult;
 import com.wms.po.domain.model.WorkflowStatus;
 import com.wms.po.workflow.FinalizeReceiptWorkflow;
 import io.temporal.client.WorkflowClient;
+import io.temporal.client.WorkflowException;
+import io.temporal.client.WorkflowNotFoundException;
 import io.temporal.client.WorkflowOptions;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +21,14 @@ import java.util.List;
 
 /**
  * Service for starting and managing receipt finalization workflows.
+ *
+ * Maps to legacy SPs:
+ * - SP-003: WM.lsp_FinalizeReceipt_Wrapper (error codes 68900-68928)
+ *
+ * Error codes:
+ * - INT_003 (69002) - Temporal Workflow Failed
+ * - INT_004 (69003) - Temporal Activity Failed
+ * - RCV_020 (68920) - Finalize Validation Failed
  *
  * Provides both synchronous and asynchronous finalization operations,
  * as well as workflow lifecycle management (status, cancel, pause, resume).
@@ -37,6 +49,10 @@ public class ReceiptFinalizationService {
     /**
      * Start finalization workflow (synchronous - wait for result).
      *
+     * Error codes:
+     * - INT_003 (69002) - Temporal Workflow Failed
+     * - RCV_020 (68920) - Finalize Validation Failed
+     *
      * @param request Finalization request
      * @return Finalization result
      */
@@ -46,22 +62,35 @@ public class ReceiptFinalizationService {
         log.info("Starting synchronous finalize workflow: {} for receipt {}",
             workflowId, request.getReceiptKey());
 
-        FinalizeReceiptWorkflow workflow = workflowClient.newWorkflowStub(
-            FinalizeReceiptWorkflow.class,
-            WorkflowOptions.newBuilder()
-                .setTaskQueue(taskQueue)
-                .setWorkflowId(workflowId)
-                .setWorkflowExecutionTimeout(Duration.ofMinutes(workflowTimeoutMinutes))
-                .build()
-        );
+        try {
+            FinalizeReceiptWorkflow workflow = workflowClient.newWorkflowStub(
+                FinalizeReceiptWorkflow.class,
+                WorkflowOptions.newBuilder()
+                    .setTaskQueue(taskQueue)
+                    .setWorkflowId(workflowId)
+                    .setWorkflowExecutionTimeout(Duration.ofMinutes(workflowTimeoutMinutes))
+                    .build()
+            );
 
-        // Execute workflow and wait for result
-        FinalizeResult result = workflow.finalize(request);
+            // Execute workflow and wait for result
+            FinalizeResult result = workflow.finalize(request);
 
-        log.info("Workflow completed: {} - success={}, status={}",
-            workflowId, result.isSuccess(), result.getFinalStatus());
+            log.info("Workflow completed: {} - success={}, status={}",
+                workflowId, result.isSuccess(), result.getFinalStatus());
 
-        return result;
+            return result;
+
+        } catch (WorkflowException e) {
+            log.error("Finalize workflow failed: {} - {} (legacy error 69002)",
+                workflowId, e.getMessage(), e);
+            throw BusinessException.temporalWorkflowFailed(workflowId, e);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Failed to finalize receipt {}: {} (legacy error 68920)",
+                request.getReceiptKey(), e.getMessage(), e);
+            throw BusinessException.finalizeValidationFailed(request.getReceiptKey(), e.getMessage());
+        }
     }
 
     /**
@@ -168,6 +197,9 @@ public class ReceiptFinalizationService {
     /**
      * Cancel a running workflow.
      *
+     * Error codes:
+     * - INT_003 (69002) - Temporal Workflow Failed
+     *
      * @param workflowId Workflow ID
      */
     public void cancel(String workflowId) {
@@ -180,14 +212,22 @@ public class ReceiptFinalizationService {
             workflow.cancel();
 
             log.info("Cancel signal sent to workflow: {}", workflowId);
+        } catch (WorkflowNotFoundException e) {
+            log.error("Workflow not found for cancellation: {} (legacy error 69002)", workflowId);
+            throw new BusinessException(ErrorCode.TEMPORAL_WORKFLOW_FAILED,
+                "Workflow not found: " + workflowId)
+                .withDetail("workflowId", workflowId);
         } catch (Exception e) {
-            log.error("Failed to cancel workflow: {}", e.getMessage());
-            throw e;
+            log.error("Failed to cancel workflow: {} (legacy error 69002)", e.getMessage());
+            throw BusinessException.temporalWorkflowFailed(workflowId, e);
         }
     }
 
     /**
      * Pause a running workflow.
+     *
+     * Error codes:
+     * - INT_003 (69002) - Temporal Workflow Failed
      *
      * @param workflowId Workflow ID
      */
@@ -201,14 +241,22 @@ public class ReceiptFinalizationService {
             workflow.pause();
 
             log.info("Pause signal sent to workflow: {}", workflowId);
+        } catch (WorkflowNotFoundException e) {
+            log.error("Workflow not found for pause: {} (legacy error 69002)", workflowId);
+            throw new BusinessException(ErrorCode.TEMPORAL_WORKFLOW_FAILED,
+                "Workflow not found: " + workflowId)
+                .withDetail("workflowId", workflowId);
         } catch (Exception e) {
-            log.error("Failed to pause workflow: {}", e.getMessage());
-            throw e;
+            log.error("Failed to pause workflow: {} (legacy error 69002)", e.getMessage());
+            throw BusinessException.temporalWorkflowFailed(workflowId, e);
         }
     }
 
     /**
      * Resume a paused workflow.
+     *
+     * Error codes:
+     * - INT_003 (69002) - Temporal Workflow Failed
      *
      * @param workflowId Workflow ID
      */
@@ -222,9 +270,14 @@ public class ReceiptFinalizationService {
             workflow.resume();
 
             log.info("Resume signal sent to workflow: {}", workflowId);
+        } catch (WorkflowNotFoundException e) {
+            log.error("Workflow not found for resume: {} (legacy error 69002)", workflowId);
+            throw new BusinessException(ErrorCode.TEMPORAL_WORKFLOW_FAILED,
+                "Workflow not found: " + workflowId)
+                .withDetail("workflowId", workflowId);
         } catch (Exception e) {
-            log.error("Failed to resume workflow: {}", e.getMessage());
-            throw e;
+            log.error("Failed to resume workflow: {} (legacy error 69002)", e.getMessage());
+            throw BusinessException.temporalWorkflowFailed(workflowId, e);
         }
     }
 

@@ -4,6 +4,8 @@ import com.wms.po.activity.PersistenceActivity;
 import com.wms.po.domain.dto.DetailMapping;
 import com.wms.po.domain.entity.ReceiptDetailEntity;
 import com.wms.po.domain.entity.ReceiptEntity;
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import com.wms.po.domain.model.MappingResult;
 import com.wms.po.domain.repository.ReceiptDetailRepository;
 import com.wms.po.domain.repository.ReceiptRepository;
@@ -19,7 +21,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Implementation of PersistenceActivity with compensation methods
+ * Implementation of PersistenceActivity with compensation methods.
+ *
+ * Error codes:
+ * - RCV_005 (68904) - Receipt Header Creation Failed
+ * - RCV_006 (68905) - Receipt Detail Creation Failed
  */
 @Component
 @RequiredArgsConstructor
@@ -30,28 +36,46 @@ public class PersistenceActivityImpl implements PersistenceActivity {
     private final ReceiptDetailRepository detailRepository;
     private final KeyGeneratorService keyGenerator;
 
+    /**
+     * Create receipt header.
+     *
+     * Error codes:
+     * - RCV_005 (68904) - Receipt Header Creation Failed
+     */
     @Override
     @Transactional
     public String createReceiptHeader(MappingResult mapping) {
         log.info("Creating receipt header for externKey={}", mapping.getExternReceiptKey());
 
-        String receiptKey = keyGenerator.generateReceiptKey();
+        String receiptKey = null;
 
-        ReceiptEntity receipt = ReceiptEntity.builder()
-            .receiptKey(receiptKey)
-            .externReceiptKey(mapping.getExternReceiptKey())
-            .storerKey(mapping.getStorerKey())
-            .facility(mapping.getFacility())
-            .receiptType("PO")
-            .status("0")  // Initial status
-            .addDate(LocalDateTime.now())
-            .addWho(mapping.getUserId())
-            .build();
+        try {
+            receiptKey = keyGenerator.generateReceiptKey();
 
-        receiptRepository.save(receipt);
+            ReceiptEntity receipt = ReceiptEntity.builder()
+                .receiptKey(receiptKey)
+                .externReceiptKey(mapping.getExternReceiptKey())
+                .storerKey(mapping.getStorerKey())
+                .facility(mapping.getFacility())
+                .receiptType("PO")
+                .status("0")  // Initial status
+                .addDate(LocalDateTime.now())
+                .addWho(mapping.getUserId())
+                .build();
 
-        log.info("Created receipt header: receiptKey={}", receiptKey);
-        return receiptKey;
+            receiptRepository.save(receipt);
+
+            log.info("Created receipt header: receiptKey={}", receiptKey);
+            return receiptKey;
+
+        } catch (Exception e) {
+            log.error("Failed to create receipt header for {}: {} (legacy error 68904)",
+                mapping.getExternReceiptKey(), e.getMessage(), e);
+            throw new BusinessException(ErrorCode.RECEIPT_HEADER_CREATE_FAILED,
+                "Failed to create receipt header: " + e.getMessage(), e)
+                .withDetail("externReceiptKey", mapping.getExternReceiptKey())
+                .withDetail("storerKey", mapping.getStorerKey());
+        }
     }
 
     @Override

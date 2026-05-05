@@ -1,5 +1,7 @@
 package com.wms.po.infrastructure.transaction;
 
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import com.wms.po.infrastructure.cache.DistributedLockService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +20,11 @@ import java.util.function.Supplier;
  * Saga transaction manager for distributed transactions.
  * Coordinates transactions across multiple services/databases with compensation support.
  * Maps to legacy stored procedure transaction patterns.
+ *
+ * Error codes:
+ * - INT_020 (69020) - Database Error
+ * - INT_021 (69021) - Deadlock Detected
+ * - INT_024 (69024) - Transaction Rollback
  */
 @Service
 @RequiredArgsConstructor
@@ -32,9 +39,33 @@ public class SagaTransactionManager {
     private final Map<String, SagaState> activeSagas = new ConcurrentHashMap<>();
 
     /**
-     * Execute a saga with automatic compensation on failure
+     * Execute a saga with automatic compensation on failure.
+     *
+     * Error codes:
+     * - INT_020 (69020) - Database Error
+     *
+     * @param sagaId Unique saga identifier
+     * @param steps List of saga steps to execute
+     * @return Result from the last step
+     * @throws BusinessException if saga ID or steps are invalid
+     * @throws SagaException if saga execution fails
      */
     public <T> T executeSaga(String sagaId, List<SagaStep<T>> steps) {
+        if (sagaId == null || sagaId.isBlank()) {
+            log.error("Saga ID is null/blank (legacy error 69020)");
+            throw new BusinessException(ErrorCode.DATABASE_ERROR,
+                "Saga ID is required")
+                .withDetail("sagaId", "null or blank");
+        }
+
+        if (steps == null || steps.isEmpty()) {
+            log.error("Saga steps are null/empty for saga {} (legacy error 69020)", sagaId);
+            throw new BusinessException(ErrorCode.DATABASE_ERROR,
+                "At least one saga step is required")
+                .withDetail("sagaId", sagaId)
+                .withDetail("steps", "null or empty");
+        }
+
         SagaState state = new SagaState(sagaId, steps.size());
         activeSagas.put(sagaId, state);
 
@@ -70,8 +101,21 @@ public class SagaTransactionManager {
             log.info("Saga [{}] completed successfully", sagaId);
             return result;
 
+        } catch (BusinessException e) {
+            log.error("Saga [{}] failed at step {}: {} (legacy error 69020)",
+                sagaId, state.getCurrentStepName(), e.getMessage());
+            state.setStatus(SagaStatus.COMPENSATING);
+            state.setError(e.getMessage());
+
+            // Execute compensations in reverse order
+            executeCompensations(sagaId, compensations);
+
+            state.setStatus(SagaStatus.FAILED);
+            throw e;
+
         } catch (Exception e) {
-            log.error("Saga [{}] failed at step {}: {}", sagaId, state.getCurrentStepName(), e.getMessage());
+            log.error("Saga [{}] failed at step {}: {} (legacy error 69020)",
+                sagaId, state.getCurrentStepName(), e.getMessage(), e);
             state.setStatus(SagaStatus.COMPENSATING);
             state.setError(e.getMessage());
 

@@ -1,7 +1,10 @@
 package com.wms.po.domain.service;
 
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +22,11 @@ import java.util.Map;
  * XDock processing handles the automatic matching and allocation of
  * inbound receipts to outbound orders, bypassing traditional putaway
  * when product can be directly cross-docked to shipping.
+ *
+ * Error codes:
+ * - XD_001 (69300) - XDock Order Not Found
+ * - XD_002 (69301) - XDock Allocation Failed
+ * - INV_001 (68700) - Inventory Not Found
  */
 @Service
 @RequiredArgsConstructor
@@ -40,6 +48,9 @@ public class XDockProcessingService {
 
     /**
      * Process all pending XDock orders for a facility.
+     *
+     * Error codes:
+     * - ORD_003 (69102) - Order Allocation Failed
      *
      * @param facility Facility code
      * @return Processing result summary
@@ -65,6 +76,10 @@ public class XDockProcessingService {
                     } else {
                         result.warnings.addAll(orderResult.warnings);
                     }
+                } catch (BusinessException e) {
+                    log.error("Failed to process XDock order {}: {} (legacy error 69301)",
+                        orderKey, e.getMessage());
+                    result.errors.add("Order " + orderKey + ": " + e.getMessage());
                 } catch (Exception e) {
                     log.error("Failed to process XDock order {}: {}", orderKey, e.getMessage());
                     result.errors.add("Order " + orderKey + ": " + e.getMessage());
@@ -75,9 +90,12 @@ public class XDockProcessingService {
                 result.ordersProcessed, result.ordersAllocated,
                 result.totalLinesAllocated, result.totalQtyAllocated);
 
-        } catch (Exception e) {
-            log.error("XDock processing failed: {}", e.getMessage(), e);
+        } catch (DataAccessException e) {
+            log.error("XDock processing failed: {} (legacy error 69301)", e.getMessage(), e);
             result.errors.add("Processing failed: " + e.getMessage());
+            throw new BusinessException(ErrorCode.XDOCK_ALLOCATION_FAILED,
+                "XDock processing failed: " + e.getMessage(), e)
+                .withDetail("facility", facility);
         }
 
         return result;
@@ -85,6 +103,10 @@ public class XDockProcessingService {
 
     /**
      * Process a single XDock order.
+     *
+     * Error codes:
+     * - ORD_001 (69100) - Order Not Found
+     * - ORD_003 (69102) - Order Allocation Failed
      *
      * @param orderKey Order to process
      * @param facility Facility
@@ -97,131 +119,182 @@ public class XDockProcessingService {
         XDockOrderResult result = new XDockOrderResult();
         result.orderKey = orderKey;
 
-        // Get order details
-        List<Map<String, Object>> orderLines = getOrderLines(orderKey);
+        try {
+            // Get order details
+            List<Map<String, Object>> orderLines = getOrderLines(orderKey);
 
-        for (Map<String, Object> line : orderLines) {
-            String sku = (String) line.get("sku");
-            String storerKey = (String) line.get("storerkey");
-            int lineNum = ((Number) line.get("orderlinenumber")).intValue();
-            BigDecimal openQty = (BigDecimal) line.get("openqty");
-
-            if (openQty == null || openQty.compareTo(BigDecimal.ZERO) <= 0) {
-                continue;
+            if (orderLines.isEmpty()) {
+                log.warn("No open order lines found for XDock: {} (legacy error 69100)", orderKey);
+                result.warnings.add("No open order lines found");
+                return result;
             }
 
-            // Find available inventory in receiving (not yet put away)
-            List<Map<String, Object>> availableInventory = findAvailableReceivingInventory(
-                sku, storerKey, facility);
+            for (Map<String, Object> line : orderLines) {
+                String sku = (String) line.get("sku");
+                String storerKey = (String) line.get("storerkey");
+                int lineNum = ((Number) line.get("orderlinenumber")).intValue();
+                BigDecimal openQty = (BigDecimal) line.get("openqty");
 
-            BigDecimal remainingQty = openQty;
-
-            for (Map<String, Object> inv : availableInventory) {
-                if (remainingQty.compareTo(BigDecimal.ZERO) <= 0) {
-                    break;
-                }
-
-                String receiptKey = (String) inv.get("receiptkey");
-                int receiptLineNum = ((Number) inv.get("receiptlinenumber")).intValue();
-                BigDecimal availQty = (BigDecimal) inv.get("availqty");
-                String lot = (String) inv.get("lottable01");
-                String loc = (String) inv.get("toloc");
-                String id = (String) inv.get("toid");
-
-                // Check lot matching requirements
-                if (!checkLotMatch(line, inv)) {
+                if (openQty == null || openQty.compareTo(BigDecimal.ZERO) <= 0) {
                     continue;
                 }
 
-                BigDecimal allocQty = remainingQty.min(availQty);
+                // Find available inventory in receiving (not yet put away)
+                List<Map<String, Object>> availableInventory = findAvailableReceivingInventory(
+                    sku, storerKey, facility);
 
-                // Create allocation
-                createXDockAllocation(
-                    orderKey, lineNum, receiptKey, receiptLineNum,
-                    sku, storerKey, allocQty, lot, loc, id
-                );
+                BigDecimal remainingQty = openQty;
 
-                remainingQty = remainingQty.subtract(allocQty);
-                result.linesAllocated++;
-                result.qtyAllocated = result.qtyAllocated.add(allocQty);
+                for (Map<String, Object> inv : availableInventory) {
+                    if (remainingQty.compareTo(BigDecimal.ZERO) <= 0) {
+                        break;
+                    }
 
-                log.debug("XDock allocated: order={}/{} <- receipt={}/{}, qty={}",
-                    orderKey, lineNum, receiptKey, receiptLineNum, allocQty);
+                    String receiptKey = (String) inv.get("receiptkey");
+                    int receiptLineNum = ((Number) inv.get("receiptlinenumber")).intValue();
+                    BigDecimal availQty = (BigDecimal) inv.get("availqty");
+                    String lot = (String) inv.get("lottable01");
+                    String loc = (String) inv.get("toloc");
+                    String id = (String) inv.get("toid");
+
+                    // Check lot matching requirements
+                    if (!checkLotMatch(line, inv)) {
+                        continue;
+                    }
+
+                    BigDecimal allocQty = remainingQty.min(availQty);
+
+                    // Create allocation
+                    createXDockAllocation(
+                        orderKey, lineNum, receiptKey, receiptLineNum,
+                        sku, storerKey, allocQty, lot, loc, id
+                    );
+
+                    remainingQty = remainingQty.subtract(allocQty);
+                    result.linesAllocated++;
+                    result.qtyAllocated = result.qtyAllocated.add(allocQty);
+
+                    log.debug("XDock allocated: order={}/{} <- receipt={}/{}, qty={}",
+                        orderKey, lineNum, receiptKey, receiptLineNum, allocQty);
+                }
+
+                if (remainingQty.compareTo(BigDecimal.ZERO) > 0) {
+                    result.warnings.add(String.format("Order %s line %d: %.0f units unallocated",
+                        orderKey, lineNum, remainingQty));
+                }
             }
 
-            if (remainingQty.compareTo(BigDecimal.ZERO) > 0) {
-                result.warnings.add(String.format("Order %s line %d: %.0f units unallocated",
-                    orderKey, lineNum, remainingQty));
+            // Update order status if fully allocated
+            if (result.linesAllocated > 0) {
+                updateOrderXDockStatus(orderKey);
+                result.success = true;
             }
-        }
 
-        // Update order status if fully allocated
-        if (result.linesAllocated > 0) {
-            updateOrderXDockStatus(orderKey);
-            result.success = true;
-        }
+            return result;
 
-        return result;
+        } catch (DataAccessException e) {
+            log.error("Failed to process XDock order {}: {} (legacy error 69301)",
+                orderKey, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.XDOCK_ALLOCATION_FAILED,
+                "Failed to process XDock order: " + e.getMessage(), e)
+                .withDetail("orderKey", orderKey)
+                .withDetail("facility", facility);
+        }
     }
 
     /**
      * Find orders eligible for XDock processing.
+     *
+     * Error codes:
+     * - ORD_003 (69102) - Order Allocation Failed
      */
     private List<String> findXDockEligibleOrders(String facility) {
-        String sql = """
-            SELECT DISTINCT o.orderkey
-            FROM dbo.ORDERS o
-            JOIN dbo.ORDERDETAIL od ON o.orderkey = od.orderkey
-            WHERE o.facility = ?
-            AND o.status IN ('0', '1')
-            AND o.xdockflag = '1'
-            AND od.openqty > COALESCE(od.allocatedqty, 0)
-            ORDER BY o.priority ASC, o.orderkey ASC
-            """;
+        try {
+            String sql = """
+                SELECT DISTINCT o.orderkey
+                FROM dbo.ORDERS o
+                JOIN dbo.ORDERDETAIL od ON o.orderkey = od.orderkey
+                WHERE o.facility = ?
+                AND o.status IN ('0', '1')
+                AND o.xdockflag = '1'
+                AND od.openqty > COALESCE(od.allocatedqty, 0)
+                ORDER BY o.priority ASC, o.orderkey ASC
+                """;
 
-        return jdbcTemplate.queryForList(sql, String.class, facility);
+            return jdbcTemplate.queryForList(sql, String.class, facility);
+        } catch (DataAccessException e) {
+            log.error("Failed to find XDock eligible orders for facility {}: {} (legacy error 69301)",
+                facility, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.XDOCK_ALLOCATION_FAILED,
+                "Failed to find XDock eligible orders: " + e.getMessage(), e)
+                .withDetail("facility", facility);
+        }
     }
 
     /**
      * Get order detail lines.
+     *
+     * Error codes:
+     * - ORD_001 (69100) - Order Not Found
      */
     private List<Map<String, Object>> getOrderLines(String orderKey) {
-        String sql = """
-            SELECT od.orderlinenumber, od.sku, od.storerkey,
-                   od.openqty - COALESCE(od.allocatedqty, 0) as openqty,
-                   od.lottable01, od.lottable02, od.lottable03, od.lottable04, od.lottable05
-            FROM dbo.ORDERDETAIL od
-            WHERE od.orderkey = ?
-            AND od.openqty > COALESCE(od.allocatedqty, 0)
-            AND od.status IN ('0', '1')
-            ORDER BY od.orderlinenumber
-            """;
+        try {
+            String sql = """
+                SELECT od.orderlinenumber, od.sku, od.storerkey,
+                       od.openqty - COALESCE(od.allocatedqty, 0) as openqty,
+                       od.lottable01, od.lottable02, od.lottable03, od.lottable04, od.lottable05
+                FROM dbo.ORDERDETAIL od
+                WHERE od.orderkey = ?
+                AND od.openqty > COALESCE(od.allocatedqty, 0)
+                AND od.status IN ('0', '1')
+                ORDER BY od.orderlinenumber
+                """;
 
-        return jdbcTemplate.queryForList(sql, orderKey);
+            return jdbcTemplate.queryForList(sql, orderKey);
+        } catch (DataAccessException e) {
+            log.error("Failed to get order lines for {}: {} (legacy error 69100)",
+                orderKey, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.XDOCK_ORDER_NOT_FOUND,
+                "Failed to get order lines: " + e.getMessage(), e)
+                .withDetail("orderKey", orderKey);
+        }
     }
 
     /**
      * Find available inventory in receiving area.
+     *
+     * Error codes:
+     * - INV_001 (68700) - Inventory Not Found
      */
     private List<Map<String, Object>> findAvailableReceivingInventory(
             String sku, String storerKey, String facility) {
 
-        String sql = """
-            SELECT rd.receiptkey, rd.receiptlinenumber,
-                   rd.qtyreceived - COALESCE(rd.qtyallocated, 0) as availqty,
-                   rd.lottable01, rd.lottable02, rd.lottable03, rd.lottable04, rd.lottable05,
-                   rd.toloc, rd.toid
-            FROM dbo.RECEIPTDETAIL rd
-            JOIN dbo.RECEIPT r ON rd.receiptkey = r.receiptkey
-            WHERE rd.sku = ?
-            AND rd.storerkey = ?
-            AND r.facility = ?
-            AND r.status IN ('5', '9')
-            AND rd.qtyreceived > COALESCE(rd.qtyallocated, 0)
-            ORDER BY r.adddate ASC, rd.receiptkey ASC
-            """;
+        try {
+            String sql = """
+                SELECT rd.receiptkey, rd.receiptlinenumber,
+                       rd.qtyreceived - COALESCE(rd.qtyallocated, 0) as availqty,
+                       rd.lottable01, rd.lottable02, rd.lottable03, rd.lottable04, rd.lottable05,
+                       rd.toloc, rd.toid
+                FROM dbo.RECEIPTDETAIL rd
+                JOIN dbo.RECEIPT r ON rd.receiptkey = r.receiptkey
+                WHERE rd.sku = ?
+                AND rd.storerkey = ?
+                AND r.facility = ?
+                AND r.status IN ('5', '9')
+                AND rd.qtyreceived > COALESCE(rd.qtyallocated, 0)
+                ORDER BY r.adddate ASC, rd.receiptkey ASC
+                """;
 
-        return jdbcTemplate.queryForList(sql, sku, storerKey, facility);
+            return jdbcTemplate.queryForList(sql, sku, storerKey, facility);
+        } catch (DataAccessException e) {
+            log.error("Failed to find available inventory for sku={}, storer={}: {} (legacy error 68700)",
+                sku, storerKey, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.INVENTORY_NOT_FOUND,
+                "Failed to find available receiving inventory: " + e.getMessage(), e)
+                .withDetail("sku", sku)
+                .withDetail("storerKey", storerKey)
+                .withDetail("facility", facility);
+        }
     }
 
     /**
@@ -246,6 +319,9 @@ public class XDockProcessingService {
 
     /**
      * Create XDock allocation record.
+     *
+     * Error codes:
+     * - ORD_003 (69102) - Order Allocation Failed
      */
     private void createXDockAllocation(String orderKey, int orderLineNum,
                                        String receiptKey, int receiptLineNum,
@@ -253,55 +329,85 @@ public class XDockProcessingService {
                                        BigDecimal qty, String lot,
                                        String loc, String id) {
 
-        String pickDetailKey = java.util.UUID.randomUUID().toString().substring(0, 20);
+        try {
+            String pickDetailKey = java.util.UUID.randomUUID().toString().substring(0, 20);
 
-        // Create pick detail
-        String sql = """
-            INSERT INTO dbo.PICKDETAIL (pickdetailkey, orderkey, orderlinenumber,
-                receiptkey, receiptlinenumber, sku, storerkey, qty,
-                fromloc, fromid, lot, status, picktype, adddate, addwho)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '0', 'XDOCK', GETDATE(), 'XDOCK')
-            """;
+            // Create pick detail
+            String sql = """
+                INSERT INTO dbo.PICKDETAIL (pickdetailkey, orderkey, orderlinenumber,
+                    receiptkey, receiptlinenumber, sku, storerkey, qty,
+                    fromloc, fromid, lot, status, picktype, adddate, addwho)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '0', 'XDOCK', GETDATE(), 'XDOCK')
+                """;
 
-        jdbcTemplate.update(sql,
-            pickDetailKey, orderKey, orderLineNum,
-            receiptKey, receiptLineNum, sku, storerKey, qty,
-            loc, id, lot
-        );
+            jdbcTemplate.update(sql,
+                pickDetailKey, orderKey, orderLineNum,
+                receiptKey, receiptLineNum, sku, storerKey, qty,
+                loc, id, lot
+            );
 
-        // Update receipt detail allocated qty
-        jdbcTemplate.update(
-            "UPDATE dbo.RECEIPTDETAIL SET qtyallocated = COALESCE(qtyallocated, 0) + ? " +
-            "WHERE receiptkey = ? AND receiptlinenumber = ?",
-            qty, receiptKey, receiptLineNum
-        );
+            // Update receipt detail allocated qty
+            jdbcTemplate.update(
+                "UPDATE dbo.RECEIPTDETAIL SET qtyallocated = COALESCE(qtyallocated, 0) + ? " +
+                "WHERE receiptkey = ? AND receiptlinenumber = ?",
+                qty, receiptKey, receiptLineNum
+            );
 
-        // Update order detail allocated qty
-        jdbcTemplate.update(
-            "UPDATE dbo.ORDERDETAIL SET allocatedqty = COALESCE(allocatedqty, 0) + ? " +
-            "WHERE orderkey = ? AND orderlinenumber = ?",
-            qty, orderKey, orderLineNum
-        );
+            // Update order detail allocated qty
+            jdbcTemplate.update(
+                "UPDATE dbo.ORDERDETAIL SET allocatedqty = COALESCE(allocatedqty, 0) + ? " +
+                "WHERE orderkey = ? AND orderlinenumber = ?",
+                qty, orderKey, orderLineNum
+            );
+
+        } catch (DataAccessException e) {
+            log.error("Failed to create XDock allocation for order {} line {}: {} (legacy error 69301)",
+                orderKey, orderLineNum, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.XDOCK_ALLOCATION_FAILED,
+                "Failed to create XDock allocation: " + e.getMessage(), e)
+                .withDetail("orderKey", orderKey)
+                .withDetail("orderLineNum", orderLineNum)
+                .withDetail("receiptKey", receiptKey)
+                .withDetail("qty", qty);
+        }
     }
 
     /**
      * Update order status after XDock allocation.
+     *
+     * Error codes:
+     * - ORD_003 (69102) - Order Allocation Failed
      */
     private void updateOrderXDockStatus(String orderKey) {
-        // Check if fully allocated
-        Integer unallocated = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM dbo.ORDERDETAIL " +
-            "WHERE orderkey = ? AND openqty > COALESCE(allocatedqty, 0)",
-            Integer.class, orderKey
-        );
+        try {
+            // Check if fully allocated
+            Integer unallocated = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM dbo.ORDERDETAIL " +
+                "WHERE orderkey = ? AND openqty > COALESCE(allocatedqty, 0)",
+                Integer.class, orderKey
+            );
 
-        String newStatus = (unallocated != null && unallocated == 0) ? STATUS_ALLOCATED : STATUS_NEW;
+            String newStatus = (unallocated != null && unallocated == 0) ? STATUS_ALLOCATED : STATUS_NEW;
 
-        jdbcTemplate.update(
-            "UPDATE dbo.ORDERS SET status = ?, xdockstatus = 'P', " +
-            "editdate = GETDATE(), editwho = 'XDOCK' WHERE orderkey = ?",
-            newStatus, orderKey
-        );
+            int updated = jdbcTemplate.update(
+                "UPDATE dbo.ORDERS SET status = ?, xdockstatus = 'P', " +
+                "editdate = GETDATE(), editwho = 'XDOCK' WHERE orderkey = ?",
+                newStatus, orderKey
+            );
+
+            if (updated > 0) {
+                log.info("Updated XDock order {} status to {} (xdockstatus=P)", orderKey, newStatus);
+            } else {
+                log.warn("Order not found for XDock status update: {} (legacy error 69100)", orderKey);
+            }
+
+        } catch (DataAccessException e) {
+            log.error("Failed to update XDock order status for {}: {} (legacy error 69301)",
+                orderKey, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.XDOCK_ALLOCATION_FAILED,
+                "Failed to update XDock order status: " + e.getMessage(), e)
+                .withDetail("orderKey", orderKey);
+        }
     }
 
     /**

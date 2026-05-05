@@ -4,6 +4,7 @@ import com.wms.po.activity.MappingActivity;
 import com.wms.po.domain.dto.DetailMapping;
 import com.wms.po.domain.dto.ReceiptHeaderDTO;
 import com.wms.po.domain.entity.POEntity;
+import com.wms.po.domain.exception.BusinessException;
 import com.wms.po.domain.model.LottableResult;
 import com.wms.po.domain.model.MappingResult;
 import com.wms.po.domain.model.PopulateRequest;
@@ -18,7 +19,17 @@ import java.math.BigDecimal;
 import java.util.*;
 
 /**
- * Implementation of MappingActivity - maps PO data to Receipt structure
+ * Implementation of MappingActivity - maps PO data to Receipt structure.
+ *
+ * Maps to legacy SPs:
+ * - SP-090-099: ispLottableRule_Wrapper, ispDefLot*, ispGenLot* (error codes 69400-69430)
+ *
+ * Error codes:
+ * - LOT_001 (69400) - Lottable Rule Not Found
+ * - LOT_002 (69401) - Lottable Rule Execution Failed
+ * - LOT_003 (69402) - Lottable Mapping Failed
+ * - LOT_010-015 (69410-69415) - Specific lottable generation errors
+ * - PO_018 (68818) - PO Field Mapping Failed
  */
 @Component
 @RequiredArgsConstructor
@@ -28,15 +39,33 @@ public class MappingActivityImpl implements MappingActivity {
     private final PORepository poRepository;
     private final JdbcTemplate jdbcTemplate;
 
+    /**
+     * Map PO data to ASN/Receipt structure.
+     *
+     * Error codes:
+     * - PO_001 (68800) - PO Not Found
+     * - PO_018 (68818) - PO Field Mapping Failed
+     */
     @Override
     public MappingResult mapPOToASN(PopulateRequest request, VariationContext context) {
         log.info("Mapping PO to ASN: poKeys={}, context={}", request.getPoKeys(), context);
 
         // Load PO data
-        List<POEntity> pos = poRepository.findByPoKeyIn(request.getPoKeys());
+        List<POEntity> pos;
+        try {
+            pos = poRepository.findByPoKeyIn(request.getPoKeys());
+        } catch (Exception e) {
+            log.error("Failed to load POs for mapping: {} (legacy error 68818)",
+                request.getPoKeys(), e);
+            throw new BusinessException(
+                com.wms.po.domain.exception.ErrorCode.PO_MAPPING_FAILED,
+                "Failed to load POs for mapping: " + request.getPoKeys(), e)
+                .withDetail("poKeys", request.getPoKeys());
+        }
 
         if (pos.isEmpty()) {
-            throw new IllegalArgumentException("No POs found for keys: " + request.getPoKeys());
+            log.error("No POs found for mapping: {} (legacy error 68800)", request.getPoKeys());
+            throw BusinessException.poNotFound(request.getPoKeys().get(0));
         }
 
         // Use first PO for header info (multi-PO consolidation)
@@ -76,6 +105,15 @@ public class MappingActivityImpl implements MappingActivity {
             .build();
     }
 
+    /**
+     * Apply lottable rules to mapped data.
+     *
+     * Error codes:
+     * - LOT_001 (69400) - Lottable Rule Not Found
+     * - LOT_002 (69401) - Lottable Rule Execution Failed
+     * - LOT_003 (69402) - Lottable Mapping Failed
+     * - LOT_010-015 (69410-69415) - Specific lottable generation errors
+     */
     @Override
     public LottableResult applyLottables(MappingResult mapping, VariationContext context) {
         log.info("Applying lottables for {} details, context={}", mapping.getDetails().size(), context);
@@ -83,41 +121,55 @@ public class MappingActivityImpl implements MappingActivity {
         Map<String, Map<String, String>> lottablesByDetail = new HashMap<>();
         List<String> appliedRules = new ArrayList<>();
 
-        for (DetailMapping detail : mapping.getDetails()) {
-            Map<String, String> lottables = new HashMap<>(detail.getLottables() != null ? detail.getLottables() : Map.of());
+        try {
+            for (DetailMapping detail : mapping.getDetails()) {
+                Map<String, String> lottables = new HashMap<>(detail.getLottables() != null ? detail.getLottables() : Map.of());
 
-            // Apply region-specific lottable rules
-            if (context.isKorea()) {
-                // Korea requires lottable03 for customs clearance
-                if (!lottables.containsKey("lottable03") || lottables.get("lottable03") == null) {
-                    lottables.put("lottable03", generateCustomsCode(detail));
-                    appliedRules.add("KOREA_CUSTOMS_CODE");
+                // Apply region-specific lottable rules
+                if (context.isKorea()) {
+                    // Korea requires lottable03 for customs clearance
+                    if (!lottables.containsKey("lottable03") || lottables.get("lottable03") == null) {
+                        try {
+                            lottables.put("lottable03", generateCustomsCode(detail));
+                            appliedRules.add("KOREA_CUSTOMS_CODE");
+                        } catch (Exception e) {
+                            log.error("Failed to generate customs code for SKU {}: {} (legacy error 69413)",
+                                detail.getSku(), e.getMessage());
+                            throw BusinessException.lottableGenerationFailed(3, "Customs code generation failed");
+                        }
+                    }
                 }
-            }
 
-            if (context.isIndia()) {
-                // India requires GST code in lottable04
-                if (!lottables.containsKey("lottable04")) {
-                    lottables.put("lottable04", "GST-" + mapping.getStorerKey());
-                    appliedRules.add("INDIA_GST_CODE");
+                if (context.isIndia()) {
+                    // India requires GST code in lottable04
+                    if (!lottables.containsKey("lottable04")) {
+                        lottables.put("lottable04", "GST-" + mapping.getStorerKey());
+                        appliedRules.add("INDIA_GST_CODE");
+                    }
                 }
+
+                // Apply client-specific rules
+                if (context.isNike()) {
+                    // Nike requires style code in lottable01
+                    appliedRules.add("NIKE_STYLE_CODE");
+                }
+
+                detail.setLottables(lottables);
+                lottablesByDetail.put(detail.getPoKey() + "-" + detail.getPoLineNumber(), lottables);
             }
 
-            // Apply client-specific rules
-            if (context.isNike()) {
-                // Nike requires style code in lottable01
-                appliedRules.add("NIKE_STYLE_CODE");
-            }
+            return LottableResult.builder()
+                .success(true)
+                .lottablesByDetail(lottablesByDetail)
+                .appliedRules(appliedRules)
+                .build();
 
-            detail.setLottables(lottables);
-            lottablesByDetail.put(detail.getPoKey() + "-" + detail.getPoLineNumber(), lottables);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Lottable mapping failed: {} (legacy error 69402)", e.getMessage(), e);
+            throw BusinessException.lottableMappingFailed("lottables", e.getMessage());
         }
-
-        return LottableResult.builder()
-            .success(true)
-            .lottablesByDetail(lottablesByDetail)
-            .appliedRules(appliedRules)
-            .build();
     }
 
     private String generateExternReceiptKey(PopulateRequest request) {

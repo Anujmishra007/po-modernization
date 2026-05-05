@@ -1,5 +1,7 @@
 package com.wms.po.variation.plugin;
 
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import com.wms.po.plugin.api.PostFinalizePlugin;
 import com.wms.po.plugin.api.PreFinalizePlugin;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +20,10 @@ import java.util.List;
  *
  * Note: This registry manages PreFinalizePlugin/PostFinalizePlugin from po-plugin/api.
  * For FinalizePlugin (from po-plugin/finalize), use FinalizePluginRegistry directly.
+ *
+ * Error codes:
+ * - PLG_001 (69500) - Plugin Execution Failed
+ * - PLG_002 (69501) - Plugin Not Found
  */
 @Component
 @Slf4j

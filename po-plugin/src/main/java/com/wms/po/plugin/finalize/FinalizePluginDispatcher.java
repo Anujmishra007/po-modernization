@@ -1,5 +1,7 @@
 package com.wms.po.plugin.finalize;
 
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -16,6 +18,12 @@ import java.util.List;
  * Replaces the dynamic SP execution pattern from:
  * - WM.lsp_FinalizeReceipt_Wrapper (pre/post finalize SP lookup)
  * - isp_PrePopulatePO_Wrapper (plugin dispatch pattern)
+ *
+ * Error codes:
+ * - PLG_010 (69510) - Pre-Finalize Hook Failed
+ * - PLG_020 (69520) - Post-Finalize Hook Failed
+ * - PLG_001 (69500) - Plugin Not Found
+ * - PLG_002 (69501) - Plugin Execution Failed
  */
 @Service
 @RequiredArgsConstructor
@@ -27,10 +35,28 @@ public class FinalizePluginDispatcher {
     /**
      * Execute all pre-finalize plugins for a receipt.
      *
+     * Error codes:
+     * - PLG_010 (69510) - Pre-Finalize Hook Failed
+     *
      * @param context The finalization context
      * @return Aggregated result from all plugins
+     * @throws BusinessException if context is invalid
      */
     public DispatchResult executePreFinalize(FinalizeContext context) {
+        if (context == null) {
+            log.error("Finalize context is null for pre-finalize (legacy error 69510)");
+            throw new BusinessException(ErrorCode.PRE_FINALIZE_HOOK_FAILED,
+                "Finalize context is required for pre-finalize plugins")
+                .withDetail("context", "null");
+        }
+
+        if (context.getReceiptKey() == null || context.getReceiptKey().isBlank()) {
+            log.error("Receipt key is null/blank for pre-finalize (legacy error 69510)");
+            throw new BusinessException(ErrorCode.PRE_FINALIZE_HOOK_FAILED,
+                "Receipt key is required for pre-finalize plugins")
+                .withDetail("receiptKey", "null or blank");
+        }
+
         log.info("Executing pre-finalize plugins for receipt: {}", context.getReceiptKey());
 
         List<FinalizePlugin> plugins = pluginRegistry.getPreFinalizePlugins(context.getStorerKey());
@@ -41,10 +67,28 @@ public class FinalizePluginDispatcher {
     /**
      * Execute all post-finalize plugins for a receipt.
      *
+     * Error codes:
+     * - PLG_020 (69520) - Post-Finalize Hook Failed
+     *
      * @param context The finalization context
      * @return Aggregated result from all plugins
+     * @throws BusinessException if context is invalid
      */
     public DispatchResult executePostFinalize(FinalizeContext context) {
+        if (context == null) {
+            log.error("Finalize context is null for post-finalize (legacy error 69520)");
+            throw new BusinessException(ErrorCode.POST_FINALIZE_HOOK_FAILED,
+                "Finalize context is required for post-finalize plugins")
+                .withDetail("context", "null");
+        }
+
+        if (context.getReceiptKey() == null || context.getReceiptKey().isBlank()) {
+            log.error("Receipt key is null/blank for post-finalize (legacy error 69520)");
+            throw new BusinessException(ErrorCode.POST_FINALIZE_HOOK_FAILED,
+                "Receipt key is required for post-finalize plugins")
+                .withDetail("receiptKey", "null or blank");
+        }
+
         log.info("Executing post-finalize plugins for receipt: {}", context.getReceiptKey());
 
         List<FinalizePlugin> plugins = pluginRegistry.getPostFinalizePlugins(context.getStorerKey());
@@ -55,16 +99,30 @@ public class FinalizePluginDispatcher {
     /**
      * Execute a specific plugin by ID.
      *
+     * Error codes:
+     * - PLG_001 (69500) - Plugin Not Found
+     * - PLG_002 (69501) - Plugin Execution Failed
+     *
      * @param pluginId The plugin ID
      * @param context The finalization context
      * @return Plugin result
+     * @throws BusinessException if plugin not found or execution fails critically
      */
     public FinalizePluginResult executePlugin(String pluginId, FinalizeContext context) {
+        if (pluginId == null || pluginId.isBlank()) {
+            log.error("Plugin ID is null/blank (legacy error 69500)");
+            throw new BusinessException(ErrorCode.PLUGIN_NOT_FOUND,
+                "Plugin ID is required")
+                .withDetail("pluginId", "null or blank");
+        }
+
         FinalizePlugin plugin = pluginRegistry.getPlugin(pluginId);
 
         if (plugin == null) {
-            log.warn("Plugin not found: {}", pluginId);
-            return FinalizePluginResult.failure("PLUGIN_NOT_FOUND", "Plugin not found: " + pluginId);
+            log.error("Plugin not found: {} (legacy error 69500)", pluginId);
+            throw new BusinessException(ErrorCode.PLUGIN_NOT_FOUND,
+                "Plugin not found: " + pluginId)
+                .withDetail("pluginId", pluginId);
         }
 
         return executeWithTracking(plugin, context);

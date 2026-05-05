@@ -1,9 +1,12 @@
 package com.wms.po.kafka.producer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -25,6 +28,10 @@ import java.util.HashMap;
  *
  * This replaces the polling-based SQL Job that checked for pending
  * interface records and sent them to external systems.
+ *
+ * Error codes:
+ * - TRG_002 (69701) - Event Publish Failed
+ * - JOB_013 (69613) - Build Auto Allocation Job Failed
  */
 @Component
 @RequiredArgsConstructor
@@ -65,6 +72,10 @@ public class GenericOutboundProducer {
     /**
      * Scheduled job to process pending outbound messages.
      * Runs every minute by default.
+     *
+     * Error codes:
+     * - TRG_002 (69701) - Event Publish Failed
+     * - JOB_013 (69613) - Build Auto Allocation Job Failed
      */
     @Scheduled(fixedDelayString = "${wms.kafka.outbound.poll-interval:60000}")
     @Transactional
@@ -108,8 +119,15 @@ public class GenericOutboundProducer {
                         errorCount++;
                     }
 
+                } catch (DataAccessException e) {
+                    log.error("Database error processing transmitlog {}: {} (legacy error 69613)",
+                        transmitlogKey, e.getMessage(), e);
+                    handleError(transmitlogKey, e.getMessage());
+                    errorCount++;
+
                 } catch (Exception e) {
-                    log.error("Error processing transmitlog {}: {}", transmitlogKey, e.getMessage());
+                    log.error("Error processing transmitlog {}: {} (legacy error 69701)",
+                        transmitlogKey, e.getMessage(), e);
                     handleError(transmitlogKey, e.getMessage());
                     errorCount++;
                 }
@@ -117,8 +135,12 @@ public class GenericOutboundProducer {
 
             log.info("Outbound processing complete: {} sent, {} errors", successCount, errorCount);
 
+        } catch (DataAccessException e) {
+            log.error("Outbound processing failed (database error): {} (legacy error 69613)",
+                e.getMessage(), e);
+
         } catch (Exception e) {
-            log.error("Outbound processing failed: {}", e.getMessage(), e);
+            log.error("Outbound processing failed: {} (legacy error 69701)", e.getMessage(), e);
         }
     }
 

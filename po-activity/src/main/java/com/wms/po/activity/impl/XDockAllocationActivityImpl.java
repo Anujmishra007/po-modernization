@@ -1,9 +1,12 @@
 package com.wms.po.activity.impl;
 
 import com.wms.po.activity.XDockAllocationActivity;
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import com.wms.po.domain.service.KeyGeneratorService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,9 +21,19 @@ import java.util.UUID;
 /**
  * Implementation of XDock Allocation Activity.
  *
- * Replaces:
- * - SP-007: WM.lsp_FlowThruAllocate_Wrapper
- * - SP-008: WM.lsp_XDockAllocation_Wrapper
+ * Maps to legacy SPs:
+ * - SP-007: WM.lsp_FlowThruAllocate_Wrapper (error code 69304)
+ * - SP-008: WM.lsp_XDockAllocation_Wrapper (error code 69301)
+ * - SP-080-083: nsp_xdockorderprocessing* (error codes 69300-69307)
+ *
+ * Error codes:
+ * - XD_001 (69300) - XDock Order Not Found
+ * - XD_002 (69301) - XDock Allocation Failed
+ * - XD_003 (69302) - XDock No Eligible Orders
+ * - XD_004 (69303) - XDock Processing Failed
+ * - XD_005 (69304) - Flow-Thru Allocation Failed
+ * - XD_006 (69305) - XDock Line Not Found
+ * - XD_007 (69306) - XDock Insufficient Quantity
  *
  * Flow-through (XDock) processing directly allocates received inventory
  * to outbound orders without going through traditional putaway.
@@ -45,76 +58,98 @@ public class XDockAllocationActivityImpl implements XDockAllocationActivity {
         BigDecimal totalAllocated = BigDecimal.ZERO;
         List<String> warnings = new ArrayList<>();
 
-        // Get receipt lines eligible for XDock
-        String receiptSql = """
-            SELECT rd.receiptlinenumber, rd.sku, rd.qtyreceived - COALESCE(rd.qtyallocated, 0) as availqty,
-                   rd.lottable01, rd.toloc, rd.toid
-            FROM dbo.RECEIPTDETAIL rd
-            WHERE rd.receiptkey = ?
-            AND rd.qtyreceived > COALESCE(rd.qtyallocated, 0)
-            ORDER BY rd.receiptlinenumber
-            """;
+        try {
+            // Get receipt lines eligible for XDock
+            String receiptSql = """
+                SELECT rd.receiptlinenumber, rd.sku, rd.qtyreceived - COALESCE(rd.qtyallocated, 0) as availqty,
+                       rd.lottable01, rd.toloc, rd.toid
+                FROM dbo.RECEIPTDETAIL rd
+                WHERE rd.receiptkey = ?
+                AND rd.qtyreceived > COALESCE(rd.qtyallocated, 0)
+                ORDER BY rd.receiptlinenumber
+                """;
 
-        List<Map<String, Object>> receiptLines = jdbcTemplate.queryForList(receiptSql, receiptKey);
-
-        for (Map<String, Object> line : receiptLines) {
-            int lineNum = ((Number) line.get("receiptlinenumber")).intValue();
-            String sku = (String) line.get("sku");
-            BigDecimal availQty = (BigDecimal) line.get("availqty");
-            String lot = (String) line.get("lottable01");
-            String loc = (String) line.get("toloc");
-            String id = (String) line.get("toid");
-
-            if (availQty == null || availQty.compareTo(BigDecimal.ZERO) <= 0) {
-                continue;
+            List<Map<String, Object>> receiptLines;
+            try {
+                receiptLines = jdbcTemplate.queryForList(receiptSql, receiptKey);
+            } catch (Exception e) {
+                log.error("Failed to get receipt lines for XDock: {} (legacy error 69305)",
+                    receiptKey, e);
+                throw BusinessException.receiptNotFound(receiptKey);
             }
 
-            // Find eligible orders for this SKU
-            List<EligibleOrder> eligibleOrders = findEligibleOrders(sku, storerKey, availQty);
+            if (receiptLines.isEmpty()) {
+                log.warn("No receipt lines found for XDock allocation: {} (legacy warning 69302)", receiptKey);
+                return XDockAllocationResult.noMatch();
+            }
 
-            BigDecimal remainingQty = availQty;
+            for (Map<String, Object> line : receiptLines) {
+                int lineNum = ((Number) line.get("receiptlinenumber")).intValue();
+                String sku = (String) line.get("sku");
+                BigDecimal availQty = (BigDecimal) line.get("availqty");
+                String lot = (String) line.get("lottable01");
+                String loc = (String) line.get("toloc");
+                String id = (String) line.get("toid");
 
-            for (EligibleOrder order : eligibleOrders) {
-                if (remainingQty.compareTo(BigDecimal.ZERO) <= 0) {
-                    break;
+                if (availQty == null || availQty.compareTo(BigDecimal.ZERO) <= 0) {
+                    continue;
                 }
 
-                BigDecimal allocQty = remainingQty.min(order.openQty());
+                // Find eligible orders for this SKU
+                List<EligibleOrder> eligibleOrders = findEligibleOrders(sku, storerKey, availQty);
 
-                // Create allocation
-                String allocId = createAllocation(
-                    receiptKey, lineNum, order.orderKey(), order.lineNumber(),
-                    sku, allocQty, lot, loc, id, storerKey
-                );
+                BigDecimal remainingQty = availQty;
 
-                AllocationDetail detail = new AllocationDetail(
-                    allocId, receiptKey, lineNum, order.orderKey(), order.lineNumber(),
-                    sku, allocQty, lot, loc, id
-                );
+                for (EligibleOrder order : eligibleOrders) {
+                    if (remainingQty.compareTo(BigDecimal.ZERO) <= 0) {
+                        break;
+                    }
 
-                allocations.add(detail);
-                totalAllocated = totalAllocated.add(allocQty);
-                remainingQty = remainingQty.subtract(allocQty);
+                    BigDecimal allocQty = remainingQty.min(order.openQty());
 
-                log.debug("Created XDock allocation: receipt={}/{} -> order={}/{}, qty={}",
-                    receiptKey, lineNum, order.orderKey(), order.lineNumber(), allocQty);
+                    // Create allocation
+                    String allocId = createAllocation(
+                        receiptKey, lineNum, order.orderKey(), order.lineNumber(),
+                        sku, allocQty, lot, loc, id, storerKey
+                    );
+
+                    AllocationDetail detail = new AllocationDetail(
+                        allocId, receiptKey, lineNum, order.orderKey(), order.lineNumber(),
+                        sku, allocQty, lot, loc, id
+                    );
+
+                    allocations.add(detail);
+                    totalAllocated = totalAllocated.add(allocQty);
+                    remainingQty = remainingQty.subtract(allocQty);
+
+                    log.debug("Created XDock allocation: receipt={}/{} -> order={}/{}, qty={}",
+                        receiptKey, lineNum, order.orderKey(), order.lineNumber(), allocQty);
+                }
+
+                if (remainingQty.compareTo(BigDecimal.ZERO) > 0) {
+                    warnings.add(String.format("Line %d: %.0f units unallocated (no matching orders)",
+                        lineNum, remainingQty));
+                }
             }
 
-            if (remainingQty.compareTo(BigDecimal.ZERO) > 0) {
-                warnings.add(String.format("Line %d: %.0f units unallocated (no matching orders)",
-                    lineNum, remainingQty));
+            log.info("XDock allocation complete: {} allocations, total qty={}",
+                allocations.size(), totalAllocated);
+
+            if (allocations.isEmpty()) {
+                log.info("No eligible orders found for XDock allocation (legacy info 69302)");
+                return XDockAllocationResult.noMatch();
             }
+
+            return new XDockAllocationResult(true, allocations.size(), totalAllocated,
+                allocations, List.of(), warnings);
+
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("XDock flow-through allocation failed for receipt {}: {} (legacy error 69304)",
+                receiptKey, e.getMessage(), e);
+            throw BusinessException.flowThruAllocationFailed(receiptKey, e);
         }
-
-        log.info("XDock allocation complete: {} allocations, total qty={}",
-            allocations.size(), totalAllocated);
-
-        if (allocations.isEmpty()) {
-            return XDockAllocationResult.noMatch();
-        }
-
-        return new XDockAllocationResult(true, allocations.size(), totalAllocated,
-            allocations, List.of(), warnings);
     }
 
     @Override
@@ -123,65 +158,91 @@ public class XDockAllocationActivityImpl implements XDockAllocationActivity {
         log.info("Allocating receipt line: receipt={}, line={}, orders={}",
             receiptKey, lineNumber, orderKeys);
 
-        // Get receipt line details
-        String sql = """
-            SELECT rd.sku, rd.storerkey, rd.qtyreceived - COALESCE(rd.qtyallocated, 0) as availqty,
-                   rd.lottable01, rd.toloc, rd.toid
-            FROM dbo.RECEIPTDETAIL rd
-            WHERE rd.receiptkey = ? AND rd.receiptlinenumber = ?
-            """;
+        try {
+            // Get receipt line details
+            String sql = """
+                SELECT rd.sku, rd.storerkey, rd.qtyreceived - COALESCE(rd.qtyallocated, 0) as availqty,
+                       rd.lottable01, rd.toloc, rd.toid
+                FROM dbo.RECEIPTDETAIL rd
+                WHERE rd.receiptkey = ? AND rd.receiptlinenumber = ?
+                """;
 
-        Map<String, Object> line = jdbcTemplate.queryForMap(sql, receiptKey, lineNumber);
-
-        String sku = (String) line.get("sku");
-        String storerKey = (String) line.get("storerkey");
-        BigDecimal availQty = (BigDecimal) line.get("availqty");
-        String lot = (String) line.get("lottable01");
-        String loc = (String) line.get("toloc");
-        String id = (String) line.get("toid");
-
-        if (availQty == null || availQty.compareTo(BigDecimal.ZERO) <= 0) {
-            return XDockAllocationResult.failure(List.of("No available quantity on line"));
-        }
-
-        List<AllocationDetail> allocations = new ArrayList<>();
-        BigDecimal totalAllocated = BigDecimal.ZERO;
-        BigDecimal remainingQty = availQty;
-
-        // Get target orders (either specified or auto-match)
-        List<EligibleOrder> orders;
-        if (orderKeys != null && !orderKeys.isEmpty()) {
-            orders = getSpecificOrders(orderKeys, sku, storerKey);
-        } else {
-            orders = findEligibleOrders(sku, storerKey, availQty);
-        }
-
-        for (EligibleOrder order : orders) {
-            if (remainingQty.compareTo(BigDecimal.ZERO) <= 0) {
-                break;
+            Map<String, Object> line;
+            try {
+                line = jdbcTemplate.queryForMap(sql, receiptKey, lineNumber);
+            } catch (EmptyResultDataAccessException e) {
+                log.error("Receipt line not found: {}/{} (legacy error 69305)", receiptKey, lineNumber);
+                throw BusinessException.receiptDetailNotFound(receiptKey, String.valueOf(lineNumber));
             }
 
-            BigDecimal allocQty = remainingQty.min(order.openQty());
+            String sku = (String) line.get("sku");
+            String storerKey = (String) line.get("storerkey");
+            BigDecimal availQty = (BigDecimal) line.get("availqty");
+            String lot = (String) line.get("lottable01");
+            String loc = (String) line.get("toloc");
+            String id = (String) line.get("toid");
 
-            String allocId = createAllocation(
-                receiptKey, lineNumber, order.orderKey(), order.lineNumber(),
-                sku, allocQty, lot, loc, id, storerKey
-            );
+            if (availQty == null || availQty.compareTo(BigDecimal.ZERO) <= 0) {
+                log.warn("No available quantity on receipt line {}/{} (legacy warning 69302)",
+                    receiptKey, lineNumber);
+                throw new BusinessException(ErrorCode.XDOCK_INSUFFICIENT_INVENTORY,
+                    String.format("No available quantity on receipt %s line %d", receiptKey, lineNumber))
+                    .withDetail("receiptKey", receiptKey)
+                    .withDetail("lineNumber", lineNumber);
+            }
 
-            allocations.add(new AllocationDetail(
-                allocId, receiptKey, lineNumber, order.orderKey(), order.lineNumber(),
-                sku, allocQty, lot, loc, id
-            ));
+            List<AllocationDetail> allocations = new ArrayList<>();
+            BigDecimal totalAllocated = BigDecimal.ZERO;
+            BigDecimal remainingQty = availQty;
 
-            totalAllocated = totalAllocated.add(allocQty);
-            remainingQty = remainingQty.subtract(allocQty);
+            // Get target orders (either specified or auto-match)
+            List<EligibleOrder> orders;
+            if (orderKeys != null && !orderKeys.isEmpty()) {
+                orders = getSpecificOrders(orderKeys, sku, storerKey);
+                if (orders.isEmpty()) {
+                    log.error("Specified orders not found or not eligible: {} (legacy error 69300)",
+                        orderKeys);
+                    throw BusinessException.xdockOrderNotFound(orderKeys.get(0));
+                }
+            } else {
+                orders = findEligibleOrders(sku, storerKey, availQty);
+            }
+
+            for (EligibleOrder order : orders) {
+                if (remainingQty.compareTo(BigDecimal.ZERO) <= 0) {
+                    break;
+                }
+
+                BigDecimal allocQty = remainingQty.min(order.openQty());
+
+                String allocId = createAllocation(
+                    receiptKey, lineNumber, order.orderKey(), order.lineNumber(),
+                    sku, allocQty, lot, loc, id, storerKey
+                );
+
+                allocations.add(new AllocationDetail(
+                    allocId, receiptKey, lineNumber, order.orderKey(), order.lineNumber(),
+                    sku, allocQty, lot, loc, id
+                ));
+
+                totalAllocated = totalAllocated.add(allocQty);
+                remainingQty = remainingQty.subtract(allocQty);
+            }
+
+            if (allocations.isEmpty()) {
+                log.info("No eligible orders found for XDock line allocation (legacy info 69302)");
+                return XDockAllocationResult.noMatch();
+            }
+
+            return XDockAllocationResult.success(allocations, totalAllocated);
+
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("XDock line allocation failed for receipt {}/{}: {} (legacy error 69301)",
+                receiptKey, lineNumber, e.getMessage(), e);
+            throw BusinessException.xdockAllocationFailed(receiptKey, e);
         }
-
-        if (allocations.isEmpty()) {
-            return XDockAllocationResult.noMatch();
-        }
-
-        return XDockAllocationResult.success(allocations, totalAllocated);
     }
 
     @Override
@@ -195,6 +256,12 @@ public class XDockAllocationActivityImpl implements XDockAllocationActivity {
         );
     }
 
+    /**
+     * Cancel XDock allocation (compensation action).
+     *
+     * Error codes:
+     * - XD_004 (69303) - XDock Processing Failed
+     */
     @Override
     @Transactional
     public void cancelAllocation(String allocationId) {
@@ -202,10 +269,16 @@ public class XDockAllocationActivityImpl implements XDockAllocationActivity {
 
         // Get allocation details for reversal
         try {
-            Map<String, Object> alloc = jdbcTemplate.queryForMap(
-                "SELECT receiptkey, receiptlinenumber, qty FROM dbo.PICKDETAIL WHERE pickdetailkey = ?",
-                allocationId
-            );
+            Map<String, Object> alloc;
+            try {
+                alloc = jdbcTemplate.queryForMap(
+                    "SELECT receiptkey, receiptlinenumber, qty FROM dbo.PICKDETAIL WHERE pickdetailkey = ?",
+                    allocationId
+                );
+            } catch (EmptyResultDataAccessException e) {
+                log.warn("Allocation {} not found (may already be cancelled)", allocationId);
+                return; // Already cancelled - not an error
+            }
 
             String receiptKey = (String) alloc.get("receiptkey");
             int lineNum = ((Number) alloc.get("receiptlinenumber")).intValue();
@@ -224,7 +297,9 @@ public class XDockAllocationActivityImpl implements XDockAllocationActivity {
             log.info("COMPENSATION complete: Cancelled allocation {}", allocationId);
 
         } catch (Exception e) {
-            log.error("Failed to cancel allocation {}: {}", allocationId, e.getMessage());
+            log.error("Failed to cancel allocation {}: {} (legacy error 69303)",
+                allocationId, e.getMessage(), e);
+            throw BusinessException.xdockProcessingFailed(allocationId, e);
         }
     }
 

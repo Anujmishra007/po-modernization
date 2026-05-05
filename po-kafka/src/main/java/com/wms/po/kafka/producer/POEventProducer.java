@@ -2,6 +2,8 @@ package com.wms.po.kafka.producer;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import com.wms.po.kafka.event.CompensationEvent;
 import com.wms.po.kafka.event.POEvent;
 import com.wms.po.kafka.event.SagaEvent;
@@ -19,6 +21,9 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Kafka producer for PO lifecycle events.
  * Supports event sourcing, saga coordination, and audit logging.
+ *
+ * Error codes:
+ * - TRG_002 (69701) - Event Publish Failed
  */
 @Service
 @RequiredArgsConstructor
@@ -37,9 +42,23 @@ public class POEventProducer {
     public static final String TOPIC_NOTIFICATIONS = "po-notifications";
 
     /**
-     * Publish a PO event
+     * Publish a PO event.
+     *
+     * Error codes:
+     * - TRG_002 (69701) - Event Publish Failed
+     *
+     * @param event PO event to publish
+     * @return Future with send result
+     * @throws BusinessException if event is null
      */
     public CompletableFuture<SendResult<String, String>> publishPOEvent(POEvent event) {
+        if (event == null) {
+            log.error("Cannot publish null PO event (legacy error 69701)");
+            throw new BusinessException(ErrorCode.EVENT_PUBLISH_FAILED,
+                "PO event is required for publishing")
+                .withDetail("event", "null");
+        }
+
         if (event.getEventId() == null) {
             event.setEventId(UUID.randomUUID().toString());
         }
@@ -129,9 +148,30 @@ public class POEventProducer {
     }
 
     /**
-     * Publish saga event for distributed transaction coordination
+     * Publish saga event for distributed transaction coordination.
+     *
+     * Error codes:
+     * - TRG_002 (69701) - Event Publish Failed
+     *
+     * @param event Saga event to publish
+     * @return Future with send result
+     * @throws BusinessException if event is null or saga ID is missing
      */
     public CompletableFuture<SendResult<String, String>> publishSagaEvent(SagaEvent event) {
+        if (event == null) {
+            log.error("Cannot publish null saga event (legacy error 69701)");
+            throw new BusinessException(ErrorCode.EVENT_PUBLISH_FAILED,
+                "Saga event is required for publishing")
+                .withDetail("event", "null");
+        }
+
+        if (event.getSagaId() == null || event.getSagaId().isBlank()) {
+            log.error("Saga event missing saga ID (legacy error 69701)");
+            throw new BusinessException(ErrorCode.EVENT_PUBLISH_FAILED,
+                "Saga ID is required for saga event")
+                .withDetail("sagaId", "null or blank");
+        }
+
         String key = event.getSagaId();
         return publish(TOPIC_SAGA_EVENTS, key, event);
     }
@@ -157,9 +197,30 @@ public class POEventProducer {
     }
 
     /**
-     * Publish compensation event for rollback operations
+     * Publish compensation event for rollback operations.
+     *
+     * Error codes:
+     * - TRG_002 (69701) - Event Publish Failed
+     *
+     * @param event Compensation event to publish
+     * @return Future with send result
+     * @throws BusinessException if event is null or saga ID is missing
      */
     public CompletableFuture<SendResult<String, String>> publishCompensationEvent(CompensationEvent event) {
+        if (event == null) {
+            log.error("Cannot publish null compensation event (legacy error 69701)");
+            throw new BusinessException(ErrorCode.EVENT_PUBLISH_FAILED,
+                "Compensation event is required for publishing")
+                .withDetail("event", "null");
+        }
+
+        if (event.getSagaId() == null || event.getSagaId().isBlank()) {
+            log.error("Compensation event missing saga ID (legacy error 69701)");
+            throw new BusinessException(ErrorCode.EVENT_PUBLISH_FAILED,
+                "Saga ID is required for compensation event")
+                .withDetail("sagaId", "null or blank");
+        }
+
         if (event.getCompensationId() == null) {
             event.setCompensationId(UUID.randomUUID().toString());
         }
@@ -213,7 +274,21 @@ public class POEventProducer {
         return publish(TOPIC_AUDIT, aggregateId, event);
     }
 
+    /**
+     * Internal publish method with error handling.
+     *
+     * Error codes:
+     * - INT_011 (69010) - Event Serialization Failed
+     * - TRG_002 (69701) - Event Publish Failed
+     */
     private <T> CompletableFuture<SendResult<String, String>> publish(String topic, String key, T event) {
+        if (topic == null || topic.isBlank()) {
+            log.error("Cannot publish to null/blank topic (legacy error 69701)");
+            throw new BusinessException(ErrorCode.EVENT_PUBLISH_FAILED,
+                "Topic is required for publishing")
+                .withDetail("topic", "null or blank");
+        }
+
         try {
             String json = objectMapper.writeValueAsString(event);
             log.debug("Publishing to topic {}: key={}, event={}", topic, key, json);
@@ -221,7 +296,8 @@ public class POEventProducer {
             return kafkaTemplate.send(topic, key, json)
                     .whenComplete((result, ex) -> {
                         if (ex != null) {
-                            log.error("Failed to publish event to {}: {}", topic, ex.getMessage());
+                            log.error("Failed to publish event to {}: {} (legacy error 69701)",
+                                topic, ex.getMessage());
                         } else {
                             log.debug("Published event to {} partition {} offset {}",
                                     topic, result.getRecordMetadata().partition(),
@@ -229,8 +305,13 @@ public class POEventProducer {
                         }
                     });
         } catch (JsonProcessingException e) {
-            log.error("Failed to serialize event: {}", e.getMessage());
-            return CompletableFuture.failedFuture(e);
+            log.error("Failed to serialize event for topic {}: {} (legacy error 69701)",
+                topic, e.getMessage());
+            throw new BusinessException(ErrorCode.EVENT_PUBLISH_FAILED,
+                "Failed to serialize event: " + e.getMessage(), e)
+                .withDetail("topic", topic)
+                .withDetail("key", key)
+                .withDetail("reason", "serialization");
         }
     }
 }

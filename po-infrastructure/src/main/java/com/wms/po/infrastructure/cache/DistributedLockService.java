@@ -1,5 +1,7 @@
 package com.wms.po.infrastructure.cache;
 
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
@@ -12,6 +14,10 @@ import java.util.function.Supplier;
 /**
  * Distributed lock service using Redis/Redisson.
  * Used for saga coordination, inventory allocation, and PO processing.
+ *
+ * Error codes:
+ * - INT_021 (69021) - Deadlock Detected
+ * - INT_022 (69022) - Timeout Error
  */
 @Service
 @RequiredArgsConstructor
@@ -69,16 +75,46 @@ public class DistributedLockService {
     }
 
     /**
-     * Execute with lock with custom timeouts
+     * Execute with lock with custom timeouts.
+     *
+     * Error codes:
+     * - INT_022 (69022) - Timeout Error (lock acquisition timeout)
+     * - INT_021 (69021) - Deadlock Detected (lock interrupted)
+     *
+     * @param lockKey Lock key
+     * @param waitTime Wait time in seconds
+     * @param leaseTime Lease time in seconds
+     * @param action Action to execute while holding lock
+     * @return Result of the action
+     * @throws BusinessException if lock cannot be acquired
      */
     public <T> T executeWithLock(String lockKey, long waitTime, long leaseTime, Supplier<T> action) {
+        if (lockKey == null || lockKey.isBlank()) {
+            log.error("Lock key is null/blank (legacy error 69022)");
+            throw new BusinessException(ErrorCode.TIMEOUT_ERROR,
+                "Lock key is required")
+                .withDetail("lockKey", "null or blank");
+        }
+
+        if (action == null) {
+            log.error("Action is null for lock execution (legacy error 69022)");
+            throw new BusinessException(ErrorCode.TIMEOUT_ERROR,
+                "Action is required for lock execution")
+                .withDetail("lockKey", lockKey)
+                .withDetail("action", "null");
+        }
+
         RLock lock = redissonClient.getLock(lockKey);
         boolean acquired = false;
 
         try {
             acquired = lock.tryLock(waitTime, leaseTime, DEFAULT_TIME_UNIT);
             if (!acquired) {
-                throw new RuntimeException("Could not acquire lock: " + lockKey);
+                log.error("Could not acquire lock: {} within {}s (legacy error 69022)", lockKey, waitTime);
+                throw new BusinessException(ErrorCode.TIMEOUT_ERROR,
+                    "Could not acquire lock within timeout: " + lockKey)
+                    .withDetail("lockKey", lockKey)
+                    .withDetail("waitTimeSeconds", waitTime);
             }
 
             log.debug("Acquired lock: {}", lockKey);
@@ -86,7 +122,20 @@ public class DistributedLockService {
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new RuntimeException("Lock acquisition interrupted: " + lockKey, e);
+            log.error("Lock acquisition interrupted: {} (legacy error 69021)", lockKey, e);
+            throw new BusinessException(ErrorCode.DEADLOCK_DETECTED,
+                "Lock acquisition interrupted: " + lockKey, e)
+                .withDetail("lockKey", lockKey);
+
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Lock execution failed: {} - {} (legacy error 69022)",
+                lockKey, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.TIMEOUT_ERROR,
+                "Lock execution failed: " + e.getMessage(), e)
+                .withDetail("lockKey", lockKey);
+
         } finally {
             if (acquired && lock.isHeldByCurrentThread()) {
                 lock.unlock();

@@ -1,7 +1,10 @@
 package com.wms.po.domain.service;
 
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +33,12 @@ import java.util.*;
  * 3. Execute PAType-specific location finding
  * 4. Validate capacity and commingling
  * 5. Return best matching location or fallback to staging
+ *
+ * Error codes:
+ * - PA_001 (69200) - Putaway Strategy Not Found
+ * - PA_002 (69201) - Putaway Location Not Found
+ * - PA_003 (69202) - Putaway Location Full
+ * - PA_004 (69203) - Putaway Restriction Violated
  */
 @Service
 @RequiredArgsConstructor
@@ -74,6 +83,10 @@ public class PutawayStrategyService {
     /**
      * Determine the optimal putaway location for inventory.
      *
+     * Error codes:
+     * - PA_001 (69200) - Putaway Strategy Not Found
+     * - PA_002 (69201) - Putaway Location Not Found
+     *
      * @param request Putaway strategy request containing SKU, qty, and context
      * @return Strategy result with suggested location and details
      */
@@ -82,61 +95,75 @@ public class PutawayStrategyService {
         log.debug("Determining putaway location: storer={}, sku={}, qty={}, facility={}",
             request.getStorerKey(), request.getSku(), request.getQuantity(), request.getFacility());
 
-        // 1. Load putaway strategy configuration
-        List<StrategyDetail> strategies = loadStrategies(request);
+        try {
+            // 1. Load putaway strategy configuration
+            List<StrategyDetail> strategies = loadStrategies(request);
 
-        if (strategies.isEmpty()) {
-            log.warn("No putaway strategies found for storer={}, using default",
-                request.getStorerKey());
-            strategies = getDefaultStrategies();
-        }
-
-        // 2. Try each strategy in sequence order
-        for (StrategyDetail strategy : strategies) {
-            log.debug("Trying strategy: paType={}, zone={}, seq={}",
-                strategy.getPaType(), strategy.getZone(), strategy.getSequence());
-
-            try {
-                String location = executeStrategy(request, strategy);
-
-                if (location != null) {
-                    // 3. Validate the location
-                    ValidationResult validation = validateLocation(request, location, strategy);
-
-                    if (validation.isValid()) {
-                        log.info("Found putaway location: {} via PAType={} for SKU={}",
-                            location, strategy.getPaType(), request.getSku());
-
-                        return StrategyResult.builder()
-                            .success(true)
-                            .location(location)
-                            .paType(strategy.getPaType())
-                            .zone(strategy.getZone())
-                            .strategyKey(strategy.getStrategyKey())
-                            .build();
-                    } else {
-                        log.debug("Location {} failed validation: {}", location, validation.getReason());
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("Strategy {} failed: {}", strategy.getPaType(), e.getMessage());
+            if (strategies.isEmpty()) {
+                log.warn("No putaway strategies found for storer={}, using default",
+                    request.getStorerKey());
+                strategies = getDefaultStrategies();
             }
+
+            // 2. Try each strategy in sequence order
+            for (StrategyDetail strategy : strategies) {
+                log.debug("Trying strategy: paType={}, zone={}, seq={}",
+                    strategy.getPaType(), strategy.getZone(), strategy.getSequence());
+
+                try {
+                    String location = executeStrategy(request, strategy);
+
+                    if (location != null) {
+                        // 3. Validate the location
+                        ValidationResult validation = validateLocation(request, location, strategy);
+
+                        if (validation.isValid()) {
+                            log.info("Found putaway location: {} via PAType={} for SKU={}",
+                                location, strategy.getPaType(), request.getSku());
+
+                            return StrategyResult.builder()
+                                .success(true)
+                                .location(location)
+                                .paType(strategy.getPaType())
+                                .zone(strategy.getZone())
+                                .strategyKey(strategy.getStrategyKey())
+                                .build();
+                        } else {
+                            log.debug("Location {} failed validation: {}", location, validation.getReason());
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("Strategy {} failed: {}", strategy.getPaType(), e.getMessage());
+                }
+            }
+
+            // 4. Fallback to staging location
+            String stagingLoc = getStagingLocation(request.getFacility());
+            log.warn("No suitable location found, using staging: {} (legacy error 69202)", stagingLoc);
+
+            return StrategyResult.builder()
+                .success(true)
+                .location(stagingLoc)
+                .paType("FALLBACK")
+                .fallbackUsed(true)
+                .build();
+
+        } catch (DataAccessException e) {
+            log.error("Putaway strategy execution failed for sku={}: {} (legacy error 69200)",
+                request.getSku(), e.getMessage(), e);
+            throw new BusinessException(ErrorCode.PUTAWAY_STRATEGY_NOT_FOUND,
+                "Failed to determine putaway location: " + e.getMessage(), e)
+                .withDetail("storerKey", request.getStorerKey())
+                .withDetail("sku", request.getSku())
+                .withDetail("facility", request.getFacility());
         }
-
-        // 4. Fallback to staging location
-        String stagingLoc = getStagingLocation(request.getFacility());
-        log.warn("No suitable location found, using staging: {}", stagingLoc);
-
-        return StrategyResult.builder()
-            .success(true)
-            .location(stagingLoc)
-            .paType("FALLBACK")
-            .fallbackUsed(true)
-            .build();
     }
 
     /**
      * Suggest multiple candidate locations (for user selection).
+     *
+     * Error codes:
+     * - PA_001 (69200) - Putaway Strategy Not Found
      *
      * @param request Strategy request
      * @param maxResults Maximum number of suggestions
@@ -146,31 +173,41 @@ public class PutawayStrategyService {
     public List<LocationCandidate> suggestLocations(StrategyRequest request, int maxResults) {
         log.debug("Suggesting up to {} locations for SKU={}", maxResults, request.getSku());
 
-        List<LocationCandidate> candidates = new ArrayList<>();
-        List<StrategyDetail> strategies = loadStrategies(request);
+        try {
+            List<LocationCandidate> candidates = new ArrayList<>();
+            List<StrategyDetail> strategies = loadStrategies(request);
 
-        for (StrategyDetail strategy : strategies) {
-            try {
-                List<String> locations = executeStrategyMultiple(request, strategy, maxResults);
+            for (StrategyDetail strategy : strategies) {
+                try {
+                    List<String> locations = executeStrategyMultiple(request, strategy, maxResults);
 
-                for (String loc : locations) {
-                    ValidationResult validation = validateLocation(request, loc, strategy);
+                    for (String loc : locations) {
+                        ValidationResult validation = validateLocation(request, loc, strategy);
 
-                    if (validation.isValid()) {
-                        LocationCandidate candidate = buildCandidate(request, loc, strategy);
-                        candidates.add(candidate);
+                        if (validation.isValid()) {
+                            LocationCandidate candidate = buildCandidate(request, loc, strategy);
+                            candidates.add(candidate);
 
-                        if (candidates.size() >= maxResults) {
-                            return candidates;
+                            if (candidates.size() >= maxResults) {
+                                return candidates;
+                            }
                         }
                     }
+                } catch (Exception e) {
+                    log.debug("Strategy {} error: {}", strategy.getPaType(), e.getMessage());
                 }
-            } catch (Exception e) {
-                log.debug("Strategy {} error: {}", strategy.getPaType(), e.getMessage());
             }
-        }
 
-        return candidates;
+            return candidates;
+
+        } catch (DataAccessException e) {
+            log.error("Failed to suggest putaway locations for sku={}: {} (legacy error 69200)",
+                request.getSku(), e.getMessage(), e);
+            throw new BusinessException(ErrorCode.PUTAWAY_STRATEGY_NOT_FOUND,
+                "Failed to suggest putaway locations: " + e.getMessage(), e)
+                .withDetail("storerKey", request.getStorerKey())
+                .withDetail("sku", request.getSku());
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════

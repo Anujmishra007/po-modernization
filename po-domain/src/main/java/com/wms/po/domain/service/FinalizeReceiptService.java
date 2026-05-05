@@ -1,9 +1,13 @@
 package com.wms.po.domain.service;
 
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import com.wms.po.domain.model.FinalizeRequest;
 import com.wms.po.domain.model.FinalizeResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +25,15 @@ import java.util.*;
  * - Build inventory posting records
  * - Determine putaway strategies
  * - Check PO completion status
+ *
+ * Error codes:
+ * - RCV_001 (68900) - Receipt Not Found
+ * - RCV_002 (68901) - Receipt Already Finalized
+ * - RCV_003 (68902) - Receipt Invalid Status
+ * - RCV_004 (68903) - Receipt No Details
+ * - RCV_019 (68919) - Finalize Status Update Failed
+ * - RCV_020 (68920) - Finalize Validation Failed
+ * - RCV_022 (68922) - PO Update Failed
  */
 @Service
 @RequiredArgsConstructor
@@ -42,23 +55,40 @@ public class FinalizeReceiptService {
     /**
      * Validate that a receipt can be finalized.
      *
+     * Error codes:
+     * - RCV_001 (68900) - Receipt Not Found
+     * - RCV_002 (68901) - Receipt Already Finalized
+     * - RCV_003 (68902) - Receipt Invalid Status
+     * - RCV_004 (68903) - Receipt No Details
+     * - RCV_020 (68920) - Finalize Validation Failed
+     *
      * @param receiptKey Receipt to validate
      * @return Current status if valid
-     * @throws IllegalStateException if receipt cannot be finalized
      */
     @Transactional(readOnly = true)
     public String validateForFinalization(String receiptKey) {
         log.debug("Validating receipt {} for finalization", receiptKey);
 
-        // Get current receipt status
-        String status = jdbcTemplate.queryForObject(
-            "SELECT status FROM dbo.receipt WHERE receiptkey = ?",
-            String.class,
-            receiptKey
-        );
+        String status;
+        try {
+            // Get current receipt status
+            status = jdbcTemplate.queryForObject(
+                "SELECT status FROM dbo.receipt WHERE receiptkey = ?",
+                String.class,
+                receiptKey
+            );
+        } catch (EmptyResultDataAccessException e) {
+            log.error("Receipt not found: {} (legacy error 68900)", receiptKey);
+            throw BusinessException.receiptNotFound(receiptKey);
+        } catch (DataAccessException e) {
+            log.error("Database error validating receipt {}: {} (legacy error 68920)",
+                receiptKey, e.getMessage(), e);
+            throw BusinessException.finalizeValidationFailed(receiptKey, e.getMessage());
+        }
 
         if (status == null) {
-            throw new IllegalStateException("Receipt not found: " + receiptKey);
+            log.error("Receipt not found: {} (legacy error 68900)", receiptKey);
+            throw BusinessException.receiptNotFound(receiptKey);
         }
 
         // Check if status allows finalization (0-5)
@@ -67,23 +97,46 @@ public class FinalizeReceiptService {
 
         if (!validStatuses.contains(status)) {
             if (STATUS_FINALIZING.equals(status)) {
-                throw new IllegalStateException("Receipt " + receiptKey + " is already being finalized");
+                log.error("Receipt {} is already being finalized (legacy error 68902)", receiptKey);
+                throw new BusinessException(ErrorCode.RECEIPT_INVALID_STATUS,
+                    "Receipt is already being finalized")
+                    .withDetail("receiptKey", receiptKey)
+                    .withDetail("status", status);
             }
             if (STATUS_FINALIZED.equals(status)) {
-                throw new IllegalStateException("Receipt " + receiptKey + " is already finalized");
+                log.error("Receipt {} is already finalized (legacy error 68901)", receiptKey);
+                throw new BusinessException(ErrorCode.RECEIPT_ALREADY_FINALIZED,
+                    "Receipt is already finalized")
+                    .withDetail("receiptKey", receiptKey)
+                    .withDetail("status", status);
             }
-            throw new IllegalStateException("Receipt " + receiptKey + " has invalid status: " + status);
+            log.error("Receipt {} has invalid status: {} (legacy error 68902)", receiptKey, status);
+            throw new BusinessException(ErrorCode.RECEIPT_INVALID_STATUS,
+                "Receipt has invalid status for finalization: " + status)
+                .withDetail("receiptKey", receiptKey)
+                .withDetail("status", status)
+                .withDetail("validStatuses", validStatuses);
         }
 
         // Check if receipt has any details
-        Integer detailCount = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM dbo.receiptdetail WHERE receiptkey = ?",
-            Integer.class,
-            receiptKey
-        );
+        Integer detailCount;
+        try {
+            detailCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM dbo.receiptdetail WHERE receiptkey = ?",
+                Integer.class,
+                receiptKey
+            );
+        } catch (DataAccessException e) {
+            log.error("Database error checking receipt details {}: {} (legacy error 68920)",
+                receiptKey, e.getMessage(), e);
+            throw BusinessException.finalizeValidationFailed(receiptKey, e.getMessage());
+        }
 
         if (detailCount == null || detailCount == 0) {
-            throw new IllegalStateException("Receipt " + receiptKey + " has no detail lines");
+            log.error("Receipt {} has no detail lines (legacy error 68903)", receiptKey);
+            throw new BusinessException(ErrorCode.RECEIPT_DETAIL_NOT_FOUND,
+                "Receipt has no detail lines")
+                .withDetail("receiptKey", receiptKey);
         }
 
         log.info("Receipt {} validated for finalization: status={}, lines={}", receiptKey, status, detailCount);
@@ -93,24 +146,58 @@ public class FinalizeReceiptService {
     /**
      * Update receipt status to "Finalizing".
      *
+     * Error codes:
+     * - RCV_001 (68900) - Receipt Not Found
+     * - RCV_019 (68919) - Finalize Status Update Failed
+     *
      * @param receiptKey Receipt to update
      * @param userId User performing the update
      * @return Previous status (for compensation)
      */
     @Transactional
     public String setStatusFinalizing(String receiptKey, String userId) {
-        // Get current status first
-        String previousStatus = jdbcTemplate.queryForObject(
-            "SELECT status FROM dbo.receipt WHERE receiptkey = ?",
-            String.class,
-            receiptKey
-        );
+        String previousStatus;
 
-        // Update to finalizing status
-        jdbcTemplate.update(
-            "UPDATE dbo.receipt SET status = ?, editdate = CURRENT_TIMESTAMP, editwho = ? WHERE receiptkey = ?",
-            STATUS_FINALIZING, userId, receiptKey
-        );
+        try {
+            // Get current status first
+            previousStatus = jdbcTemplate.queryForObject(
+                "SELECT status FROM dbo.receipt WHERE receiptkey = ?",
+                String.class,
+                receiptKey
+            );
+        } catch (EmptyResultDataAccessException e) {
+            log.error("Receipt not found for status update: {} (legacy error 68900)", receiptKey);
+            throw BusinessException.receiptNotFound(receiptKey);
+        } catch (DataAccessException e) {
+            log.error("Database error getting receipt status {}: {} (legacy error 68919)",
+                receiptKey, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.FINALIZE_STATUS_UPDATE_FAILED,
+                "Failed to get receipt status: " + e.getMessage(), e)
+                .withDetail("receiptKey", receiptKey);
+        }
+
+        try {
+            // Update to finalizing status
+            int updated = jdbcTemplate.update(
+                "UPDATE dbo.receipt SET status = ?, editdate = CURRENT_TIMESTAMP, editwho = ? WHERE receiptkey = ?",
+                STATUS_FINALIZING, userId, receiptKey
+            );
+
+            if (updated == 0) {
+                log.error("Receipt not found for status update: {} (legacy error 68900)", receiptKey);
+                throw BusinessException.receiptNotFound(receiptKey);
+            }
+
+        } catch (BusinessException e) {
+            throw e;
+        } catch (DataAccessException e) {
+            log.error("Failed to update receipt {} to finalizing status: {} (legacy error 68919)",
+                receiptKey, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.FINALIZE_STATUS_UPDATE_FAILED,
+                "Failed to update receipt status to finalizing: " + e.getMessage(), e)
+                .withDetail("receiptKey", receiptKey)
+                .withDetail("previousStatus", previousStatus);
+        }
 
         log.info("Receipt {} status updated: {} → {}", receiptKey, previousStatus, STATUS_FINALIZING);
         return previousStatus;
@@ -119,17 +206,37 @@ public class FinalizeReceiptService {
     /**
      * Update receipt status to "Finalized".
      *
+     * Error codes:
+     * - RCV_001 (68900) - Receipt Not Found
+     * - RCV_019 (68919) - Finalize Status Update Failed
+     *
      * @param receiptKey Receipt to update
      * @param userId User performing the update
      */
     @Transactional
     public void setStatusFinalized(String receiptKey, String userId) {
-        jdbcTemplate.update(
-            "UPDATE dbo.receipt SET status = ?, editdate = CURRENT_TIMESTAMP, editwho = ? WHERE receiptkey = ?",
-            STATUS_FINALIZED, userId, receiptKey
-        );
+        try {
+            int updated = jdbcTemplate.update(
+                "UPDATE dbo.receipt SET status = ?, editdate = CURRENT_TIMESTAMP, editwho = ? WHERE receiptkey = ?",
+                STATUS_FINALIZED, userId, receiptKey
+            );
 
-        log.info("Receipt {} finalized: status={}", receiptKey, STATUS_FINALIZED);
+            if (updated == 0) {
+                log.error("Receipt not found for finalization: {} (legacy error 68900)", receiptKey);
+                throw BusinessException.receiptNotFound(receiptKey);
+            }
+
+            log.info("Receipt {} finalized: status={}", receiptKey, STATUS_FINALIZED);
+
+        } catch (BusinessException e) {
+            throw e;
+        } catch (DataAccessException e) {
+            log.error("Failed to set receipt {} as finalized: {} (legacy error 68919)",
+                receiptKey, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.FINALIZE_STATUS_UPDATE_FAILED,
+                "Failed to set receipt as finalized: " + e.getMessage(), e)
+                .withDetail("receiptKey", receiptKey);
+        }
     }
 
     /**
@@ -170,44 +277,66 @@ public class FinalizeReceiptService {
     /**
      * Get receipt details for inventory posting.
      *
+     * Error codes:
+     * - RCV_004 (68903) - Receipt No Details
+     * - RCV_020 (68920) - Finalize Validation Failed
+     *
      * @param receiptKey Receipt to get details for
      * @return List of detail records
      */
     @Transactional(readOnly = true)
     public List<ReceiptDetailRecord> getReceiptDetails(String receiptKey) {
-        return jdbcTemplate.query(
-            """
-            SELECT receiptlinenumber, sku, qtyexpected, qtyreceived, packkey, uom,
-                   toloc, toid, storerkey,
-                   lottable01, lottable02, lottable03, lottable04, lottable05,
-                   lottable06, lottable07, lottable08, lottable09, lottable10
-            FROM dbo.receiptdetail
-            WHERE receiptkey = ?
-            ORDER BY receiptlinenumber
-            """,
-            (rs, rowNum) -> new ReceiptDetailRecord(
-                rs.getInt("receiptlinenumber"),
-                rs.getString("sku"),
-                rs.getBigDecimal("qtyexpected"),
-                rs.getBigDecimal("qtyreceived"),
-                rs.getString("packkey"),
-                rs.getString("uom"),
-                rs.getString("toloc"),
-                rs.getString("toid"),
-                rs.getString("storerkey"),
-                rs.getString("lottable01"),
-                rs.getString("lottable02"),
-                rs.getString("lottable03"),
-                rs.getString("lottable04"),
-                rs.getString("lottable05"),
-                rs.getString("lottable06"),
-                rs.getString("lottable07"),
-                rs.getString("lottable08"),
-                rs.getString("lottable09"),
-                rs.getString("lottable10")
-            ),
-            receiptKey
-        );
+        try {
+            List<ReceiptDetailRecord> details = jdbcTemplate.query(
+                """
+                SELECT receiptlinenumber, sku, qtyexpected, qtyreceived, packkey, uom,
+                       toloc, toid, storerkey,
+                       lottable01, lottable02, lottable03, lottable04, lottable05,
+                       lottable06, lottable07, lottable08, lottable09, lottable10
+                FROM dbo.receiptdetail
+                WHERE receiptkey = ?
+                ORDER BY receiptlinenumber
+                """,
+                (rs, rowNum) -> new ReceiptDetailRecord(
+                    rs.getInt("receiptlinenumber"),
+                    rs.getString("sku"),
+                    rs.getBigDecimal("qtyexpected"),
+                    rs.getBigDecimal("qtyreceived"),
+                    rs.getString("packkey"),
+                    rs.getString("uom"),
+                    rs.getString("toloc"),
+                    rs.getString("toid"),
+                    rs.getString("storerkey"),
+                    rs.getString("lottable01"),
+                    rs.getString("lottable02"),
+                    rs.getString("lottable03"),
+                    rs.getString("lottable04"),
+                    rs.getString("lottable05"),
+                    rs.getString("lottable06"),
+                    rs.getString("lottable07"),
+                    rs.getString("lottable08"),
+                    rs.getString("lottable09"),
+                    rs.getString("lottable10")
+                ),
+                receiptKey
+            );
+
+            if (details.isEmpty()) {
+                log.warn("No details found for receipt {} (legacy error 68903)", receiptKey);
+                throw new BusinessException(ErrorCode.RECEIPT_DETAIL_NOT_FOUND,
+                    "Receipt has no detail lines")
+                    .withDetail("receiptKey", receiptKey);
+            }
+
+            return details;
+
+        } catch (BusinessException e) {
+            throw e;
+        } catch (DataAccessException e) {
+            log.error("Failed to get receipt details for {}: {} (legacy error 68920)",
+                receiptKey, e.getMessage(), e);
+            throw BusinessException.finalizeValidationFailed(receiptKey, e.getMessage());
+        }
     }
 
     /**
@@ -289,26 +418,55 @@ public class FinalizeReceiptService {
     /**
      * Update PO received quantities based on finalized receipt.
      *
+     * Error codes:
+     * - PO_004 (68803) - PO Line Not Found
+     * - RCV_022 (68922) - PO Update Failed
+     *
      * @param poKey PO to update
      * @param lineQuantities Map of line number to received quantity
      * @param userId User performing the update
      */
     @Transactional
     public void updatePoReceivedQuantities(String poKey, Map<Integer, BigDecimal> lineQuantities, String userId) {
+        int updatedLines = 0;
+
         for (Map.Entry<Integer, BigDecimal> entry : lineQuantities.entrySet()) {
-            jdbcTemplate.update(
-                """
-                UPDATE dbo.podetail
-                SET qtyreceived = COALESCE(qtyreceived, 0) + ?,
-                    editdate = CURRENT_TIMESTAMP,
-                    editwho = ?
-                WHERE pokey = ? AND polinenumber = ?
-                """,
-                entry.getValue(), userId, poKey, entry.getKey()
-            );
+            try {
+                int updated = jdbcTemplate.update(
+                    """
+                    UPDATE dbo.podetail
+                    SET qtyreceived = COALESCE(qtyreceived, 0) + ?,
+                        editdate = CURRENT_TIMESTAMP,
+                        editwho = ?
+                    WHERE pokey = ? AND polinenumber = ?
+                    """,
+                    entry.getValue(), userId, poKey, entry.getKey()
+                );
+
+                if (updated == 0) {
+                    log.warn("PO line not found: {} line {} (legacy error 68803)", poKey, entry.getKey());
+                    throw new BusinessException(ErrorCode.PO_LINE_NOT_FOUND,
+                        "PO line not found for quantity update")
+                        .withDetail("poKey", poKey)
+                        .withDetail("lineNumber", entry.getKey());
+                }
+
+                updatedLines++;
+
+            } catch (BusinessException e) {
+                throw e;
+            } catch (DataAccessException e) {
+                log.error("Failed to update PO {} line {}: {} (legacy error 68922)",
+                    poKey, entry.getKey(), e.getMessage(), e);
+                throw new BusinessException(ErrorCode.FINALIZE_PO_UPDATE_FAILED,
+                    "Failed to update PO received quantity: " + e.getMessage(), e)
+                    .withDetail("poKey", poKey)
+                    .withDetail("lineNumber", entry.getKey())
+                    .withDetail("quantity", entry.getValue());
+            }
         }
 
-        log.info("Updated {} PO lines with received quantities for PO {}", lineQuantities.size(), poKey);
+        log.info("Updated {} PO lines with received quantities for PO {}", updatedLines, poKey);
     }
 
     /**

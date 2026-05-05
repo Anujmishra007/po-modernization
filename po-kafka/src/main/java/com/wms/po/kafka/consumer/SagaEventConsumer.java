@@ -15,6 +15,10 @@ import org.springframework.stereotype.Service;
 /**
  * Kafka consumer for saga coordination events.
  * Handles distributed transaction management and compensation triggers.
+ *
+ * Error codes:
+ * - INT_012 (69011) - Event Deserialization Failed
+ * - INT_020 (69020) - Saga Step Failed
  */
 @Service
 @RequiredArgsConstructor
@@ -24,6 +28,12 @@ public class SagaEventConsumer {
     private final ObjectMapper objectMapper;
     private final SagaEventHandler sagaEventHandler;
 
+    /**
+     * Consume saga coordination events.
+     *
+     * Error codes:
+     * - TRG_003 (69702) - Event Handler Failed
+     */
     @KafkaListener(
             topics = "saga-events",
             groupId = "po-saga-coordinator",
@@ -36,10 +46,22 @@ public class SagaEventConsumer {
             @Header(KafkaHeaders.OFFSET) long offset,
             Acknowledgment ack) {
 
+        if (message == null || message.isBlank()) {
+            log.error("Received null/blank saga event message, acknowledging to skip (legacy error 69702)");
+            ack.acknowledge();
+            return;
+        }
+
         try {
             log.debug("Received saga event: key={}, partition={}, offset={}", key, partition, offset);
 
             SagaEvent event = objectMapper.readValue(message, SagaEvent.class);
+
+            if (event.getStatus() == null) {
+                log.warn("Saga event missing status, skipping: key={}", key);
+                ack.acknowledge();
+                return;
+            }
 
             switch (event.getStatus()) {
                 case STARTED -> sagaEventHandler.handleSagaStarted(event);
@@ -53,12 +75,25 @@ public class SagaEventConsumer {
 
             ack.acknowledge();
 
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            log.error("Failed to deserialize saga event: key={}, error={} (legacy error 69702)",
+                key, e.getMessage());
+            // Acknowledge to avoid infinite retry on malformed messages
+            ack.acknowledge();
+
         } catch (Exception e) {
-            log.error("Error processing saga event: {}", e.getMessage(), e);
+            log.error("Error processing saga event: key={}, error={} (legacy error 69702)",
+                key, e.getMessage(), e);
             // Don't acknowledge - message will be retried
         }
     }
 
+    /**
+     * Consume compensation events for saga rollback.
+     *
+     * Error codes:
+     * - TRG_003 (69702) - Event Handler Failed
+     */
     @KafkaListener(
             topics = "compensation-events",
             groupId = "po-compensation-handler",
@@ -69,10 +104,22 @@ public class SagaEventConsumer {
             @Header(KafkaHeaders.RECEIVED_KEY) String key,
             Acknowledgment ack) {
 
+        if (message == null || message.isBlank()) {
+            log.error("Received null/blank compensation event message, acknowledging to skip (legacy error 69702)");
+            ack.acknowledge();
+            return;
+        }
+
         try {
             log.info("Received compensation event for saga: {}", key);
 
             CompensationEvent event = objectMapper.readValue(message, CompensationEvent.class);
+
+            if (event.getStatus() == null) {
+                log.warn("Compensation event missing status, skipping: key={}", key);
+                ack.acknowledge();
+                return;
+            }
 
             switch (event.getStatus()) {
                 case PENDING -> sagaEventHandler.executeCompensation(event);
@@ -83,8 +130,15 @@ public class SagaEventConsumer {
 
             ack.acknowledge();
 
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            log.error("Failed to deserialize compensation event: key={}, error={} (legacy error 69702)",
+                key, e.getMessage());
+            ack.acknowledge();
+
         } catch (Exception e) {
-            log.error("Error processing compensation event: {}", e.getMessage(), e);
+            log.error("Error processing compensation event: key={}, error={} (legacy error 69702)",
+                key, e.getMessage(), e);
+            // Don't acknowledge for handler errors - allow retry
         }
     }
 

@@ -1,16 +1,23 @@
 package com.wms.po.activity.impl;
 
 import com.wms.po.activity.POStatusUpdateActivity;
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import com.wms.po.domain.model.PopulateRequest;
 import com.wms.po.domain.model.VariationContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 /**
- * Implementation of POStatusUpdateActivity
- * Updates PO status after successful population
+ * Implementation of POStatusUpdateActivity.
+ * Updates PO status after successful population.
+ *
+ * Error codes:
+ * - RCV_022 (68922) - PO Update Failed
+ * - PO_001 (68800) - PO Not Found
  */
 @Component
 @RequiredArgsConstructor
@@ -26,6 +33,13 @@ public class POStatusUpdateActivityImpl implements POStatusUpdateActivity {
     public static final String STATUS_FULLY_RECEIVED = "9";
     public static final String STATUS_CLOSED = "9";
 
+    /**
+     * Update PO status.
+     *
+     * Error codes:
+     * - PO_001 (68800) - PO Not Found
+     * - RCV_022 (68922) - PO Update Failed
+     */
     @Override
     public void updatePOStatus(String receiptKey, PopulateRequest request,
                                 VariationContext context, String targetStatus) {
@@ -46,11 +60,18 @@ public class POStatusUpdateActivityImpl implements POStatusUpdateActivity {
                 if (updated > 0) {
                     log.debug("Updated PO {} status to {}", poKey, targetStatus);
                 } else {
-                    log.warn("PO {} not found for status update", poKey);
+                    log.warn("PO {} not found for status update (legacy error 68800)", poKey);
+                    throw BusinessException.poNotFound(poKey);
                 }
-            } catch (Exception e) {
-                log.error("Failed to update PO {} status: {}", poKey, e.getMessage());
+            } catch (BusinessException e) {
                 throw e;
+            } catch (DataAccessException e) {
+                log.error("Failed to update PO {} status: {} (legacy error 68922)",
+                    poKey, e.getMessage(), e);
+                throw new BusinessException(ErrorCode.FINALIZE_PO_UPDATE_FAILED,
+                    "Failed to update PO status: " + e.getMessage(), e)
+                    .withDetail("poKey", poKey)
+                    .withDetail("targetStatus", targetStatus);
             }
         }
 

@@ -1,9 +1,12 @@
 package com.wms.po.legacy.service;
 
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import com.wms.po.legacy.client.LegacyWMSClient;
 import com.wms.po.legacy.model.ReconciliationResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -13,7 +16,11 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Service for reconciling data between legacy and new systems
+ * Service for reconciling data between legacy and new systems.
+ *
+ * Error codes:
+ * - INT_006 (69005) - Dual Write Sync Failed
+ * - INT_001 (69000) - Legacy Sync Failed
  */
 @Service
 @RequiredArgsConstructor
@@ -24,9 +31,31 @@ public class ReconciliationService {
     private final LegacyWMSClient legacyClient;
 
     /**
-     * Reconcile receipt data between legacy and new system
+     * Reconcile receipt data between legacy and new system.
+     *
+     * Error codes:
+     * - INT_006 (69005) - Dual Write Sync Failed
+     *
+     * @param legacyReceiptKey Legacy receipt key
+     * @param newReceiptKey New receipt key
+     * @return Reconciliation result
+     * @throws BusinessException if keys are invalid
      */
     public ReconciliationResult reconcileReceipt(String legacyReceiptKey, String newReceiptKey) {
+        if (legacyReceiptKey == null || legacyReceiptKey.isBlank()) {
+            log.error("Legacy receipt key is null/blank for reconciliation (legacy error 69005)");
+            throw new BusinessException(ErrorCode.DUAL_WRITE_SYNC_FAILED,
+                "Legacy receipt key is required for reconciliation")
+                .withDetail("legacyReceiptKey", "null or blank");
+        }
+
+        if (newReceiptKey == null || newReceiptKey.isBlank()) {
+            log.error("New receipt key is null/blank for reconciliation (legacy error 69005)");
+            throw new BusinessException(ErrorCode.DUAL_WRITE_SYNC_FAILED,
+                "New receipt key is required for reconciliation")
+                .withDetail("newReceiptKey", "null or blank");
+        }
+
         log.info("Reconciling receipts: legacy={}, new={}", legacyReceiptKey, newReceiptKey);
 
         ReconciliationResult result = ReconciliationResult.builder()
@@ -74,8 +103,16 @@ public class ReconciliationService {
             log.info("Reconciliation complete: status={}, differences={}",
                 result.getStatus(), result.getDifferences().size());
 
+        } catch (DataAccessException e) {
+            log.error("Reconciliation failed: legacyKey={}, newKey={}, error={} (legacy error 69005)",
+                legacyReceiptKey, newReceiptKey, e.getMessage(), e);
+            result.setStatus(ReconciliationResult.ReconciliationStatus.ERROR);
+            result.addDifference("ERROR", e.getMessage(), "",
+                ReconciliationResult.DifferenceType.VALUE_MISMATCH);
+
         } catch (Exception e) {
-            log.error("Reconciliation failed: {}", e.getMessage());
+            log.error("Reconciliation failed: legacyKey={}, newKey={}, error={} (legacy error 69005)",
+                legacyReceiptKey, newReceiptKey, e.getMessage(), e);
             result.setStatus(ReconciliationResult.ReconciliationStatus.ERROR);
             result.addDifference("ERROR", e.getMessage(), "",
                 ReconciliationResult.DifferenceType.VALUE_MISMATCH);
@@ -85,9 +122,23 @@ public class ReconciliationService {
     }
 
     /**
-     * Reconcile PO before and after population
+     * Reconcile PO before and after population.
+     *
+     * Error codes:
+     * - INT_001 (69000) - Legacy Sync Failed
+     *
+     * @param poKey PO key to reconcile
+     * @return Reconciliation result
+     * @throws BusinessException if PO key is invalid
      */
     public ReconciliationResult reconcilePO(String poKey) {
+        if (poKey == null || poKey.isBlank()) {
+            log.error("PO key is null/blank for reconciliation (legacy error 69000)");
+            throw new BusinessException(ErrorCode.LEGACY_SYNC_FAILED,
+                "PO key is required for reconciliation")
+                .withDetail("poKey", "null or blank");
+        }
+
         log.info("Reconciling PO: {}", poKey);
 
         ReconciliationResult result = ReconciliationResult.builder()
@@ -102,10 +153,14 @@ public class ReconciliationService {
             String legacyStatus = legacyClient.getPOStatus(poKey);
 
             result.setStatus(ReconciliationResult.ReconciliationStatus.MATCHED);
+            log.info("PO reconciliation complete: poKey={}, status=MATCHED", poKey);
 
         } catch (Exception e) {
-            log.error("PO reconciliation failed: {}", e.getMessage());
+            log.error("PO reconciliation failed: poKey={}, error={} (legacy error 69000)",
+                poKey, e.getMessage(), e);
             result.setStatus(ReconciliationResult.ReconciliationStatus.ERROR);
+            result.addDifference("ERROR", e.getMessage(), "",
+                ReconciliationResult.DifferenceType.VALUE_MISMATCH);
         }
 
         return result;

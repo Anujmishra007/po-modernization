@@ -1,8 +1,11 @@
 package com.wms.po.activity.impl;
 
 import com.wms.po.activity.InventoryActivity;
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,7 +15,10 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Implementation of InventoryActivity for inventory reservations
+ * Implementation of InventoryActivity for inventory reservations.
+ *
+ * Error codes:
+ * - XD_020 (69320) - Allocation Build Failed
  */
 @Component
 @RequiredArgsConstructor
@@ -21,21 +27,54 @@ public class InventoryActivityImpl implements InventoryActivity {
 
     private final JdbcTemplate jdbcTemplate;
 
+    /**
+     * Create inventory reservations for receipt details.
+     *
+     * Error codes:
+     * - XD_020 (69320) - Allocation Build Failed
+     *
+     * @param receiptKey Receipt key
+     * @param detailKeys List of detail keys to reserve
+     * @return List of reservation IDs
+     * @throws BusinessException if reservation fails
+     */
     @Override
     @Transactional
     public List<String> createReservations(String receiptKey, List<String> detailKeys) {
+        if (receiptKey == null || receiptKey.isBlank()) {
+            log.error("Receipt key is null/blank for inventory reservations (legacy error 69320)");
+            throw new BusinessException(ErrorCode.ALLOCATION_BUILD_FAILED,
+                "Receipt key is required for inventory reservations")
+                .withDetail("receiptKey", "null or blank");
+        }
+
+        if (detailKeys == null || detailKeys.isEmpty()) {
+            log.warn("No detail keys provided for reservation, returning empty list");
+            return new ArrayList<>();
+        }
+
         log.info("Creating inventory reservations for receiptKey={}, detailCount={}",
             receiptKey, detailKeys.size());
 
         List<String> reservationIds = new ArrayList<>();
 
-        for (String detailKey : detailKeys) {
-            String reservationId = createReservation(receiptKey, detailKey);
-            reservationIds.add(reservationId);
-        }
+        try {
+            for (String detailKey : detailKeys) {
+                String reservationId = createReservation(receiptKey, detailKey);
+                reservationIds.add(reservationId);
+            }
 
-        log.info("Created {} inventory reservations", reservationIds.size());
-        return reservationIds;
+            log.info("Created {} inventory reservations", reservationIds.size());
+            return reservationIds;
+
+        } catch (DataAccessException e) {
+            log.error("Failed to create inventory reservations: receiptKey={}, error={} (legacy error 69320)",
+                receiptKey, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.ALLOCATION_BUILD_FAILED,
+                "Failed to create inventory reservations: " + e.getMessage(), e)
+                .withDetail("receiptKey", receiptKey)
+                .withDetail("detailCount", detailKeys.size());
+        }
     }
 
     @Override

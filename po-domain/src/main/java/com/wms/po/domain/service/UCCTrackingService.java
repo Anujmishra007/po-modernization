@@ -1,7 +1,11 @@
 package com.wms.po.domain.service;
 
+import com.wms.po.domain.exception.BusinessException;
+import com.wms.po.domain.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataAccessException;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +31,11 @@ import java.util.*;
  * - Picking
  * - Packing
  * - Shipping (outbound)
+ *
+ * Error codes:
+ * - INV_042 (68742) - UCC Creation Failed
+ * - INV_040 (68740) - UCC Not Found
+ * - RCV_026 (68926) - UCC Generation Failed
  */
 @Service
 @RequiredArgsConstructor
@@ -52,6 +61,9 @@ public class UCCTrackingService {
     /**
      * Create a new UCC record during receipt.
      *
+     * Error codes:
+     * - INV_042 (68742) - UCC Creation Failed
+     *
      * @param request UCC creation request
      * @return Created UCC key
      */
@@ -60,71 +72,87 @@ public class UCCTrackingService {
         log.debug("Creating UCC: type={}, receiptKey={}",
             request.getUccType(), request.getReceiptKey());
 
-        // Generate UCC key if not provided
-        String uccKey = request.getUccNumber();
-        if (uccKey == null || uccKey.isEmpty()) {
-            uccKey = generateUCCNumber(request.getUccType(), request.getFacility());
+        String uccKey = null;
+
+        try {
+            // Generate UCC key if not provided
+            uccKey = request.getUccNumber();
+            if (uccKey == null || uccKey.isEmpty()) {
+                uccKey = generateUCCNumber(request.getUccType(), request.getFacility());
+            }
+
+            // Insert UCC record
+            jdbcTemplate.update(
+                """
+                INSERT INTO dbo.ucc (
+                    ucc, ucctype, storerkey, facility, status,
+                    receiptkey, receiptlinenumber, pokey, polinenumber,
+                    sku, qty, packkey, uom, loc, parentucc,
+                    lottable01, lottable02, lottable03, lottable04, lottable05,
+                    lottable06, lottable07, lottable08, lottable09, lottable10,
+                    notes, adddate, addwho, editdate, editwho
+                )
+                VALUES (?, ?, ?, ?, ?,
+                        ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?,
+                        ?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP, ?)
+                """,
+                uccKey,
+                request.getUccType() != null ? request.getUccType() : UCC_TYPE_LPN,
+                request.getStorerKey(),
+                request.getFacility(),
+                STATUS_CREATED,
+                request.getReceiptKey(),
+                request.getReceiptLineNumber(),
+                request.getPoKey(),
+                request.getPoLineNumber(),
+                request.getSku(),
+                request.getQuantity(),
+                request.getPackKey(),
+                request.getUom(),
+                request.getLocation(),
+                request.getParentUcc(),
+                request.getLottable01(),
+                request.getLottable02(),
+                request.getLottable03(),
+                request.getLottable04(),
+                request.getLottable05(),
+                request.getLottable06(),
+                request.getLottable07(),
+                request.getLottable08(),
+                request.getLottable09(),
+                request.getLottable10(),
+                request.getNotes(),
+                request.getUserId(),
+                request.getUserId()
+            );
+
+            // Create transaction record
+            createUCCTransaction(uccKey, request, "RECEIPT");
+
+            log.info("Created UCC: {}, type={}, sku={}, qty={}",
+                uccKey, request.getUccType(), request.getSku(), request.getQuantity());
+
+            return uccKey;
+
+        } catch (DataAccessException e) {
+            log.error("Failed to create UCC for receipt {}: {} (legacy error 68742)",
+                request.getReceiptKey(), e.getMessage(), e);
+            throw new BusinessException(ErrorCode.UCC_CREATION_FAILED,
+                "Failed to create UCC: " + e.getMessage(), e)
+                .withDetail("receiptKey", request.getReceiptKey())
+                .withDetail("uccType", request.getUccType())
+                .withDetail("sku", request.getSku());
         }
-
-        // Insert UCC record
-        jdbcTemplate.update(
-            """
-            INSERT INTO dbo.ucc (
-                ucc, ucctype, storerkey, facility, status,
-                receiptkey, receiptlinenumber, pokey, polinenumber,
-                sku, qty, packkey, uom, loc, parentucc,
-                lottable01, lottable02, lottable03, lottable04, lottable05,
-                lottable06, lottable07, lottable08, lottable09, lottable10,
-                notes, adddate, addwho, editdate, editwho
-            )
-            VALUES (?, ?, ?, ?, ?,
-                    ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?,
-                    ?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP, ?)
-            """,
-            uccKey,
-            request.getUccType() != null ? request.getUccType() : UCC_TYPE_LPN,
-            request.getStorerKey(),
-            request.getFacility(),
-            STATUS_CREATED,
-            request.getReceiptKey(),
-            request.getReceiptLineNumber(),
-            request.getPoKey(),
-            request.getPoLineNumber(),
-            request.getSku(),
-            request.getQuantity(),
-            request.getPackKey(),
-            request.getUom(),
-            request.getLocation(),
-            request.getParentUcc(),
-            request.getLottable01(),
-            request.getLottable02(),
-            request.getLottable03(),
-            request.getLottable04(),
-            request.getLottable05(),
-            request.getLottable06(),
-            request.getLottable07(),
-            request.getLottable08(),
-            request.getLottable09(),
-            request.getLottable10(),
-            request.getNotes(),
-            request.getUserId(),
-            request.getUserId()
-        );
-
-        // Create transaction record
-        createUCCTransaction(uccKey, request, "RECEIPT");
-
-        log.info("Created UCC: {}, type={}, sku={}, qty={}",
-            uccKey, request.getUccType(), request.getSku(), request.getQuantity());
-
-        return uccKey;
     }
 
     /**
      * Create multiple UCC records in batch.
+     *
+     * Error codes:
+     * - INV_042 (68742) - UCC Creation Failed
      *
      * @param requests List of UCC creation requests
      * @return List of created UCC keys
@@ -134,21 +162,33 @@ public class UCCTrackingService {
         log.info("Creating {} UCC records in batch", requests.size());
 
         List<String> uccKeys = new ArrayList<>();
+        List<String> failedReceipts = new ArrayList<>();
+
         for (UCCCreateRequest request : requests) {
             try {
                 String uccKey = createUCC(request);
                 uccKeys.add(uccKey);
-            } catch (Exception e) {
-                log.error("Failed to create UCC: {}", e.getMessage());
+            } catch (BusinessException e) {
+                log.warn("Failed to create UCC for receipt {}: {}",
+                    request.getReceiptKey(), e.getMessage());
+                failedReceipts.add(request.getReceiptKey());
             }
         }
 
-        log.info("Created {} UCC records", uccKeys.size());
+        if (!failedReceipts.isEmpty()) {
+            log.warn("Batch UCC creation had {} failures out of {} (legacy error 68742)",
+                failedReceipts.size(), requests.size());
+        }
+
+        log.info("Created {} UCC records ({} failed)", uccKeys.size(), failedReceipts.size());
         return uccKeys;
     }
 
     /**
      * Activate a UCC (e.g., after putaway).
+     *
+     * Error codes:
+     * - INV_040 (68740) - UCC Not Found
      *
      * @param uccKey UCC to activate
      * @param location Current location
@@ -158,28 +198,45 @@ public class UCCTrackingService {
     public void activateUCC(String uccKey, String location, String userId) {
         log.debug("Activating UCC: {}", uccKey);
 
-        jdbcTemplate.update(
-            """
-            UPDATE dbo.ucc
-            SET status = ?,
-                loc = ?,
-                editdate = CURRENT_TIMESTAMP,
-                editwho = ?
-            WHERE ucc = ?
-            AND status IN (?, ?)
-            """,
-            STATUS_ACTIVE,
-            location,
-            userId,
-            uccKey,
-            STATUS_CREATED, STATUS_IN_TRANSIT
-        );
+        try {
+            int updated = jdbcTemplate.update(
+                """
+                UPDATE dbo.ucc
+                SET status = ?,
+                    loc = ?,
+                    editdate = CURRENT_TIMESTAMP,
+                    editwho = ?
+                WHERE ucc = ?
+                AND status IN (?, ?)
+                """,
+                STATUS_ACTIVE,
+                location,
+                userId,
+                uccKey,
+                STATUS_CREATED, STATUS_IN_TRANSIT
+            );
 
-        createUCCTransaction(uccKey, null, "ACTIVATE");
+            if (updated == 0) {
+                log.warn("UCC not found or invalid status for activation: {} (legacy error 68740)", uccKey);
+            } else {
+                createUCCTransaction(uccKey, null, "ACTIVATE");
+                log.info("Activated UCC: {} at location {}", uccKey, location);
+            }
+
+        } catch (DataAccessException e) {
+            log.error("Failed to activate UCC {}: {} (legacy error 68740)", uccKey, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.UCC_NOT_FOUND,
+                "Failed to activate UCC: " + e.getMessage(), e)
+                .withDetail("uccKey", uccKey)
+                .withDetail("location", location);
+        }
     }
 
     /**
      * Move a UCC to a new location.
+     *
+     * Error codes:
+     * - INV_040 (68740) - UCC Not Found
      *
      * @param uccKey UCC to move
      * @param toLocation New location
@@ -189,46 +246,77 @@ public class UCCTrackingService {
     public void moveUCC(String uccKey, String toLocation, String userId) {
         log.debug("Moving UCC {} to {}", uccKey, toLocation);
 
-        String fromLocation = jdbcTemplate.queryForObject(
-            "SELECT loc FROM dbo.ucc WHERE ucc = ?",
-            String.class,
-            uccKey
-        );
+        String fromLocation;
+        try {
+            fromLocation = jdbcTemplate.queryForObject(
+                "SELECT loc FROM dbo.ucc WHERE ucc = ?",
+                String.class,
+                uccKey
+            );
+        } catch (EmptyResultDataAccessException e) {
+            log.error("UCC not found for move: {} (legacy error 68740)", uccKey);
+            throw new BusinessException(ErrorCode.UCC_NOT_FOUND,
+                "UCC not found")
+                .withDetail("uccKey", uccKey);
+        }
 
-        jdbcTemplate.update(
-            """
-            UPDATE dbo.ucc
-            SET loc = ?,
-                status = ?,
-                editdate = CURRENT_TIMESTAMP,
-                editwho = ?
-            WHERE ucc = ?
-            """,
-            toLocation,
-            STATUS_IN_TRANSIT,
-            userId,
-            uccKey
-        );
+        try {
+            int updated = jdbcTemplate.update(
+                """
+                UPDATE dbo.ucc
+                SET loc = ?,
+                    status = ?,
+                    editdate = CURRENT_TIMESTAMP,
+                    editwho = ?
+                WHERE ucc = ?
+                """,
+                toLocation,
+                STATUS_IN_TRANSIT,
+                userId,
+                uccKey
+            );
 
-        // Create move transaction with from/to locations
-        jdbcTemplate.update(
-            """
-            INSERT INTO dbo.ucctransaction (
-                transactionkey, ucc, transactiontype, fromloc, toloc,
-                adddate, addwho
-            )
-            VALUES (?, ?, 'MOVE', ?, ?, CURRENT_TIMESTAMP, ?)
-            """,
-            keyGeneratorService.generateKey("UCCTRAN"),
-            uccKey,
-            fromLocation,
-            toLocation,
-            userId
-        );
+            if (updated == 0) {
+                log.error("UCC not found for move: {} (legacy error 68740)", uccKey);
+                throw new BusinessException(ErrorCode.UCC_NOT_FOUND,
+                    "UCC not found for move")
+                    .withDetail("uccKey", uccKey);
+            }
+
+            // Create move transaction with from/to locations
+            jdbcTemplate.update(
+                """
+                INSERT INTO dbo.ucctransaction (
+                    transactionkey, ucc, transactiontype, fromloc, toloc,
+                    adddate, addwho
+                )
+                VALUES (?, ?, 'MOVE', ?, ?, CURRENT_TIMESTAMP, ?)
+                """,
+                keyGeneratorService.generateKey("UCCTRAN"),
+                uccKey,
+                fromLocation,
+                toLocation,
+                userId
+            );
+
+            log.info("Moved UCC {} from {} to {}", uccKey, fromLocation, toLocation);
+
+        } catch (BusinessException e) {
+            throw e;
+        } catch (DataAccessException e) {
+            log.error("Failed to move UCC {}: {} (legacy error 68740)", uccKey, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.UCC_NOT_FOUND,
+                "Failed to move UCC: " + e.getMessage(), e)
+                .withDetail("uccKey", uccKey)
+                .withDetail("toLocation", toLocation);
+        }
     }
 
     /**
      * Close a UCC (e.g., after shipping).
+     *
+     * Error codes:
+     * - INV_040 (68740) - UCC Not Found
      *
      * @param uccKey UCC to close
      * @param userId User closing
@@ -238,27 +326,44 @@ public class UCCTrackingService {
     public void closeUCC(String uccKey, String userId, String reason) {
         log.debug("Closing UCC: {} - {}", uccKey, reason);
 
-        jdbcTemplate.update(
-            """
-            UPDATE dbo.ucc
-            SET status = ?,
-                closedate = CURRENT_TIMESTAMP,
-                notes = COALESCE(notes, '') || ' CLOSED: ' || ?,
-                editdate = CURRENT_TIMESTAMP,
-                editwho = ?
-            WHERE ucc = ?
-            """,
-            STATUS_CLOSED,
-            reason,
-            userId,
-            uccKey
-        );
+        try {
+            int updated = jdbcTemplate.update(
+                """
+                UPDATE dbo.ucc
+                SET status = ?,
+                    closedate = CURRENT_TIMESTAMP,
+                    notes = COALESCE(notes, '') || ' CLOSED: ' || ?,
+                    editdate = CURRENT_TIMESTAMP,
+                    editwho = ?
+                WHERE ucc = ?
+                """,
+                STATUS_CLOSED,
+                reason,
+                userId,
+                uccKey
+            );
 
-        createUCCTransaction(uccKey, null, "CLOSE");
+            if (updated == 0) {
+                log.warn("UCC not found for close: {} (legacy error 68740)", uccKey);
+            } else {
+                createUCCTransaction(uccKey, null, "CLOSE");
+                log.info("Closed UCC: {} - {}", uccKey, reason);
+            }
+
+        } catch (DataAccessException e) {
+            log.error("Failed to close UCC {}: {} (legacy error 68740)", uccKey, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.UCC_NOT_FOUND,
+                "Failed to close UCC: " + e.getMessage(), e)
+                .withDetail("uccKey", uccKey)
+                .withDetail("reason", reason);
+        }
     }
 
     /**
      * Void a UCC (for errors/cancellations).
+     *
+     * Error codes:
+     * - INV_040 (68740) - UCC Not Found
      *
      * @param uccKey UCC to void
      * @param userId User voiding
@@ -268,28 +373,45 @@ public class UCCTrackingService {
     public void voidUCC(String uccKey, String userId, String reason) {
         log.warn("Voiding UCC: {} - {}", uccKey, reason);
 
-        jdbcTemplate.update(
-            """
-            UPDATE dbo.ucc
-            SET status = ?,
-                notes = COALESCE(notes, '') || ' VOIDED: ' || ?,
-                editdate = CURRENT_TIMESTAMP,
-                editwho = ?
-            WHERE ucc = ?
-            AND status NOT IN (?, ?)
-            """,
-            STATUS_VOIDED,
-            reason,
-            userId,
-            uccKey,
-            STATUS_CLOSED, STATUS_VOIDED
-        );
+        try {
+            int updated = jdbcTemplate.update(
+                """
+                UPDATE dbo.ucc
+                SET status = ?,
+                    notes = COALESCE(notes, '') || ' VOIDED: ' || ?,
+                    editdate = CURRENT_TIMESTAMP,
+                    editwho = ?
+                WHERE ucc = ?
+                AND status NOT IN (?, ?)
+                """,
+                STATUS_VOIDED,
+                reason,
+                userId,
+                uccKey,
+                STATUS_CLOSED, STATUS_VOIDED
+            );
 
-        createUCCTransaction(uccKey, null, "VOID");
+            if (updated > 0) {
+                createUCCTransaction(uccKey, null, "VOID");
+                log.info("Voided UCC: {} - {}", uccKey, reason);
+            } else {
+                log.warn("UCC not voided (already closed/voided or not found): {}", uccKey);
+            }
+
+        } catch (DataAccessException e) {
+            log.error("Failed to void UCC {}: {} (legacy error 68740)", uccKey, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.UCC_NOT_FOUND,
+                "Failed to void UCC: " + e.getMessage(), e)
+                .withDetail("uccKey", uccKey)
+                .withDetail("reason", reason);
+        }
     }
 
     /**
      * Get UCC details.
+     *
+     * Error codes:
+     * - INV_040 (68740) - UCC Not Found
      *
      * @param uccKey UCC to look up
      * @return UCC details or null
@@ -329,42 +451,59 @@ public class UCCTrackingService {
                     .build(),
                 uccKey
             );
-        } catch (Exception e) {
+        } catch (EmptyResultDataAccessException e) {
+            log.debug("UCC not found: {}", uccKey);
             return null;
+        } catch (DataAccessException e) {
+            log.error("Failed to get UCC {}: {} (legacy error 68740)", uccKey, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.UCC_NOT_FOUND,
+                "Failed to get UCC: " + e.getMessage(), e)
+                .withDetail("uccKey", uccKey);
         }
     }
 
     /**
      * Get all UCCs for a receipt.
      *
+     * Error codes:
+     * - INV_042 (68742) - UCC Creation Failed (used for query failures)
+     *
      * @param receiptKey Receipt to look up
      * @return List of UCC records
      */
     @Transactional(readOnly = true)
     public List<UCCRecord> getUCCsForReceipt(String receiptKey) {
-        return jdbcTemplate.query(
-            """
-            SELECT ucc, ucctype, storerkey, facility, status, loc,
-                   receiptkey, receiptlinenumber, pokey, polinenumber,
-                   sku, qty, packkey, uom, parentucc,
-                   lottable01, lottable02, lottable03,
-                   closedate, adddate
-            FROM dbo.ucc
-            WHERE receiptkey = ?
-            ORDER BY adddate
-            """,
-            (rs, rowNum) -> UCCRecord.builder()
-                .uccKey(rs.getString("ucc"))
-                .uccType(rs.getString("ucctype"))
-                .storerKey(rs.getString("storerkey"))
-                .facility(rs.getString("facility"))
-                .status(rs.getString("status"))
-                .location(rs.getString("loc"))
-                .sku(rs.getString("sku"))
-                .quantity(rs.getBigDecimal("qty"))
-                .build(),
-            receiptKey
-        );
+        try {
+            return jdbcTemplate.query(
+                """
+                SELECT ucc, ucctype, storerkey, facility, status, loc,
+                       receiptkey, receiptlinenumber, pokey, polinenumber,
+                       sku, qty, packkey, uom, parentucc,
+                       lottable01, lottable02, lottable03,
+                       closedate, adddate
+                FROM dbo.ucc
+                WHERE receiptkey = ?
+                ORDER BY adddate
+                """,
+                (rs, rowNum) -> UCCRecord.builder()
+                    .uccKey(rs.getString("ucc"))
+                    .uccType(rs.getString("ucctype"))
+                    .storerKey(rs.getString("storerkey"))
+                    .facility(rs.getString("facility"))
+                    .status(rs.getString("status"))
+                    .location(rs.getString("loc"))
+                    .sku(rs.getString("sku"))
+                    .quantity(rs.getBigDecimal("qty"))
+                    .build(),
+                receiptKey
+            );
+        } catch (DataAccessException e) {
+            log.error("Failed to get UCCs for receipt {}: {} (legacy error 68742)",
+                receiptKey, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.UCC_CREATION_FAILED,
+                "Failed to query UCCs: " + e.getMessage(), e)
+                .withDetail("receiptKey", receiptKey);
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -393,23 +532,28 @@ public class UCCTrackingService {
     }
 
     private void createUCCTransaction(String uccKey, UCCCreateRequest request, String transactionType) {
-        String transKey = keyGeneratorService.generateKey("UCCTRAN");
+        try {
+            String transKey = keyGeneratorService.generateKey("UCCTRAN");
 
-        jdbcTemplate.update(
-            """
-            INSERT INTO dbo.ucctransaction (
-                transactionkey, ucc, transactiontype,
-                receiptkey, qty, adddate, addwho
-            )
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
-            """,
-            transKey,
-            uccKey,
-            transactionType,
-            request != null ? request.getReceiptKey() : null,
-            request != null ? request.getQuantity() : null,
-            request != null ? request.getUserId() : "SYSTEM"
-        );
+            jdbcTemplate.update(
+                """
+                INSERT INTO dbo.ucctransaction (
+                    transactionkey, ucc, transactiontype,
+                    receiptkey, qty, adddate, addwho
+                )
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+                """,
+                transKey,
+                uccKey,
+                transactionType,
+                request != null ? request.getReceiptKey() : null,
+                request != null ? request.getQuantity() : null,
+                request != null ? request.getUserId() : "SYSTEM"
+            );
+        } catch (DataAccessException e) {
+            // Log but don't fail the main operation for transaction logging
+            log.warn("Failed to create UCC transaction record for {}: {}", uccKey, e.getMessage());
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════
