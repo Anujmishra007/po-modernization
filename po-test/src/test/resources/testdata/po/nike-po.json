@@ -1,0 +1,44 @@
+{
+  "poKey": "PO-NIKE-001",
+  "storerKey": "NIKE",
+  "facility": "US01",
+  "externPoKey": "NIKE-EXT-001",
+  "supplierKey": "NIKE-FACTORY-VN",
+  "poType": "REPLENISHMENT",
+  "status": "0",
+  "poDate": "2024-01-15",
+  "expectedReceiptDate": "2024-02-15",
+  "client": "NIKE",
+  "lines": [
+    {
+      "poLineKey": "NIKE-LINE001",
+      "sku": "NIKE-AF1-WHT-10",
+      "qtyOrdered": 240,
+      "unitPrice": 89.99,
+      "packKey": "PAIR",
+      "uom": "PR",
+      "lottables": {
+        "STYLE_COLOR": "AF123456-100",
+        "SIZE_CODE": "10.0",
+        "SEASON": "SP24",
+        "SHIP_DATE": "2024-02-01",
+        "FACTORY_CODE": "VN-NIKE-01"
+      }
+    },
+    {
+      "poLineKey": "NIKE-LINE002",
+      "sku": "NIKE-AF1-BLK-11",
+      "qtyOrdered": 180,
+      "unitPrice": 89.99,
+      "packKey": "PAIR",
+      "uom": "PR",
+      "lottables": {
+        "STYLE_COLOR": "AF123456-001",
+        "SIZE_CODE": "11.0",
+        "SEASON": "SP24",
+        "SHIP_DATE": "2024-02-01",
+        "FACTORY_CODE": "VN-NIKE-01"
+      }
+    }
+  ]
+}

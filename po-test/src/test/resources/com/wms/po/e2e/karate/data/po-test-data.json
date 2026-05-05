@@ -1,0 +1,44 @@
+{
+  "validPO": {
+    "storerKey": "TEST_STORER_001",
+    "facility": "KR01",
+    "status": "0",
+    "poType": "STANDARD"
+  },
+  "nikePO": {
+    "storerKey": "NIKE_KR_001",
+    "facility": "KR01",
+    "status": "0",
+    "poType": "STANDARD"
+  },
+  "hmPO": {
+    "storerKey": "HM_INDIA_001",
+    "facility": "IN01",
+    "status": "0",
+    "poType": "STANDARD"
+  },
+  "closedPO": {
+    "storerKey": "TEST_STORER_001",
+    "facility": "KR01",
+    "status": "9",
+    "poType": "STANDARD"
+  },
+  "cancelledPO": {
+    "storerKey": "TEST_STORER_001",
+    "facility": "KR01",
+    "status": "8",
+    "poType": "STANDARD"
+  },
+  "poDetails": [
+    {
+      "sku": "SKU-001",
+      "qtyOrdered": 100,
+      "uom": "EA"
+    },
+    {
+      "sku": "SKU-002",
+      "qtyOrdered": 50,
+      "uom": "CS"
+    }
+  ]
+}

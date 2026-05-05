@@ -1,0 +1,70 @@
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:sqlserver://localhost:1433;databaseName=WMS}
+    username: ${DB_USERNAME:wms_user}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+
+  h2:
+    console:
+      enabled: false
+
+server:
+  port: ${PORT:8080}
+
+# Temporal configuration
+temporal:
+  server:
+    address: ${TEMPORAL_ADDRESS:temporal:7233}
+  namespace: ${TEMPORAL_NAMESPACE:wms-po-namespace}
+  task-queue: ${TEMPORAL_TASK_QUEUE:po-task-queue}
+  workflow:
+    timeout-minutes: 30
+
+# PO configuration
+po:
+  dualwrite:
+    enabled: ${DUAL_WRITE_ENABLED:true}
+  default:
+    version: V2
+
+# Legacy database connections
+legacy:
+  v0:
+    enabled: ${V0_ENABLED:false}
+    url: ${V0_DB_URL:}
+    username: ${V0_DB_USERNAME:}
+    password: ${V0_DB_PASSWORD:}
+  v2:
+    enabled: ${V2_ENABLED:false}
+    url: ${V2_DB_URL:}
+    username: ${V2_DB_USERNAME:}
+    password: ${V2_DB_PASSWORD:}
+
+# Logging
+logging:
+  level:
+    root: INFO
+    com.wms.po: INFO
+    io.temporal: WARN
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized

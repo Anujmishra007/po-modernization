@@ -1,0 +1,38 @@
+# India region configuration
+rules:
+  shelfLifeValidationEnabled: true
+  minShelfLifeDays: 60
+  requireLottable03: false
+  requireCustomsCode: false
+  allowPartialShipment: true
+  requiredFields:
+    - storerKey
+    - facility
+    - sku
+  blockedStatuses:
+    - "8"
+    - "9"
+
+fieldMappings:
+  lottableMappings:
+    lottable04: gstCode
+    lottable05: hsnCode
+
+plugins:
+  enabledPlugins:
+    - StandardPrePopulatePlugin
+    - HMIndiaPrePopulatePlugin
+  pluginSettings:
+    HMIndiaPrePopulatePlugin:
+      validateGST: true
+      requireHSN: true
+
+flags:
+  enableDualWrite: false
+  requireGST: true
+  requireEwayBill: false
+
+allowedFacilities:
+  - IN01
+  - IN02
+  - IN03

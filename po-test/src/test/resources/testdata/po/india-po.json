@@ -1,0 +1,30 @@
+{
+  "poKey": "PO-IN-001",
+  "storerKey": "INDIA_STORER",
+  "facility": "IN01",
+  "externPoKey": "IN-EXT-001",
+  "supplierKey": "IN-SUPPLIER",
+  "poType": "DOMESTIC",
+  "status": "0",
+  "poDate": "2024-01-15",
+  "expectedReceiptDate": "2024-01-20",
+  "region": "ASIA-IN",
+  "lines": [
+    {
+      "poLineKey": "IN-LINE001",
+      "sku": "IN-SKU-001",
+      "qtyOrdered": 500,
+      "unitPrice": 1500.00,
+      "packKey": "EACH",
+      "uom": "EA",
+      "lottables": {
+        "LOT_NUMBER": "INLOT2024001",
+        "GST_INVOICE": "GST/INV/2024/001234",
+        "HSN_CODE": "84713010",
+        "EXPIRY_DATE": "2025-12-31",
+        "MFG_DATE": "2024-01-01",
+        "MRP": "1999.00"
+      }
+    }
+  ]
+}

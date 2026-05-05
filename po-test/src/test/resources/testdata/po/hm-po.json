@@ -1,0 +1,42 @@
+{
+  "poKey": "PO-HM-001",
+  "storerKey": "HM",
+  "facility": "EU01",
+  "externPoKey": "HM-EXT-001",
+  "supplierKey": "HM-SUPPLIER-BD",
+  "poType": "SEASONAL",
+  "status": "0",
+  "poDate": "2024-01-15",
+  "expectedReceiptDate": "2024-02-28",
+  "client": "HM",
+  "lines": [
+    {
+      "poLineKey": "HM-LINE001",
+      "sku": "HM-DRESS-001-S",
+      "qtyOrdered": 500,
+      "unitPrice": 29.99,
+      "packKey": "EACH",
+      "uom": "EA",
+      "lottables": {
+        "ARTICLE_NUMBER": "1234567",
+        "COLOR_CODE": "WHITE",
+        "SIZE_CODE": "S",
+        "QUALITY_CODE": "A"
+      }
+    },
+    {
+      "poLineKey": "HM-LINE002",
+      "sku": "HM-DRESS-001-M",
+      "qtyOrdered": 750,
+      "unitPrice": 29.99,
+      "packKey": "EACH",
+      "uom": "EA",
+      "lottables": {
+        "ARTICLE_NUMBER": "1234567",
+        "COLOR_CODE": "WHITE",
+        "SIZE_CODE": "M",
+        "QUALITY_CODE": "A"
+      }
+    }
+  ]
+}

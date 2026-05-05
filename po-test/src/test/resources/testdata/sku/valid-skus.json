@@ -1,0 +1,58 @@
+[
+  {
+    "sku": "SKU-STANDARD-001",
+    "storerKey": "STORER001",
+    "description": "Standard Widget",
+    "packKey": "EACH",
+    "skuGroup": "WIDGETS",
+    "skuClass": "A",
+    "skuType": "STANDARD",
+    "weight": 1.5,
+    "length": 10,
+    "width": 5,
+    "height": 2
+  },
+  {
+    "sku": "SKU-HAZMAT-001",
+    "storerKey": "STORER001",
+    "description": "Hazardous Material",
+    "packKey": "DRUM",
+    "skuGroup": "CHEMICALS",
+    "skuClass": "C",
+    "skuType": "HAZMAT",
+    "hazmatCode": "HAZMAT-CLASS3",
+    "weight": 50.0,
+    "length": 60,
+    "width": 60,
+    "height": 90
+  },
+  {
+    "sku": "SKU-SERIAL-001",
+    "storerKey": "STORER001",
+    "description": "Serial Tracked Item",
+    "packKey": "EACH",
+    "skuGroup": "ELECTRONICS",
+    "skuClass": "A",
+    "skuType": "SERIAL",
+    "serialTracked": true,
+    "weight": 0.5,
+    "length": 15,
+    "width": 8,
+    "height": 2
+  },
+  {
+    "sku": "SKU-LOT-001",
+    "storerKey": "STORER001",
+    "description": "Lot Tracked Food Item",
+    "packKey": "CASE",
+    "skuGroup": "FOOD",
+    "skuClass": "B",
+    "skuType": "PERISHABLE",
+    "lotTracked": true,
+    "expiryTracked": true,
+    "weight": 12.0,
+    "length": 40,
+    "width": 30,
+    "height": 25
+  }
+]

@@ -1,0 +1,40 @@
+# Base configuration for all regions and clients
+rules:
+  shelfLifeValidationEnabled: false
+  minShelfLifeDays: 0
+  requireLottable03: false
+  requireCustomsCode: false
+  allowPartialShipment: true
+  requiredFields:
+    - storerKey
+    - facility
+    - sku
+  blockedStatuses:
+    - "8"
+    - "9"
+
+fieldMappings:
+  headerMappings:
+    externReceiptKey: externPoKey
+    storerKey: storerKey
+    facility: facility
+  detailMappings:
+    sku: sku
+    qtyExpected: qtyOrdered
+    uom: uom
+  lottableMappings:
+    lottable01: lottable01
+    lottable02: lottable02
+    lottable03: lottable03
+
+plugins:
+  enabledPlugins:
+    - StandardPrePopulatePlugin
+  pluginSettings: {}
+
+flags:
+  enableDualWrite: false
+  enableShadowRun: false
+  enableAsyncNotifications: true
+
+allowedFacilities: []

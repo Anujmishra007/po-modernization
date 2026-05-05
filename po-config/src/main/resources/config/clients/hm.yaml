@@ -1,0 +1,29 @@
+# H&M client configuration
+clientCode: HM
+clientName: H&M
+enabled: true
+
+rules:
+  shelfLifeValidationEnabled: false
+  requireLottable03: false
+  allowPartialShipment: true
+  requiredFields:
+    - storerKey
+    - facility
+    - sku
+
+fieldMappings:
+  detailMappings:
+    lottable01: articleNumber
+    lottable02: colorName
+
+plugins:
+  enabledPlugins:
+    - StandardPrePopulatePlugin
+    - HMIndiaPrePopulatePlugin
+  pluginSettings:
+    HMIndiaPrePopulatePlugin:
+      validateGST: true
+
+flags:
+  enableDualWrite: false

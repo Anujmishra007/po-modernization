@@ -1,0 +1,28 @@
+# Thailand region configuration
+rules:
+  shelfLifeValidationEnabled: true
+  minShelfLifeDays: 30
+  requireLottable03: false
+  requireCustomsCode: false
+  allowPartialShipment: true
+  requiredFields:
+    - storerKey
+    - facility
+    - sku
+  blockedStatuses:
+    - "8"
+    - "9"
+
+fieldMappings:
+  lottableMappings: {}
+
+plugins:
+  enabledPlugins:
+    - StandardPrePopulatePlugin
+
+flags:
+  enableDualWrite: false
+
+allowedFacilities:
+  - TH01
+  - TH02

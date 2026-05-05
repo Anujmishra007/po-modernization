@@ -1,0 +1,30 @@
+# Singapore region configuration
+rules:
+  shelfLifeValidationEnabled: true
+  minShelfLifeDays: 14
+  requireLottable03: false
+  requireCustomsCode: false
+  allowPartialShipment: true
+  requiredFields:
+    - storerKey
+    - facility
+    - sku
+  blockedStatuses:
+    - "8"
+    - "9"
+
+fieldMappings:
+  lottableMappings:
+    lottable05: permitNumber
+
+plugins:
+  enabledPlugins:
+    - StandardPrePopulatePlugin
+
+flags:
+  enableDualWrite: false
+  requirePermit: false
+
+allowedFacilities:
+  - SG01
+  - SG02

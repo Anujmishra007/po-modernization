@@ -1,0 +1,31 @@
+{
+  "poKey": "PO-INVALID-001",
+  "storerKey": "",
+  "facility": "",
+  "externPoKey": "INVALID-EXT",
+  "supplierKey": null,
+  "poType": "UNKNOWN",
+  "status": "0",
+  "poDate": "2099-12-31",
+  "expectedReceiptDate": "2024-01-01",
+  "lines": [
+    {
+      "poLineKey": "INVALID-LINE001",
+      "sku": "",
+      "qtyOrdered": -10,
+      "unitPrice": 0,
+      "packKey": null,
+      "uom": null,
+      "lottables": {}
+    },
+    {
+      "poLineKey": "INVALID-LINE002",
+      "sku": "SKU-002",
+      "qtyOrdered": 100,
+      "qtyReceived": 200,
+      "unitPrice": -5.00,
+      "packKey": "EACH",
+      "uom": "EA"
+    }
+  ]
+}

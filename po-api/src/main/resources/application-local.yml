@@ -1,0 +1,53 @@
+spring:
+  application:
+    name: po-modernization-local
+
+  datasource:
+    url: jdbc:h2:file:./data/podb;DB_CLOSE_DELAY=-1;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.H2Dialect
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+      settings:
+        web-allow-others: true
+
+server:
+  port: 8080
+
+# Temporal Configuration - Local Docker
+temporal:
+  server:
+    host: localhost
+    port: 7233
+  namespace: default
+
+# Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always
+
+# Logging Configuration
+logging:
+  level:
+    com.wms.po: DEBUG
+    io.temporal: DEBUG
+    org.springframework: INFO
+    org.hibernate.SQL: DEBUG

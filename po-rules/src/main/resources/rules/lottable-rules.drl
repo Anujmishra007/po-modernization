@@ -1,0 +1,273 @@
+package com.wms.po.rules;
+
+import com.wms.po.rules.model.ReceiptDetailFact;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+
+// ============== Lottable Generation Rules ==============
+// These rules implement the ispDefLot*FrRcptDtl and ispGenLot*BySuppLot stored procedures
+
+// ══════════════════════════════════════════════════════════════════
+// RULE GROUP 1: Default Lottable Copy (Lowest Priority)
+// ══════════════════════════════════════════════════════════════════
+
+rule "Default - Copy input lottables to output"
+    salience 10
+    when
+        $detail : ReceiptDetailFact(lottablesComputed == false)
+    then
+        $detail.copyInputToOutput();
+        $detail.addAppliedRule("Default-CopyInputToOutput");
+        update($detail);
+end
+
+// ══════════════════════════════════════════════════════════════════
+// RULE GROUP 2: Lottable01 Generation (Style/Item - ispDefLot1FrRcptDtl)
+// ══════════════════════════════════════════════════════════════════
+
+rule "Lottable01 - Generate from Style attribute"
+    salience 100
+    when
+        $detail : ReceiptDetailFact(
+            lottable01 == null,
+            style != null,
+            !style.isEmpty()
+        )
+    then
+        $detail.setLottable01($detail.getStyle());
+        $detail.addAppliedRule("Lot01-FromStyle");
+        update($detail);
+end
+
+rule "Lottable01 - Generate from SKU if no style"
+    salience 90
+    when
+        $detail : ReceiptDetailFact(
+            lottable01 == null,
+            sku != null
+        )
+    then
+        // Use first 20 chars of SKU as lottable01
+        String lot01 = $detail.getSku();
+        if (lot01.length() > 20) {
+            lot01 = lot01.substring(0, 20);
+        }
+        $detail.setLottable01(lot01);
+        $detail.addAppliedRule("Lot01-FromSKU");
+        update($detail);
+end
+
+// ══════════════════════════════════════════════════════════════════
+// RULE GROUP 3: Lottable02 Generation (Batch/Lot - ispDefLot2FrRcptDtl, ispGenLot2BySuppLot)
+// ══════════════════════════════════════════════════════════════════
+
+rule "Lottable02 - Generate from Supplier Lot (ispGenLot2BySuppLot)"
+    salience 100
+    when
+        $detail : ReceiptDetailFact(
+            lottable02 == null,
+            supplierLot != null,
+            !supplierLot.isEmpty()
+        )
+    then
+        $detail.setLottable02($detail.getSupplierLot());
+        $detail.addAppliedRule("Lot02-FromSupplierLot");
+        update($detail);
+end
+
+rule "Lottable02 - Generate from Supplier Batch"
+    salience 95
+    when
+        $detail : ReceiptDetailFact(
+            lottable02 == null,
+            supplierBatch != null,
+            !supplierBatch.isEmpty()
+        )
+    then
+        $detail.setLottable02($detail.getSupplierBatch());
+        $detail.addAppliedRule("Lot02-FromSupplierBatch");
+        update($detail);
+end
+
+rule "Lottable02 - Generate receipt-based lot number (ispDefLot2FrRcptDtl)"
+    salience 80
+    when
+        $detail : ReceiptDetailFact(
+            lottable02 == null,
+            receiptKey != null
+        )
+    then
+        String lot02 = $detail.generateReceiptBasedLot();
+        $detail.setLottable02(lot02);
+        $detail.addAppliedRule("Lot02-ReceiptBased");
+        update($detail);
+end
+
+// ══════════════════════════════════════════════════════════════════
+// RULE GROUP 4: Lottable03 Generation (Size/Serial)
+// ══════════════════════════════════════════════════════════════════
+
+rule "Lottable03 - Generate from Size attribute"
+    salience 100
+    when
+        $detail : ReceiptDetailFact(
+            lottable03 == null,
+            size != null,
+            !size.isEmpty()
+        )
+    then
+        $detail.setLottable03($detail.getSize());
+        $detail.addAppliedRule("Lot03-FromSize");
+        update($detail);
+end
+
+// ══════════════════════════════════════════════════════════════════
+// RULE GROUP 5: Lottable04 Generation (Expiry Date)
+// ══════════════════════════════════════════════════════════════════
+
+rule "Lottable04 - Generate from Expiry Date"
+    salience 100
+    when
+        $detail : ReceiptDetailFact(
+            lottable04 == null,
+            expiryDate != null
+        )
+    then
+        String dateStr = $detail.getExpiryDate().format(DateTimeFormatter.ISO_LOCAL_DATE);
+        $detail.setLottable04(dateStr);
+        $detail.addAppliedRule("Lot04-FromExpiryDate");
+        update($detail);
+end
+
+rule "Lottable04 - Calculate expiry from manufacture date and shelf life"
+    salience 90
+    when
+        $detail : ReceiptDetailFact(
+            lottable04 == null,
+            expiryDate == null,
+            manufactureDate != null,
+            shelfLifeDays != null,
+            shelfLifeDays > 0
+        )
+    then
+        LocalDate calculatedExpiry = $detail.getManufactureDate().plusDays($detail.getShelfLifeDays());
+        $detail.setExpiryDate(calculatedExpiry);
+        String dateStr = calculatedExpiry.format(DateTimeFormatter.ISO_LOCAL_DATE);
+        $detail.setLottable04(dateStr);
+        $detail.addAppliedRule("Lot04-CalculatedExpiry");
+        update($detail);
+end
+
+// ══════════════════════════════════════════════════════════════════
+// RULE GROUP 6: Lottable05 Generation (Manufacture Date)
+// ══════════════════════════════════════════════════════════════════
+
+rule "Lottable05 - Generate from Manufacture Date"
+    salience 100
+    when
+        $detail : ReceiptDetailFact(
+            lottable05 == null,
+            manufactureDate != null
+        )
+    then
+        String dateStr = $detail.getManufactureDate().format(DateTimeFormatter.ISO_LOCAL_DATE);
+        $detail.setLottable05(dateStr);
+        $detail.addAppliedRule("Lot05-FromMfgDate");
+        update($detail);
+end
+
+// ══════════════════════════════════════════════════════════════════
+// RULE GROUP 7: Lottable06 Generation (Country of Origin)
+// ══════════════════════════════════════════════════════════════════
+
+rule "Lottable06 - Generate from Country of Origin"
+    salience 100
+    when
+        $detail : ReceiptDetailFact(
+            lottable06 == null,
+            countryOfOrigin != null,
+            !countryOfOrigin.isEmpty()
+        )
+    then
+        $detail.setLottable06($detail.getCountryOfOrigin());
+        $detail.addAppliedRule("Lot06-FromCountryOfOrigin");
+        update($detail);
+end
+
+// ══════════════════════════════════════════════════════════════════
+// RULE GROUP 8: Lottable07 Generation (Color)
+// ══════════════════════════════════════════════════════════════════
+
+rule "Lottable07 - Generate from Color attribute"
+    salience 100
+    when
+        $detail : ReceiptDetailFact(
+            lottable07 == null,
+            color != null,
+            !color.isEmpty()
+        )
+    then
+        $detail.setLottable07($detail.getColor());
+        $detail.addAppliedRule("Lot07-FromColor");
+        update($detail);
+end
+
+// ══════════════════════════════════════════════════════════════════
+// RULE GROUP 9: Lottable08 Generation (Customs Reference)
+// ══════════════════════════════════════════════════════════════════
+
+rule "Lottable08 - Generate from Customs Reference"
+    salience 100
+    when
+        $detail : ReceiptDetailFact(
+            lottable08 == null,
+            customsReference != null,
+            !customsReference.isEmpty()
+        )
+    then
+        $detail.setLottable08($detail.getCustomsReference());
+        $detail.addAppliedRule("Lot08-FromCustomsRef");
+        update($detail);
+end
+
+// ══════════════════════════════════════════════════════════════════
+// RULE GROUP 10: Validation Rules
+// ══════════════════════════════════════════════════════════════════
+
+rule "Validate - Lottable01 required for apparel"
+    salience 50
+    when
+        $detail : ReceiptDetailFact(
+            region == "APPAREL" || storerKey == "NIKE" || storerKey == "HM",
+            lottable01 == null || lottable01.isEmpty()
+        )
+    then
+        $detail.markInvalid("Lottable01 (Style) is required for apparel items");
+        update($detail);
+end
+
+rule "Validate - Expiry date must be in future for food items"
+    salience 50
+    when
+        $detail : ReceiptDetailFact(
+            region == "FOOD" || storerKey == "MONDELEZ" || storerKey == "UNILEVER",
+            expiryDate != null,
+            expiryDate.isBefore(LocalDate.now())
+        )
+    then
+        $detail.markInvalid("Expiry date must be in the future for food items");
+        update($detail);
+end
+
+// ══════════════════════════════════════════════════════════════════
+// RULE GROUP 11: Finalization
+// ══════════════════════════════════════════════════════════════════
+
+rule "Mark lottables as computed"
+    salience 1
+    when
+        $detail : ReceiptDetailFact(lottablesComputed == false)
+    then
+        $detail.setLottablesComputed(true);
+        update($detail);
+end

@@ -1,0 +1,31 @@
+# Standard client configuration (default)
+clientCode: STANDARD
+clientName: Standard
+enabled: true
+
+rules:
+  shelfLifeValidationEnabled: false
+  minShelfLifeDays: 0
+  requireLottable03: false
+  requireCustomsCode: false
+  allowPartialShipment: true
+  requiredFields:
+    - storerKey
+    - facility
+    - sku
+  blockedStatuses:
+    - "8"
+    - "9"
+
+fieldMappings:
+  headerMappings: {}
+  detailMappings: {}
+  lottableMappings: {}
+
+plugins:
+  enabledPlugins:
+    - StandardPrePopulatePlugin
+  pluginSettings: {}
+
+flags:
+  enableDualWrite: false

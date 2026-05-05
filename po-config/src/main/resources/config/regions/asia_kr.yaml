@@ -1,0 +1,38 @@
+# Korea region configuration
+rules:
+  shelfLifeValidationEnabled: true
+  minShelfLifeDays: 30
+  requireLottable03: true
+  requireCustomsCode: true
+  allowPartialShipment: true
+  requiredFields:
+    - storerKey
+    - facility
+    - sku
+    - lottable03
+  blockedStatuses:
+    - "8"
+    - "9"
+
+fieldMappings:
+  lottableMappings:
+    lottable03: customsCode
+    lottable04: importPermitNo
+
+plugins:
+  enabledPlugins:
+    - StandardPrePopulatePlugin
+    - NikeKRPrePopulatePlugin
+  pluginSettings:
+    NikeKRPrePopulatePlugin:
+      validateCustoms: true
+      requireOrderMatch: true
+
+flags:
+  enableDualWrite: false
+  requireCustomsClearance: true
+
+allowedFacilities:
+  - KR01
+  - KR02
+  - KR03

@@ -1,0 +1,193 @@
+package com.wms.po.rules;
+
+import com.wms.po.rules.model.POValidationFact;
+import com.wms.po.rules.model.POValidationFact.POLineValidationFact;
+import java.time.LocalDate;
+
+// Agenda groups for rule ordering
+declare POValidationFact
+    @role(fact)
+end
+
+// ============== Header Validation Rules ==============
+
+rule "PO must have storer key"
+    agenda-group "header-validation"
+    salience 100
+    when
+        $po : POValidationFact(storerKey == null || storerKey.isEmpty())
+    then
+        $po.addError("Storer key is required");
+        update($po);
+end
+
+rule "PO must have facility"
+    agenda-group "header-validation"
+    salience 100
+    when
+        $po : POValidationFact(facility == null || facility.isEmpty())
+    then
+        $po.addError("Facility is required");
+        update($po);
+end
+
+rule "PO date cannot be in future"
+    agenda-group "header-validation"
+    salience 90
+    when
+        $po : POValidationFact(poDate != null, poDate.isAfter(LocalDate.now()))
+    then
+        $po.addError("PO date cannot be in the future");
+        update($po);
+end
+
+rule "Expected receipt date must be after PO date"
+    agenda-group "header-validation"
+    salience 90
+    when
+        $po : POValidationFact(
+            poDate != null,
+            expectedReceiptDate != null,
+            expectedReceiptDate.isBefore(poDate)
+        )
+    then
+        $po.addError("Expected receipt date must be after PO date");
+        update($po);
+end
+
+rule "PO must have at least one line"
+    agenda-group "header-validation"
+    salience 80
+    when
+        $po : POValidationFact(lines == null || lines.isEmpty())
+    then
+        $po.addError("PO must have at least one line item");
+        update($po);
+end
+
+// ============== Line Validation Rules ==============
+
+rule "Line must have SKU"
+    agenda-group "line-validation"
+    salience 100
+    when
+        $line : POLineValidationFact(sku == null || sku.isEmpty())
+    then
+        $line.addError("SKU is required");
+        update($line);
+end
+
+rule "Line quantity must be positive"
+    agenda-group "line-validation"
+    salience 100
+    when
+        $line : POLineValidationFact(qtyOrdered == null || qtyOrdered.compareTo(java.math.BigDecimal.ZERO) <= 0)
+    then
+        $line.addError("Ordered quantity must be greater than zero");
+        update($line);
+end
+
+rule "Received quantity cannot exceed ordered"
+    agenda-group "line-validation"
+    salience 90
+    when
+        $line : POLineValidationFact(
+            qtyOrdered != null,
+            qtyReceived != null,
+            qtyReceived.compareTo(qtyOrdered) > 0
+        )
+    then
+        $line.addError("Received quantity cannot exceed ordered quantity");
+        update($line);
+end
+
+// ============== Region-Specific Rules ==============
+
+rule "Korea customs reference required"
+    agenda-group "region-validation"
+    salience 80
+    when
+        $po : POValidationFact(region == "ASIA-KR")
+        $line : POLineValidationFact(
+            lottables != null,
+            lottables["CUSTOMS_REF"] == null || lottables["CUSTOMS_REF"].isEmpty()
+        )
+    then
+        $line.addError("Customs reference is required for Korea region");
+        update($line);
+end
+
+rule "India GST invoice required"
+    agenda-group "region-validation"
+    salience 80
+    when
+        $po : POValidationFact(region == "ASIA-IN")
+        $line : POLineValidationFact(
+            lottables != null,
+            lottables["GST_INVOICE"] == null || lottables["GST_INVOICE"].isEmpty()
+        )
+    then
+        $line.addError("GST invoice number is required for India region");
+        update($line);
+end
+
+// ============== Client-Specific Rules ==============
+
+rule "Nike style-color format validation"
+    agenda-group "client-validation"
+    salience 80
+    when
+        $po : POValidationFact(client == "NIKE")
+        $line : POLineValidationFact(
+            lottables != null,
+            lottables["STYLE_COLOR"] != null,
+            !lottables["STYLE_COLOR"].matches("[A-Z]{2}[0-9]{6}-[0-9]{3}")
+        )
+    then
+        $line.addError("Nike style-color must match format XX999999-999");
+        update($line);
+end
+
+rule "H&M article number validation"
+    agenda-group "client-validation"
+    salience 80
+    when
+        $po : POValidationFact(client == "HM")
+        $line : POLineValidationFact(
+            lottables != null,
+            lottables["ARTICLE_NUMBER"] != null,
+            !lottables["ARTICLE_NUMBER"].matches("[0-9]{7}")
+        )
+    then
+        $line.addError("H&M article number must be 7 digits");
+        update($line);
+end
+
+// ============== Compute Rules ==============
+
+rule "Calculate total quantity"
+    agenda-group "compute"
+    salience 50
+    when
+        $po : POValidationFact(lines != null, lines.size() > 0)
+    then
+        java.math.BigDecimal total = $po.getLines().stream()
+            .map(l -> l.getQtyOrdered() != null ? l.getQtyOrdered() : java.math.BigDecimal.ZERO)
+            .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+        $po.setTotalQuantity(total);
+        $po.setLineCount($po.getLines().size());
+        update($po);
+end
+
+rule "Propagate line errors to PO"
+    agenda-group "finalize"
+    salience 10
+    when
+        $po : POValidationFact()
+        $line : POLineValidationFact(valid == false, errors.size() > 0)
+    then
+        for (String error : $line.getErrors()) {
+            $po.addError("Line [" + $line.getPoLineKey() + "]: " + error);
+        }
+        update($po);
+end

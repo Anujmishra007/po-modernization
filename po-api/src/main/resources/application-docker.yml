@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: po-modernization-docker
+
+  datasource:
+    url: jdbc:h2:file:/data/podb;DB_CLOSE_DELAY=-1;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+server:
+  port: 8080
+
+# Temporal Configuration - Docker network
+temporal:
+  server:
+    host: ${TEMPORAL_SERVER_HOST:temporal}
+    port: ${TEMPORAL_SERVER_PORT:7233}
+  namespace: default
+
+# Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+# Legacy WMS disabled in Docker
+legacy:
+  wms:
+    enabled: false
+
+# Logging Configuration
+logging:
+  level:
+    com.wms.po: INFO
+    io.temporal: INFO
+    org.springframework: WARN

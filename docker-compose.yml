@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  # PostgreSQL for Temporal
+  postgres:
+    image: postgres:15-alpine
+    container_name: temporal-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=temporal
+      - POSTGRES_PASSWORD=temporal
+      - POSTGRES_DB=temporal
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - po-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # PostgreSQL for Application Data
+  app-postgres:
+    image: postgres:15-alpine
+    container_name: po-app-postgres
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=wms
+      - POSTGRES_PASSWORD=wms123
+      - POSTGRES_DB=po_modernization
+    volumes:
+      - app-postgres-data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d
+    networks:
+      - po-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wms -d po_modernization"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Temporal Server
+  temporal:
+    image: temporalio/auto-setup:1.22.3
+    container_name: temporal-server
+    ports:
+      - "7233:7233"
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - po-network
+
+  # Temporal Web UI
+  temporal-ui:
+    image: temporalio/ui:2.21.0
+    container_name: temporal-ui
+    ports:
+      - "8081:8080"
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    depends_on:
+      - temporal
+    networks:
+      - po-network
+
+networks:
+  po-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  app-postgres-data:

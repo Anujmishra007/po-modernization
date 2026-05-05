@@ -1,0 +1,36 @@
+{
+  "poKey": "PO-TEST-001",
+  "storerKey": "STORER001",
+  "facility": "DC01",
+  "externPoKey": "EXT-PO-001",
+  "supplierKey": "SUPPLIER001",
+  "poType": "STANDARD",
+  "status": "0",
+  "poDate": "2024-01-15",
+  "expectedReceiptDate": "2024-01-25",
+  "lines": [
+    {
+      "poLineKey": "LINE001",
+      "sku": "SKU-001",
+      "qtyOrdered": 100,
+      "unitPrice": 25.50,
+      "packKey": "EACH",
+      "uom": "EA",
+      "lottables": {
+        "LOT_NUMBER": "LOT2024001",
+        "EXPIRY_DATE": "2025-12-31"
+      }
+    },
+    {
+      "poLineKey": "LINE002",
+      "sku": "SKU-002",
+      "qtyOrdered": 50,
+      "unitPrice": 15.00,
+      "packKey": "CASE",
+      "uom": "CS",
+      "lottables": {
+        "LOT_NUMBER": "LOT2024002"
+      }
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+version: '3.8'
+
+# Minimal local development setup - just Temporal
+# Run: docker-compose -f docker-compose-local.yml up -d
+
+services:
+  # Temporal Server (all-in-one with SQLite)
+  temporal:
+    image: temporalio/auto-setup:1.22.3
+    container_name: temporal-local
+    ports:
+      - "7233:7233"
+    environment:
+      - DB=sqlite
+      - SKIP_DEFAULT_NAMESPACE_CREATION=false
+    networks:
+      - po-local-network
+
+  # Temporal Web UI
+  temporal-ui:
+    image: temporalio/ui:2.21.0
+    container_name: temporal-ui-local
+    ports:
+      - "8081:8080"
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    depends_on:
+      - temporal
+    networks:
+      - po-local-network
+
+networks:
+  po-local-network:
+    driver: bridge

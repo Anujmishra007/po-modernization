@@ -1,0 +1,35 @@
+# Nike client configuration
+clientCode: NIKE
+clientName: Nike
+enabled: true
+
+rules:
+  shelfLifeValidationEnabled: true
+  minShelfLifeDays: 90
+  requireLottable03: true
+  allowPartialShipment: false
+  requiredFields:
+    - storerKey
+    - facility
+    - sku
+    - lottable01
+    - lottable03
+
+fieldMappings:
+  detailMappings:
+    lottable01: styleCode
+    lottable02: colorCode
+    lottable03: sizeCode
+
+plugins:
+  enabledPlugins:
+    - StandardPrePopulatePlugin
+    - NikeKRPrePopulatePlugin
+  pluginSettings:
+    NikeKRPrePopulatePlugin:
+      validateStyle: true
+      requireOrderMatch: true
+
+flags:
+  enableDualWrite: false
+  requireStyleCode: true

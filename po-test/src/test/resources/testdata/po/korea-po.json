@@ -1,0 +1,30 @@
+{
+  "poKey": "PO-KR-001",
+  "storerKey": "KOREA_STORER",
+  "facility": "KR01",
+  "externPoKey": "KR-EXT-001",
+  "supplierKey": "KR-SUPPLIER",
+  "poType": "IMPORT",
+  "status": "0",
+  "poDate": "2024-01-15",
+  "expectedReceiptDate": "2024-01-30",
+  "region": "ASIA-KR",
+  "lines": [
+    {
+      "poLineKey": "KR-LINE001",
+      "sku": "KR-SKU-001",
+      "qtyOrdered": 200,
+      "unitPrice": 50000,
+      "packKey": "EACH",
+      "uom": "EA",
+      "lottables": {
+        "LOT_NUMBER": "KRLOT2024001",
+        "KC_MARK": "KC-12345",
+        "CUSTOMS_REF": "CUSTOMS-2024-001",
+        "EXPIRY_DATE": "2025-06-30",
+        "IMPORT_DATE": "2024-01-20",
+        "COUNTRY_OF_ORIGIN": "CN"
+      }
+    }
+  ]
+}

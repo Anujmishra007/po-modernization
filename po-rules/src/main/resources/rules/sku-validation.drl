@@ -1,0 +1,89 @@
+package com.wms.po.rules;
+
+import com.wms.po.rules.model.SKUEntity;
+import java.math.BigDecimal;
+
+// ============== SKU Validation Rules ==============
+
+rule "SKU must have valid weight"
+    salience 100
+    when
+        $sku : SKUEntity(weight != null, weight.compareTo(BigDecimal.ZERO) < 0)
+    then
+        $sku.markInvalid("Weight cannot be negative");
+        update($sku);
+end
+
+rule "SKU dimensions must be positive"
+    salience 100
+    when
+        $sku : SKUEntity(
+            (length != null && length.compareTo(BigDecimal.ZERO) <= 0) ||
+            (width != null && width.compareTo(BigDecimal.ZERO) <= 0) ||
+            (height != null && height.compareTo(BigDecimal.ZERO) <= 0)
+        )
+    then
+        $sku.markInvalid("Dimensions must be positive values");
+        update($sku);
+end
+
+rule "Calculate cube from dimensions"
+    salience 90
+    when
+        $sku : SKUEntity(
+            length != null,
+            width != null,
+            height != null,
+            cube == null
+        )
+    then
+        BigDecimal calculatedCube = $sku.getLength()
+            .multiply($sku.getWidth())
+            .multiply($sku.getHeight());
+        $sku.setCube(calculatedCube);
+        update($sku);
+end
+
+rule "Hazmat SKU requires special handling"
+    salience 80
+    when
+        $sku : SKUEntity(hazmatCode != null, !hazmatCode.isEmpty())
+    then
+        $sku.setComputedStorageType("HAZMAT");
+        update($sku);
+end
+
+rule "Serial tracked requires storage type"
+    salience 80
+    when
+        $sku : SKUEntity(serialTracked == true, computedStorageType == null)
+    then
+        $sku.setComputedStorageType("SERIAL_CONTROLLED");
+        update($sku);
+end
+
+rule "Standard storage type default"
+    salience 10
+    when
+        $sku : SKUEntity(computedStorageType == null)
+    then
+        $sku.setComputedStorageType("STANDARD");
+        update($sku);
+end
+
+rule "Calculate pallet configuration"
+    salience 70
+    when
+        $sku : SKUEntity(
+            cube != null,
+            cube.compareTo(BigDecimal.ZERO) > 0,
+            computedPalletTieHigh == null
+        )
+    then
+        // Simple calculation based on cube
+        BigDecimal palletCube = new BigDecimal("1.2"); // 1.2 cubic meters per pallet
+        int tieHigh = palletCube.divide($sku.getCube(), 0, java.math.RoundingMode.DOWN).intValue();
+        tieHigh = Math.max(1, Math.min(tieHigh, 12)); // Clamp between 1 and 12
+        $sku.setComputedPalletTieHigh(tieHigh);
+        update($sku);
+end
