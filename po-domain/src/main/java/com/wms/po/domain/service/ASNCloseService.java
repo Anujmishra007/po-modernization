@@ -124,8 +124,8 @@ public class ASNCloseService {
             }
 
         } catch (DataAccessException e) {
-            log.error("Failed to close receipt {}: {} (legacy error 68923)", receiptKey, e.getMessage(), e);
-            throw new BusinessException(ErrorCode.FINALIZE_CLOSE_RECEIPT_FAILED,
+            log.error("Failed to close receipt {}: {} (legacy error 68906)", receiptKey, e.getMessage(), e);
+            throw new BusinessException(ErrorCode.RECEIPT_CLOSE_FAILED,
                 "Failed to close receipt: " + e.getMessage(), e)
                 .withDetail("receiptKey", receiptKey);
         }
