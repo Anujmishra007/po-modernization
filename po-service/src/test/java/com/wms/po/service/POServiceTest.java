@@ -213,9 +213,16 @@ class POServiceTest {
                 .storerKey("STORER001")
                 .build();
 
+            // Mock getPO query
             when(jdbcTemplate.query(anyString(), any(RowMapper.class), eq("PO001")))
                 .thenReturn(List.of(po));
             when(variationResolver.resolve("DC01", "STORER001")).thenReturn(context);
+
+            // Mock delete operations to return rows affected
+            when(jdbcTemplate.update(contains("DELETE FROM ORDERDETAIL"), eq("PO001")))
+                .thenReturn(3); // 3 details deleted
+            when(jdbcTemplate.update(contains("DELETE FROM ORDERS"), eq("PO001")))
+                .thenReturn(1); // 1 header deleted
 
             // When
             poService.deletePO("PO001");
@@ -257,6 +264,10 @@ class POServiceTest {
         @Test
         @DisplayName("Should update PO status successfully")
         void shouldUpdatePOStatusSuccessfully() {
+            // Given - mock the update to return 1 row affected
+            when(jdbcTemplate.update(contains("UPDATE ORDERS SET STATUS"), eq("5"), eq("testuser"), eq("PO001")))
+                .thenReturn(1);
+
             // When
             poService.updatePOStatus("PO001", "5", "testuser");
 
