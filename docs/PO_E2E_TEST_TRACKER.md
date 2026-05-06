@@ -58,7 +58,7 @@
 │  ├── F7  Trade Return:        ██████████████████░░ 27/15  (180%) 🟢         │
 │  ├── F8  Cancellation:        ██████████████████░░ 18/18  (100%) 🟢         │
 │  ├── F9  Archival:            ██████████████████░░ 12/12  (100%) 🟢         │
-│  └── F10 Compensation:        ██████████████████░░ 70/30  (233%) 🟢         │
+│  └── F10 Compensation:        ██████████████████░░ 33/30  (110%) 🟢         │
 │                                                                              │
 │  By Layer:                                                                   │
 │  ├── Layer 1 (Karate E2E):    ██████████████████░░ 239/180 (133%) 🟢        │
@@ -238,40 +238,50 @@
 | F8 | PO Cancellation | 18 | 18 | `f8-cancellation/cancellation.feature` | ✅ Done |
 | F9 | Archival/Purge | 12 | 12 | `f9-archival/archival.feature` | ✅ Done |
 
-### F10: Compensation/Saga (7/30 = 23%)
+### F10: Compensation/Saga (33/33 = 100%) 🟢
+
+**Feature Files:**
+- `f10-compensation/saga-compensation.feature` (7 tests - core scenarios)
+- `f10-compensation/saga-compensation-populate.feature` (6 tests - populate failures)
+- `f10-compensation/saga-compensation-finalize.feature` (7 tests - finalize failures)
+- `f10-compensation/saga-compensation-infrastructure.feature` (6 tests - infra failures)
+- `f10-compensation/saga-compensation-crossflow.feature` (7 tests - cross-flow scenarios)
 
 | TC ID | Test Case | Fail Point | Status | Feature File |
 |-------|-----------|------------|--------|--------------|
-| COMP-01 | Populate: Header created, detail fails | Step 3 | ✅ Done | `f10-compensation/saga-compensation.feature` |
-| COMP-02 | Populate: Details created, reservation fails | Step 4 | ⏳ Pending | - |
-| COMP-03 | Populate: Reservation done, allocation fails | Step 5 | ⏳ Pending | - |
-| COMP-04 | Populate: Legacy sync fails | Step 6 | ⏳ Pending | - |
-| COMP-05 | Populate: Workflow timeout | Any | ⏳ Pending | - |
-| COMP-06 | Populate: User cancellation | Any | ⏳ Pending | - |
-| COMP-07 | Populate: Idempotent retry | N/A | ⏳ Pending | - |
-| COMP-08 | Finalize: Status update fails | Step 3 | ⏳ Pending | - |
-| COMP-09 | Finalize: Inventory posting fails | Step 4 | ✅ Done | `f10-compensation/saga-compensation.feature` |
-| COMP-10 | Finalize: Hold apply fails | Step 5 | ⏳ Pending | - |
-| COMP-11 | Finalize: PO qty update fails | Step 6 | ⏳ Pending | - |
-| COMP-12 | Finalize: Putaway release fails | Step 7 | ⏳ Pending | - |
-| COMP-13 | Finalize: Workflow timeout | Any | ✅ Done | `f10-compensation/saga-compensation.feature` |
-| COMP-14 | Finalize: User cancellation | Any | ⏳ Pending | - |
-| COMP-15 | Concurrent populate same PO | Step 2 | ✅ Done | `f10-compensation/saga-compensation.feature` |
-| COMP-16 | Database deadlock | Any | ⏳ Pending | - |
-| COMP-17 | Kafka unavailable | Step 7 | ⏳ Pending | - |
-| COMP-18 | Temporal worker crash | Any | ✅ Done | `f10-compensation/saga-compensation.feature` |
-| COMP-19 | Partial compensation failure | Step 3 comp | ⏳ Pending | - |
-| COMP-20 | Double compensation prevention | Any | ✅ Done | `f10-compensation/saga-compensation.feature` |
-| COMP-21 | XDock allocation rollback | F4 | ⏳ Pending | - |
-| COMP-22 | Lottable rule failure compensation | F5 | ⏳ Pending | - |
-| COMP-23 | Putaway task rollback | F6 | ⏳ Pending | - |
-| COMP-24 | Plugin failure compensation | F2/F3 | ⏳ Pending | - |
-| COMP-25 | Job failure compensation | Job | ⏳ Pending | - |
-| COMP-26 | Full saga replay test | All | ✅ Done | `f10-compensation/saga-compensation.feature` |
-| COMP-27 | Cascading compensation | Multi-step | ⏳ Pending | - |
-| COMP-28 | Compensation order verification | All | ⏳ Pending | - |
-| COMP-29 | Audit trail after compensation | All | ⏳ Pending | - |
-| COMP-30 | Manual intervention alert | Any | ⏳ Pending | - |
+| COMP-01 | Populate: Header created, detail fails | Step 3 | ✅ Done | `saga-compensation.feature` |
+| COMP-02 | Populate: Details created, reservation fails | Step 4 | ✅ Done | `saga-compensation-populate.feature` |
+| COMP-03 | Populate: Reservation done, allocation fails | Step 5 | ✅ Done | `saga-compensation-populate.feature` |
+| COMP-04 | Populate: Legacy sync fails | Step 6 | ✅ Done | `saga-compensation-populate.feature` |
+| COMP-05 | Populate: Workflow timeout | Any | ✅ Done | `saga-compensation-populate.feature` |
+| COMP-06 | Populate: User cancellation | Any | ✅ Done | `saga-compensation-populate.feature` |
+| COMP-07 | Populate: Idempotent retry | N/A | ✅ Done | `saga-compensation-populate.feature` |
+| COMP-08 | Finalize: Status update fails | Step 3 | ✅ Done | `saga-compensation-finalize.feature` |
+| COMP-09 | Finalize: Inventory posting fails | Step 4 | ✅ Done | `saga-compensation.feature` |
+| COMP-10 | Finalize: Hold apply fails | Step 5 | ✅ Done | `saga-compensation-finalize.feature` |
+| COMP-11 | Finalize: PO qty update fails | Step 6 | ✅ Done | `saga-compensation-finalize.feature` |
+| COMP-12 | Finalize: Putaway release fails | Step 7 | ✅ Done | `saga-compensation-finalize.feature` |
+| COMP-13 | Finalize: Workflow timeout | Any | ✅ Done | `saga-compensation.feature` |
+| COMP-14 | Finalize: User cancellation | Any | ✅ Done | `saga-compensation-finalize.feature` |
+| COMP-15 | Concurrent populate same PO | Step 2 | ✅ Done | `saga-compensation.feature` |
+| COMP-16 | Database deadlock | Any | ✅ Done | `saga-compensation-infrastructure.feature` |
+| COMP-17 | Kafka unavailable | Step 7 | ✅ Done | `saga-compensation-infrastructure.feature` |
+| COMP-18 | Temporal worker crash | Any | ✅ Done | `saga-compensation.feature` |
+| COMP-19 | Partial compensation failure | Step 3 comp | ✅ Done | `saga-compensation-infrastructure.feature` |
+| COMP-20 | Double compensation prevention | Any | ✅ Done | `saga-compensation.feature` |
+| COMP-21 | XDock allocation rollback | F4 | ✅ Done | `saga-compensation-crossflow.feature` |
+| COMP-22 | Lottable rule failure compensation | F5 | ✅ Done | `saga-compensation-crossflow.feature` |
+| COMP-23 | Putaway task rollback | F6 | ✅ Done | `saga-compensation-crossflow.feature` |
+| COMP-24 | Plugin failure compensation | F2/F3 | ✅ Done | `saga-compensation-crossflow.feature` |
+| COMP-25 | Job failure compensation | Job | ✅ Done | `saga-compensation-crossflow.feature` |
+| COMP-26 | Full saga replay test | All | ✅ Done | `saga-compensation.feature` |
+| COMP-27 | Cascading compensation | Multi-step | ✅ Done | `saga-compensation-crossflow.feature` |
+| COMP-28 | Compensation order verification | All | ✅ Done | `saga-compensation-finalize.feature` |
+| COMP-29 | Audit trail after compensation | All | ✅ Done | `saga-compensation-finalize.feature` |
+| COMP-30 | Manual intervention alert | Any | ✅ Done | `saga-compensation-infrastructure.feature` |
+| COMP-31 | Network partition recovery | Any | ✅ Done | `saga-compensation-infrastructure.feature` |
+| COMP-32 | Out of memory handling | Any | ✅ Done | `saga-compensation-infrastructure.feature` |
+| COMP-33 | E2E saga with all participants | All | ✅ Done | `saga-compensation-crossflow.feature` |
 
 ---
 
