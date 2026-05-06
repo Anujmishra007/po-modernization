@@ -65,17 +65,19 @@ jobs:
 
       - name: Run Unit Tests (Layer 2)
         run: |
-          # Only run tests on modules that have test directories
+          # Build dependencies first (-am), then run tests
           mvn test -B \
             -pl po-service,po-rules \
+            -am \
             -DskipITs \
             --fail-at-end || true
 
       - name: Run Workflow Tests (Layer 3)
         run: |
-          # Workflow tests are in po-test module
+          # Build dependencies first (-am), then run workflow tests
           mvn test -B \
             -pl po-test \
+            -am \
             -Dtest="**/*WorkflowTest.java" \
             --fail-at-end || true
 
@@ -196,6 +198,7 @@ jobs:
         run: |
           mvn test -B \
             -pl po-test \
+            -am \
             -Dtest=KarateTestRunner \
             -Dkarate.env=docker \
             -Dkarate.threads=${{ env.KARATE_THREADS }} \

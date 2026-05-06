@@ -73,9 +73,10 @@ jobs:
 
       - name: Run Unit Tests
         run: |
-          # Only run tests on modules that have test directories
+          # Build dependencies first (-am), then run tests on modules with tests
           mvn test -B \
             -pl po-service,po-rules \
+            -am \
             -DskipITs \
             --fail-at-end || true
 
@@ -109,9 +110,10 @@ jobs:
 
       - name: Run Workflow Tests
         run: |
-          # Workflow tests are in po-test module
+          # Build dependencies first (-am), then run workflow tests
           mvn test -B \
             -pl po-test \
+            -am \
             -Dtest="**/*WorkflowTest.java,**/*CompensationTest.java" \
             --fail-at-end || true
 
@@ -146,8 +148,10 @@ jobs:
 
       - name: Run Integration Tests
         run: |
+          # Build dependencies first (-am), then run integration tests
           mvn verify -B \
             -pl po-test \
+            -am \
             -DskipUTs \
             -Dtest="**/*IntegrationTest.java" \
             --fail-at-end || true

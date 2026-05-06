@@ -63,9 +63,10 @@ jobs:
 
       - name: Run Tests with Coverage
         run: |
-          # Only run tests on modules that have test directories
+          # Build dependencies first (-am), then run tests with coverage
           mvn test jacoco:report -B \
             -pl po-service,po-rules,po-test \
+            -am \
             --fail-at-end || true
 
       - name: Upload Coverage to Codecov
