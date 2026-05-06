@@ -26,6 +26,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -58,6 +59,7 @@ jobs:
     name: Unit Tests
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -71,8 +73,9 @@ jobs:
 
       - name: Run Unit Tests
         run: |
+          # Only run tests on modules that have test directories
           mvn test -B \
-            -pl po-domain,po-service,po-activity,po-plugin,po-rules,po-variation \
+            -pl po-service,po-rules \
             -DskipITs \
             --fail-at-end || true
 
@@ -92,6 +95,7 @@ jobs:
     name: Workflow Tests
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -105,8 +109,9 @@ jobs:
 
       - name: Run Workflow Tests
         run: |
+          # Workflow tests are in po-test module
           mvn test -B \
-            -pl po-workflow \
+            -pl po-test \
             -Dtest="**/*WorkflowTest.java,**/*CompensationTest.java" \
             --fail-at-end || true
 
@@ -126,6 +131,7 @@ jobs:
     name: Integration Tests
     needs: [unit-tests, workflow-tests]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: always() && needs.build.result == 'success'
     steps:
       - name: Checkout code

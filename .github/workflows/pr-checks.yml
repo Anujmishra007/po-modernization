@@ -24,6 +24,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -48,6 +49,7 @@ jobs:
     name: Tests & Coverage
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -61,8 +63,9 @@ jobs:
 
       - name: Run Tests with Coverage
         run: |
+          # Only run tests on modules that have test directories
           mvn test jacoco:report -B \
-            -pl po-domain,po-service,po-activity,po-workflow \
+            -pl po-service,po-rules,po-test \
             --fail-at-end || true
 
       - name: Upload Coverage to Codecov
@@ -88,6 +91,7 @@ jobs:
   code-quality:
     name: Code Quality
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

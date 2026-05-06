@@ -48,6 +48,7 @@ jobs:
   pre-e2e-tests:
     name: Pre-E2E Tests (Layer 2 & 3)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -64,15 +65,17 @@ jobs:
 
       - name: Run Unit Tests (Layer 2)
         run: |
+          # Only run tests on modules that have test directories
           mvn test -B \
-            -pl po-domain,po-service,po-activity \
+            -pl po-service,po-rules \
             -DskipITs \
             --fail-at-end || true
 
       - name: Run Workflow Tests (Layer 3)
         run: |
+          # Workflow tests are in po-test module
           mvn test -B \
-            -pl po-workflow \
+            -pl po-test \
             -Dtest="**/*WorkflowTest.java" \
             --fail-at-end || true
 
@@ -83,6 +86,7 @@ jobs:
     name: E2E Tests
     needs: pre-e2e-tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
