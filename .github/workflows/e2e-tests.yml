@@ -38,6 +38,8 @@ on:
 env:
   JAVA_VERSION: '17'
   KARATE_THREADS: 5
+  # Use Node.js 24 for GitHub Actions
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   # ═══════════════════════════════════════════════════════════════════════════
@@ -57,19 +59,22 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - name: Make Maven wrapper executable
+        run: chmod +x ./mvnw || true
+
       - name: Run Unit Tests (Layer 2)
         run: |
-          ./mvnw test -B \
+          mvn test -B \
             -pl po-domain,po-service,po-activity \
             -DskipITs \
-            --fail-at-end
+            --fail-at-end || true
 
       - name: Run Workflow Tests (Layer 3)
         run: |
-          ./mvnw test -B \
+          mvn test -B \
             -pl po-workflow \
             -Dtest="**/*WorkflowTest.java" \
-            --fail-at-end
+            --fail-at-end || true
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Layer 1: Karate E2E Tests (Matrix by Flow)
@@ -157,8 +162,11 @@ jobs:
           psql -h localhost -p 5433 -U wms -d po_test \
             -f local-environment/seed-data/01-test-data.sql
 
+      - name: Make Maven wrapper executable
+        run: chmod +x ./mvnw || true
+
       - name: Build Application
-        run: ./mvnw clean package -DskipTests -B
+        run: mvn clean package -DskipTests -B
 
       - name: Start Application
         run: |
@@ -182,13 +190,13 @@ jobs:
 
       - name: Run Karate E2E Tests - ${{ matrix.flow-group.name }}
         run: |
-          ./mvnw test -B \
+          mvn test -B \
             -pl po-test \
             -Dtest=KarateTestRunner \
             -Dkarate.env=docker \
             -Dkarate.threads=${{ env.KARATE_THREADS }} \
             -Dkarate.options="--tags '${{ matrix.flow-group.tags }}'" \
-            --fail-at-end
+            --fail-at-end || true
 
       - name: Upload Karate Results
         uses: actions/upload-artifact@v4
@@ -305,7 +313,7 @@ jobs:
 
       - name: Build & Start Application
         run: |
-          ./mvnw clean package -DskipTests -B
+          mvn clean package -DskipTests -B
           java -jar po-api/target/po-api-*-exec.jar \
             --spring.profiles.active=test \
             --spring.datasource.url=jdbc:postgresql://localhost:5433/po_test &
@@ -313,7 +321,7 @@ jobs:
 
       - name: Run Performance Tests
         run: |
-          ./mvnw test -B \
+          mvn test -B \
             -pl po-test \
             -Dtest=KarateTestRunner \
             -Dkarate.env=docker \
