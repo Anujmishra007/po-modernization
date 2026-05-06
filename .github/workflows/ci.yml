@@ -1,0 +1,171 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# PO Modernization - CI Pipeline
+# ═══════════════════════════════════════════════════════════════════════════
+# Triggers: Push to main/develop, Pull Requests
+# Runs: Build, Unit Tests, Integration Tests
+# ═══════════════════════════════════════════════════════════════════════════
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop, 'feature/**', 'po-modernization-poc-*']
+  pull_request:
+    branches: [main, develop]
+
+env:
+  JAVA_VERSION: '17'
+  MAVEN_OPTS: '-Xmx1024m'
+
+jobs:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Build & Compile
+  # ═══════════════════════════════════════════════════════════════════════════
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build with Maven
+        run: ./mvnw clean compile -DskipTests -B
+
+      - name: Cache build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            **/target/classes
+            **/target/generated-sources
+          key: build-${{ github.sha }}
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Layer 2: Unit Tests (JUnit + Mockito)
+  # ═══════════════════════════════════════════════════════════════════════════
+  unit-tests:
+    name: Unit Tests
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run Unit Tests
+        run: |
+          ./mvnw test -B \
+            -pl po-domain,po-service,po-activity,po-plugin,po-rules,po-variation \
+            -DskipITs \
+            -Dtest="**/*Test.java" \
+            --fail-at-end
+
+      - name: Upload Unit Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-test-results
+          path: '**/target/surefire-reports/*.xml'
+          retention-days: 7
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Layer 3: Workflow Tests (Temporal SDK)
+  # ═══════════════════════════════════════════════════════════════════════════
+  workflow-tests:
+    name: Workflow Tests
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run Workflow Tests
+        run: |
+          ./mvnw test -B \
+            -pl po-workflow \
+            -Dtest="**/*WorkflowTest.java,**/*CompensationTest.java" \
+            --fail-at-end
+
+      - name: Upload Workflow Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: workflow-test-results
+          path: 'po-workflow/target/surefire-reports/*.xml'
+          retention-days: 7
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Integration Tests (Spring Boot Test)
+  # ═══════════════════════════════════════════════════════════════════════════
+  integration-tests:
+    name: Integration Tests
+    needs: [unit-tests, workflow-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run Integration Tests
+        run: |
+          ./mvnw verify -B \
+            -pl po-test \
+            -DskipUTs \
+            -Dtest="**/*IntegrationTest.java" \
+            --fail-at-end
+
+      - name: Upload Integration Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-test-results
+          path: 'po-test/target/surefire-reports/*.xml'
+          retention-days: 7
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Test Summary
+  # ═══════════════════════════════════════════════════════════════════════════
+  test-summary:
+    name: Test Summary
+    needs: [unit-tests, workflow-tests, integration-tests]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Download all test results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-test-results'
+          merge-multiple: true
+
+      - name: Publish Test Summary
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: '**/*.xml'
+          check_name: 'Test Results'
+          comment_mode: 'off'

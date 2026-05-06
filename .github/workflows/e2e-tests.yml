@@ -1,0 +1,329 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# PO Modernization - E2E Tests Pipeline (3-Layer Approach)
+# ═══════════════════════════════════════════════════════════════════════════
+# Triggers: Push to main/develop, Nightly schedule
+# Runs: Full E2E test suite with Karate
+# ═══════════════════════════════════════════════════════════════════════════
+
+name: E2E Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'po-api/**'
+      - 'po-service/**'
+      - 'po-workflow/**'
+      - 'po-test/**'
+  schedule:
+    # Nightly at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      flow:
+        description: 'Specific flow to test (F1-F10, or ALL)'
+        required: false
+        default: 'ALL'
+      environment:
+        description: 'Test environment'
+        required: false
+        default: 'docker'
+        type: choice
+        options:
+          - docker
+          - staging
+
+env:
+  JAVA_VERSION: '17'
+  KARATE_THREADS: 5
+
+jobs:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Layer 2 & 3: Unit + Workflow Tests (Fast Feedback)
+  # ═══════════════════════════════════════════════════════════════════════════
+  pre-e2e-tests:
+    name: Pre-E2E Tests (Layer 2 & 3)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run Unit Tests (Layer 2)
+        run: |
+          ./mvnw test -B \
+            -pl po-domain,po-service,po-activity \
+            -DskipITs \
+            --fail-at-end
+
+      - name: Run Workflow Tests (Layer 3)
+        run: |
+          ./mvnw test -B \
+            -pl po-workflow \
+            -Dtest="**/*WorkflowTest.java" \
+            --fail-at-end
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Layer 1: Karate E2E Tests (Matrix by Flow)
+  # ═══════════════════════════════════════════════════════════════════════════
+  e2e-tests:
+    name: E2E Tests
+    needs: pre-e2e-tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        flow-group:
+          - name: 'Critical Flows (F1-F3)'
+            tags: '@F1 or @F2 or @F3'
+          - name: 'Extended Flows (F4-F6)'
+            tags: '@F4 or @F5 or @F6'
+          - name: 'Lifecycle Flows (F7-F9)'
+            tags: '@F7 or @F8 or @F9'
+          - name: 'Compensation (F10)'
+            tags: '@F10 or @Compensation'
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: po_test
+          POSTGRES_USER: wms
+          POSTGRES_PASSWORD: wms123
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Start Temporal
+        run: |
+          docker run -d --name temporal \
+            --network host \
+            -e DB=postgresql \
+            -e DB_PORT=5433 \
+            -e POSTGRES_USER=wms \
+            -e POSTGRES_PWD=wms123 \
+            -e POSTGRES_SEEDS=localhost \
+            temporalio/auto-setup:1.22.3
+
+          # Wait for Temporal to be ready
+          for i in {1..30}; do
+            if nc -z localhost 7233 2>/dev/null; then
+              echo "Temporal is ready"
+              break
+            fi
+            echo "Waiting for Temporal... ($i/30)"
+            sleep 2
+          done
+
+      - name: Load Test Data
+        env:
+          PGPASSWORD: wms123
+        run: |
+          psql -h localhost -p 5433 -U wms -d po_test \
+            -f local-environment/seed-data/00-schema.sql
+          psql -h localhost -p 5433 -U wms -d po_test \
+            -f local-environment/seed-data/01-test-data.sql
+
+      - name: Build Application
+        run: ./mvnw clean package -DskipTests -B
+
+      - name: Start Application
+        run: |
+          java -jar po-api/target/po-api-*-exec.jar \
+            --spring.profiles.active=test \
+            --spring.datasource.url=jdbc:postgresql://localhost:5433/po_test \
+            --spring.datasource.username=wms \
+            --spring.datasource.password=wms123 \
+            --temporal.service-address=localhost:7233 \
+            --server.port=8080 &
+
+          # Wait for application to start
+          for i in {1..60}; do
+            if curl -s http://localhost:8080/actuator/health | grep -q "UP"; then
+              echo "Application is ready"
+              break
+            fi
+            echo "Waiting for application... ($i/60)"
+            sleep 2
+          done
+
+      - name: Run Karate E2E Tests - ${{ matrix.flow-group.name }}
+        run: |
+          ./mvnw test -B \
+            -pl po-test \
+            -Dtest=KarateTestRunner \
+            -Dkarate.env=docker \
+            -Dkarate.threads=${{ env.KARATE_THREADS }} \
+            -Dkarate.options="--tags '${{ matrix.flow-group.tags }}'" \
+            --fail-at-end
+
+      - name: Upload Karate Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: karate-results-${{ matrix.flow-group.name }}
+          path: |
+            po-test/target/karate-reports/
+            po-test/target/surefire-reports/
+          retention-days: 14
+
+      - name: Stop Temporal
+        if: always()
+        run: docker stop temporal || true
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Aggregate Reports
+  # ═══════════════════════════════════════════════════════════════════════════
+  reports:
+    name: Generate Reports
+    needs: e2e-tests
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all Karate results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: karate-results-*
+          path: all-results
+          merge-multiple: true
+
+      - name: Setup Allure
+        uses: simple-elf/allure-report-action@master
+        if: always()
+        with:
+          allure_results: all-results
+          allure_report: allure-report
+          allure_history: allure-history
+          keep_reports: 20
+
+      - name: Publish Allure Report
+        uses: peaceiris/actions-gh-pages@v4
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./allure-report
+          destination_dir: e2e-reports/${{ github.ref_name }}
+
+      - name: Post Test Summary
+        if: always()
+        run: |
+          echo "## E2E Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Flow Group | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Critical Flows (F1-F3) | ${{ needs.e2e-tests.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Extended Flows (F4-F6) | ${{ needs.e2e-tests.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Lifecycle Flows (F7-F9) | ${{ needs.e2e-tests.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Compensation (F10) | ${{ needs.e2e-tests.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📊 [View Full Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/e2e-reports/${{ github.ref_name }}/)" >> $GITHUB_STEP_SUMMARY
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Nightly Performance Tests
+  # ═══════════════════════════════════════════════════════════════════════════
+  performance-tests:
+    name: Performance Tests
+    needs: e2e-tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: po_test
+          POSTGRES_USER: wms
+          POSTGRES_PASSWORD: wms123
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Start Services
+        run: |
+          docker run -d --name temporal --network host temporalio/auto-setup:1.22.3
+          sleep 30
+
+      - name: Load Test Data
+        env:
+          PGPASSWORD: wms123
+        run: |
+          psql -h localhost -p 5433 -U wms -d po_test \
+            -f local-environment/seed-data/00-schema.sql
+          psql -h localhost -p 5433 -U wms -d po_test \
+            -f local-environment/seed-data/01-test-data.sql
+
+      - name: Build & Start Application
+        run: |
+          ./mvnw clean package -DskipTests -B
+          java -jar po-api/target/po-api-*-exec.jar \
+            --spring.profiles.active=test \
+            --spring.datasource.url=jdbc:postgresql://localhost:5433/po_test &
+          sleep 60
+
+      - name: Run Performance Tests
+        run: |
+          ./mvnw test -B \
+            -pl po-test \
+            -Dtest=KarateTestRunner \
+            -Dkarate.env=docker \
+            -Dkarate.threads=10 \
+            -Dkarate.options="--tags @performance" \
+            --fail-at-end || true
+
+      - name: Upload Performance Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-results
+          path: po-test/target/gatling/
+          retention-days: 30
