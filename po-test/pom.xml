@@ -113,6 +113,13 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- PostgreSQL for E2E database validation -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <!-- Mockito -->
         <dependency>
             <groupId>org.mockito</groupId>

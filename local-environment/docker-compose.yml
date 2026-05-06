@@ -1,0 +1,143 @@
+# Docker Compose for PO Modernization Local Development
+# Usage: docker-compose up -d
+# This starts all services needed for local development
+
+version: '3.8'
+
+services:
+  # ═══════════════════════════════════════════════════════════
+  # PostgreSQL Database
+  # ═══════════════════════════════════════════════════════════
+  postgres:
+    image: postgres:15-alpine
+    container_name: po-postgres
+    environment:
+      POSTGRES_DB: po_modernization
+      POSTGRES_USER: wms
+      POSTGRES_PASSWORD: wms123
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./seed-data:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wms -d po_modernization"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - po-network
+
+  # ═══════════════════════════════════════════════════════════
+  # Temporal Server (Workflow Orchestration)
+  # ═══════════════════════════════════════════════════════════
+  temporal:
+    image: temporalio/auto-setup:1.22.3
+    container_name: po-temporal
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=wms
+      - POSTGRES_PWD=wms123
+      - POSTGRES_SEEDS=postgres
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+    ports:
+      - "7233:7233"
+    networks:
+      - po-network
+
+  # ═══════════════════════════════════════════════════════════
+  # Temporal Web UI
+  # ═══════════════════════════════════════════════════════════
+  temporal-ui:
+    image: temporalio/ui:2.21.3
+    container_name: po-temporal-ui
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    ports:
+      - "8088:8080"
+    networks:
+      - po-network
+
+  # ═══════════════════════════════════════════════════════════
+  # Kafka (Event Streaming)
+  # ═══════════════════════════════════════════════════════════
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: po-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - po-network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: po-kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - po-network
+
+  # ═══════════════════════════════════════════════════════════
+  # Redis (Caching & Distributed Locks)
+  # ═══════════════════════════════════════════════════════════
+  redis:
+    image: redis:7-alpine
+    container_name: po-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - po-network
+
+  # ═══════════════════════════════════════════════════════════
+  # Kafka UI (Optional - for debugging)
+  # ═══════════════════════════════════════════════════════════
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: po-kafka-ui
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    ports:
+      - "8089:8080"
+    networks:
+      - po-network
+
+volumes:
+  postgres_data:
+
+networks:
+  po-network:
+    driver: bridge

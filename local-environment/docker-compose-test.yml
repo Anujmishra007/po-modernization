@@ -1,0 +1,136 @@
+# Docker Compose for PO Modernization E2E Testing
+# Usage: docker-compose -f docker-compose-test.yml up -d
+# Lightweight setup for running automated tests
+
+version: '3.8'
+
+services:
+  # ═══════════════════════════════════════════════════════════
+  # PostgreSQL Database (Test)
+  # ═══════════════════════════════════════════════════════════
+  postgres:
+    image: postgres:15-alpine
+    container_name: po-test-postgres
+    environment:
+      POSTGRES_DB: po_test
+      POSTGRES_USER: wms
+      POSTGRES_PASSWORD: wms123
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./seed-data:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wms -d po_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - po-test-network
+    tmpfs:
+      - /var/lib/postgresql/data  # Use tmpfs for faster tests
+
+  # ═══════════════════════════════════════════════════════════
+  # Temporal Server (Test Mode)
+  # ═══════════════════════════════════════════════════════════
+  temporal:
+    image: temporalio/auto-setup:1.22.3
+    container_name: po-test-temporal
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=wms
+      - POSTGRES_PWD=wms123
+      - POSTGRES_SEEDS=postgres
+    ports:
+      - "7233:7233"
+    healthcheck:
+      test: ["CMD", "tctl", "--address", "temporal:7233", "cluster", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - po-test-network
+
+  # ═══════════════════════════════════════════════════════════
+  # Kafka (Minimal for Testing)
+  # ═══════════════════════════════════════════════════════════
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: po-test-kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_LISTENERS: PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      CLUSTER_ID: "po-test-cluster-001"
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - po-test-network
+
+  # ═══════════════════════════════════════════════════════════
+  # Redis (Test)
+  # ═══════════════════════════════════════════════════════════
+  redis:
+    image: redis:7-alpine
+    container_name: po-test-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - po-test-network
+
+  # ═══════════════════════════════════════════════════════════
+  # PO API Application (Optional - for full E2E)
+  # ═══════════════════════════════════════════════════════════
+  po-api:
+    image: po-modernization:latest
+    container_name: po-test-api
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: test,docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/po_test
+      SPRING_DATASOURCE_USERNAME: wms
+      SPRING_DATASOURCE_PASSWORD: wms123
+      TEMPORAL_SERVICE_ADDRESS: temporal:7233
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_REDIS_HOST: redis
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    networks:
+      - po-test-network
+    profiles:
+      - full  # Only start with: docker-compose --profile full up
+
+networks:
+  po-test-network:
+    driver: bridge
