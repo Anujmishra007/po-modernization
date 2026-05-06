@@ -10,6 +10,7 @@ import com.wms.po.plugin.api.PostFinalizePlugin;
 import com.wms.po.plugin.api.PreFinalizePlugin;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -41,6 +42,7 @@ import java.util.Map;
  * - Cannot block finalization (best-effort)
  */
 @Component
+@Primary
 @RequiredArgsConstructor
 @Slf4j
 public class FinalizePluginActivityImpl implements FinalizePluginActivity {

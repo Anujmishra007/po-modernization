@@ -6,6 +6,7 @@ import com.wms.po.domain.exception.ErrorCode;
 import com.wms.po.domain.service.FinalizeReceiptService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 /**
@@ -23,6 +24,7 @@ import org.springframework.stereotype.Component;
  * - RCV_020 (68920) - Finalize Status Update Failed
  */
 @Component
+@Primary
 @RequiredArgsConstructor
 @Slf4j
 public class ReceiptStatusActivityImpl implements ReceiptStatusActivity {

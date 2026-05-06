@@ -5,12 +5,14 @@ import com.wms.po.domain.model.FinalizeRequest;
 import com.wms.po.domain.model.PopulateRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 /**
  * Implementation of NotificationActivity - best effort notifications
  */
 @Component
+@Primary
 @RequiredArgsConstructor
 @Slf4j
 public class NotificationActivityImpl implements NotificationActivity {

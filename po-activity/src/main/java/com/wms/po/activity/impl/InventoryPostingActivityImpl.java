@@ -7,6 +7,7 @@ import com.wms.po.domain.service.FinalizeReceiptService;
 import com.wms.po.domain.service.InventoryPostingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,6 +34,7 @@ import java.util.stream.Collectors;
  * - ID: License plate number (container/pallet identifier)
  */
 @Component
+@Primary
 @RequiredArgsConstructor
 @Slf4j
 public class InventoryPostingActivityImpl implements InventoryPostingActivity {

@@ -4,6 +4,7 @@ import com.wms.po.activity.POQuantityActivity;
 import com.wms.po.domain.service.FinalizeReceiptService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,6 +18,7 @@ import java.util.List;
  * Updates PO received quantities when receipts are finalized.
  */
 @Component
+@Primary
 @RequiredArgsConstructor
 @Slf4j
 public class POQuantityActivityImpl implements POQuantityActivity {

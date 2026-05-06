@@ -34,6 +34,7 @@ server:
 
 # Temporal configuration
 temporal:
+  enabled: true
   server:
     address: localhost:7233
   namespace: default
@@ -68,3 +69,15 @@ management:
   endpoint:
     health:
       show-details: always
+
+# SpringDoc OpenAPI (Swagger)
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    operationsSorter: method
+    tagsSorter: alpha
+  show-actuator: true

@@ -13,6 +13,7 @@ import com.wms.po.variation.context.VariationResolver;
 import com.wms.po.variation.rule.RuleEngine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -29,6 +30,7 @@ import java.util.List;
  * @see ErrorCode for error code mappings
  */
 @Component
+@Primary
 @RequiredArgsConstructor
 @Slf4j
 public class ValidationActivityImpl implements ValidationActivity {
