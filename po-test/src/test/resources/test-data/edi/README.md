@@ -1,8 +1,10 @@
 # EDI Test Data Files
 
-This directory contains EDI 850 (Purchase Order) sample files for E2E testing.
+This directory contains EDI 850 (Purchase Order) and EDI 856 (Advance Ship Notice) sample files for E2E testing.
 
 ## File Inventory
+
+### EDI 850 - Purchase Order
 
 | File | Description | Test Use |
 |------|-------------|----------|
@@ -12,7 +14,14 @@ This directory contains EDI 850 (Purchase Order) sample files for E2E testing.
 | `EDI-850-SAMPLE-004-ERROR-MISSING-SEGMENT.txt` | Missing mandatory segments | Error handling - validation |
 | `EDI-850-SAMPLE-005-ERROR-MALFORMED.txt` | Malformed/invalid data | Error handling - parsing |
 
-## EDI 850 Structure
+### EDI 856 - Advance Ship Notice (ASN)
+
+| File | Description | Test Use |
+|------|-------------|----------|
+| `EDI-856-SAMPLE-001.txt` | Nike ASN with hierarchical structure | ASN population, lottable tracking |
+| `EDI-856-SAMPLE-002-HM.txt` | H&M fast fashion ASN | High volume, fast-track processing |
+
+## EDI 850 Structure (Purchase Order)
 
 ```
 ISA - Interchange Control Header
@@ -26,6 +35,36 @@ ISA - Interchange Control Header
       N4 - Party Geographic Location
       PO1 - Baseline Item Data (SKU, Qty, Price)
       PID - Product Description
+      CTT - Transaction Totals
+    SE - Transaction Set Trailer
+  GE - Functional Group Trailer
+IEA - Interchange Control Trailer
+```
+
+## EDI 856 Structure (Advance Ship Notice)
+
+```
+ISA - Interchange Control Header
+  GS - Functional Group Header
+    ST - Transaction Set Header (856 = Ship Notice)
+      BSN - Beginning Segment for Ship Notice
+      DTM - Date/Time Reference (Ship date, Delivery date)
+      HL - Hierarchical Level
+        Level S (Shipment)
+          TD1 - Carrier Details (Quantity, Weight)
+          TD5 - Routing (Carrier, Mode)
+          TD3 - Equipment (Trailer Number)
+          REF - Reference IDs (BOL, Container)
+          N1 - Ship-From/Ship-To Party
+        Level O (Order)
+          PRF - Purchase Order Reference
+          REF - Reference IDs (Storer, Season)
+        Level P (Pack)
+          MAN - Marks and Numbers (Carton Labels)
+        Level I (Item)
+          LIN - Item Identification (UPC, SKU)
+          SN1 - Item Detail (Shipment)
+          REF - Lottable Fields
       CTT - Transaction Totals
     SE - Transaction Set Trailer
   GE - Functional Group Trailer
