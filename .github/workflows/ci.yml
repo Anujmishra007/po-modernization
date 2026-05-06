@@ -71,13 +71,15 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - name: Build all modules (skip tests)
+        run: mvn install -DskipTests -B
+
       - name: Run Unit Tests
         run: |
-          # Build dependencies first (-am), then run tests
+          # Run tests ONLY on po-service (dependencies already built above)
           # Note: po-rules tests skipped - Drools KieBase init is slow in CI
           mvn test -B \
             -pl po-service \
-            -am \
             -DskipITs \
             --fail-at-end || true
 
@@ -109,12 +111,14 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - name: Build all modules (skip tests)
+        run: mvn install -DskipTests -B
+
       - name: Run Workflow Tests
         run: |
-          # Build dependencies first (-am), then run workflow tests
+          # Run tests ONLY on po-test (dependencies already built above)
           mvn test -B \
             -pl po-test \
-            -am \
             -Dtest="**/*WorkflowTest.java,**/*CompensationTest.java" \
             --fail-at-end || true
 
@@ -147,12 +151,14 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - name: Build all modules (skip tests)
+        run: mvn install -DskipTests -B
+
       - name: Run Integration Tests
         run: |
-          # Build dependencies first (-am), then run integration tests
+          # Run tests ONLY on po-test (dependencies already built above)
           mvn verify -B \
             -pl po-test \
-            -am \
             -DskipUTs \
             -Dtest="**/*IntegrationTest.java" \
             --fail-at-end || true

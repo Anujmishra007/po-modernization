@@ -61,13 +61,14 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - name: Build all modules (skip tests)
+        run: mvn install -DskipTests -B
+
       - name: Run Tests with Coverage
         run: |
-          # Build dependencies first (-am), then run tests with coverage
-          # Note: po-rules tests skipped - Drools KieBase init is slow in CI
+          # Run tests ONLY on specified modules (dependencies already built above)
           mvn test jacoco:report -B \
             -pl po-service,po-test \
-            -am \
             --fail-at-end || true
 
       - name: Upload Coverage to Codecov

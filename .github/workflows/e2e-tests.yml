@@ -63,22 +63,22 @@ jobs:
       - name: Make Maven wrapper executable
         run: chmod +x ./mvnw || true
 
+      - name: Build all modules (skip tests)
+        run: mvn install -DskipTests -B
+
       - name: Run Unit Tests (Layer 2)
         run: |
-          # Build dependencies first (-am), then run tests
-          # Note: po-rules tests skipped - Drools KieBase init is slow in CI
+          # Run tests ONLY on po-service (dependencies already built above)
           mvn test -B \
             -pl po-service \
-            -am \
             -DskipITs \
             --fail-at-end || true
 
       - name: Run Workflow Tests (Layer 3)
         run: |
-          # Build dependencies first (-am), then run workflow tests
+          # Run tests ONLY on po-test (dependencies already built above)
           mvn test -B \
             -pl po-test \
-            -am \
             -Dtest="**/*WorkflowTest.java" \
             --fail-at-end || true
 
@@ -199,7 +199,6 @@ jobs:
         run: |
           mvn test -B \
             -pl po-test \
-            -am \
             -Dtest=KarateTestRunner \
             -Dkarate.env=docker \
             -Dkarate.threads=${{ env.KARATE_THREADS }} \
