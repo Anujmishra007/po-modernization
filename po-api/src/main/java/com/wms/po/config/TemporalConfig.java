@@ -35,7 +35,9 @@ public class TemporalConfig {
     @Value("${temporal.namespace:default}")
     private String namespace;
 
-    private static final String TASK_QUEUE = "po-task-queue";
+    // Separate task queues to avoid activity registration conflicts
+    private static final String POPULATE_TASK_QUEUE = "po-populate-queue";
+    private static final String FINALIZE_TASK_QUEUE = "po-finalize-queue";
 
     private final PopulatePOActivities populatePOActivities;
     private final FinalizeReceiptActivities finalizeReceiptActivities;
@@ -74,21 +76,22 @@ public class TemporalConfig {
     @EventListener(ApplicationReadyEvent.class)
     public void startWorker() {
         if (workerFactory != null && !workerStarted) {
-            Worker worker = workerFactory.newWorker(TASK_QUEUE);
+            // Create separate workers for each workflow type to avoid activity conflicts
 
-            // Register workflow implementations
-            worker.registerWorkflowImplementationTypes(
-                PopulatePOWorkflowImpl.class,
-                FinalizeReceiptWorkflowImpl.class
-            );
+            // Worker for Populate PO workflow
+            Worker populateWorker = workerFactory.newWorker(POPULATE_TASK_QUEUE);
+            populateWorker.registerWorkflowImplementationTypes(PopulatePOWorkflowImpl.class);
+            populateWorker.registerActivitiesImplementations(populatePOActivities);
 
-            // Register activity implementations
-            worker.registerActivitiesImplementations(populatePOActivities);
-            worker.registerActivitiesImplementations(finalizeReceiptActivities);
+            // Worker for Finalize Receipt workflow
+            Worker finalizeWorker = workerFactory.newWorker(FINALIZE_TASK_QUEUE);
+            finalizeWorker.registerWorkflowImplementationTypes(FinalizeReceiptWorkflowImpl.class);
+            finalizeWorker.registerActivitiesImplementations(finalizeReceiptActivities);
 
             workerFactory.start();
             workerStarted = true;
-            log.info("Temporal worker started on task queue: {} with Populate and Finalize workflows", TASK_QUEUE);
+            log.info("Temporal workers started on task queues: {} (Populate), {} (Finalize)",
+                     POPULATE_TASK_QUEUE, FINALIZE_TASK_QUEUE);
         }
     }
 
@@ -96,7 +99,21 @@ public class TemporalConfig {
     public void stopWorker() {
         if (workerFactory != null && workerStarted) {
             workerFactory.shutdown();
-            log.info("Temporal worker stopped");
+            log.info("Temporal workers stopped");
         }
+    }
+
+    /**
+     * Returns the task queue for Populate PO workflows.
+     */
+    public static String getPopulateTaskQueue() {
+        return POPULATE_TASK_QUEUE;
+    }
+
+    /**
+     * Returns the task queue for Finalize Receipt workflows.
+     */
+    public static String getFinalizeTaskQueue() {
+        return FINALIZE_TASK_QUEUE;
     }
 }
