@@ -114,11 +114,11 @@ INSERT INTO triggerauditlog (auditkey, triggerkey, tablename, operation, recordk
 
 DELETE FROM statushistory WHERE entitykey LIKE 'TRG-%';
 
-INSERT INTO statushistory (entitykey, entitytype, fromstatus, tostatus, transitiontime, transitionby, reason) VALUES
+INSERT INTO statushistory (historykey, entitykey, entitytype, fromstatus, tostatus, transitiontime, transitionby, reason) VALUES
 -- PO status transitions
-('TRG-PO-DUP', 'PO', '0', '5', CURRENT_TIMESTAMP - INTERVAL '2 hours', 'SYSTEM', 'Auto-populated'),
+('HIST-TRG-001', 'TRG-PO-DUP', 'PO', '0', '5', CURRENT_TIMESTAMP - INTERVAL '2 hours', 'SYSTEM', 'Auto-populated'),
 -- Receipt status transitions
-('TRG-RCV-002', 'RECEIPT', '0', '5', CURRENT_TIMESTAMP - INTERVAL '30 minutes', 'SYSTEM', 'Receiving completed');
+('HIST-TRG-002', 'TRG-RCV-002', 'RECEIPT', '0', '5', CURRENT_TIMESTAMP - INTERVAL '30 minutes', 'SYSTEM', 'Receiving completed');
 
 
 -- =============================================================================

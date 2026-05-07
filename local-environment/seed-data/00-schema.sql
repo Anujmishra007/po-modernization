@@ -77,13 +77,14 @@ CREATE TABLE IF NOT EXISTS loc (
 
 -- Putaway Zone
 CREATE TABLE IF NOT EXISTS putawayzone (
-    putawayzone VARCHAR(20) PRIMARY KEY,
-    facility VARCHAR(20),
+    facility VARCHAR(20) NOT NULL,
+    putawayzone VARCHAR(20) NOT NULL,
     descr VARCHAR(100),
     description VARCHAR(100),
     priority INTEGER DEFAULT 1,
     status VARCHAR(10) DEFAULT '1',
-    adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (facility, putawayzone)
 );
 
 -- Lot Master

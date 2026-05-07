@@ -85,13 +85,13 @@ INSERT INTO putawaystrategy (strategykey, storerkey, sku, skugroup, zone, priori
 DELETE FROM taskassignment WHERE assignmentkey LIKE 'ASSIGN-%';
 
 INSERT INTO taskassignment (assignmentkey, taskkey, userid, facility, assignedtime, starttime, completetime, status, device) VALUES
--- Active assignments
-('ASSIGN-001', 'PA-001', 'RDT-OPR-004', 'KR01', CURRENT_TIMESTAMP - INTERVAL '30 minutes', CURRENT_TIMESTAMP - INTERVAL '25 minutes', NULL, 'IN_PROGRESS', 'RDT-KR01-003'),
-('ASSIGN-002', 'PA-006', 'RDT-OPR-004', 'KR01', CURRENT_TIMESTAMP - INTERVAL '15 minutes', CURRENT_TIMESTAMP - INTERVAL '10 minutes', NULL, 'IN_PROGRESS', 'RDT-KR01-003'),
--- Completed assignments
-('ASSIGN-003', 'PA-007', 'RDT-OPR-005', 'KR02', CURRENT_TIMESTAMP - INTERVAL '2 hours', CURRENT_TIMESTAMP - INTERVAL '1 hour 50 minutes', CURRENT_TIMESTAMP - INTERVAL '1 hour', 'COMPLETED', 'RDT-KR02-001'),
--- Pending assignments
-('ASSIGN-004', 'PICK-001', 'RDT-OPR-006', 'KR01', CURRENT_TIMESTAMP - INTERVAL '20 minutes', NULL, NULL, 'ASSIGNED', NULL);
+-- Active assignments (status: 5=In Progress)
+('ASSIGN-001', 'PA-001', 'RDT-OPR-004', 'KR01', CURRENT_TIMESTAMP - INTERVAL '30 minutes', CURRENT_TIMESTAMP - INTERVAL '25 minutes', NULL, '5', 'RDT-KR01-003'),
+('ASSIGN-002', 'PA-006', 'RDT-OPR-004', 'KR01', CURRENT_TIMESTAMP - INTERVAL '15 minutes', CURRENT_TIMESTAMP - INTERVAL '10 minutes', NULL, '5', 'RDT-KR01-003'),
+-- Completed assignments (status: 9=Completed)
+('ASSIGN-003', 'PA-007', 'RDT-OPR-005', 'KR02', CURRENT_TIMESTAMP - INTERVAL '2 hours', CURRENT_TIMESTAMP - INTERVAL '1 hour 50 minutes', CURRENT_TIMESTAMP - INTERVAL '1 hour', '9', 'RDT-KR02-001'),
+-- Pending assignments (status: 3=Assigned)
+('ASSIGN-004', 'PICK-001', 'RDT-OPR-006', 'KR01', CURRENT_TIMESTAMP - INTERVAL '20 minutes', NULL, NULL, '3', NULL);
 
 
 -- =============================================================================
@@ -130,19 +130,19 @@ INSERT INTO taskqueue (queuekey, facility, zone, tasktype, priority, maxconcurre
 -- SECTION 8: LICENSE PLATES (For task tracking)
 -- =============================================================================
 
-DELETE FROM licenseplate WHERE id LIKE 'LP-PA-%' OR id LIKE 'LP-ERR-%';
+DELETE FROM licenseplate WHERE lpkey LIKE 'LP-PA-%' OR lpkey LIKE 'LP-ERR-%';
 
-INSERT INTO licenseplate (id, storerkey, status, parentid, childflag, loc, adddate, addwho) VALUES
+INSERT INTO licenseplate (lpkey, id, storerkey, status, parentid, childflag, loc, adddate, addwho) VALUES
 -- License plates for putaway tasks
-('LP-PA-001', 'NIKE_KR', '1', NULL, 'N', 'KR01-RECV-01', CURRENT_TIMESTAMP - INTERVAL '1 hour', 'SYSTEM'),
-('LP-PA-002', 'NIKE_KR', '1', NULL, 'N', 'KR01-RECV-01', CURRENT_TIMESTAMP - INTERVAL '1 hour', 'SYSTEM'),
-('LP-PA-003', 'HM_KR', '1', NULL, 'N', 'KR02-RECV-01', CURRENT_TIMESTAMP - INTERVAL '45 minutes', 'SYSTEM'),
-('LP-PA-004', 'ADIDAS_IN', '1', NULL, 'N', 'IN01-RECV-01', CURRENT_TIMESTAMP - INTERVAL '1 hour', 'SYSTEM'),
-('LP-PA-005', 'UNI_SG', '1', NULL, 'N', 'SG01-RECV-01', CURRENT_TIMESTAMP - INTERVAL '45 minutes', 'SYSTEM'),
-('LP-PA-006', 'NIKE_KR', '1', NULL, 'N', 'KR01-RECV-01', CURRENT_TIMESTAMP - INTERVAL '30 minutes', 'SYSTEM'),
-('LP-PA-007', 'HM_KR', '9', NULL, 'N', 'KR02-STOR-B01', CURRENT_TIMESTAMP - INTERVAL '2 hours', 'SYSTEM'),  -- Completed
+('LP-PA-001', 'LP-PA-001', 'NIKE_KR', '1', NULL, 'N', 'KR01-RECV-01', CURRENT_TIMESTAMP - INTERVAL '1 hour', 'SYSTEM'),
+('LP-PA-002', 'LP-PA-002', 'NIKE_KR', '1', NULL, 'N', 'KR01-RECV-01', CURRENT_TIMESTAMP - INTERVAL '1 hour', 'SYSTEM'),
+('LP-PA-003', 'LP-PA-003', 'HM_KR', '1', NULL, 'N', 'KR02-RECV-01', CURRENT_TIMESTAMP - INTERVAL '45 minutes', 'SYSTEM'),
+('LP-PA-004', 'LP-PA-004', 'ADIDAS_IN', '1', NULL, 'N', 'IN01-RECV-01', CURRENT_TIMESTAMP - INTERVAL '1 hour', 'SYSTEM'),
+('LP-PA-005', 'LP-PA-005', 'UNI_SG', '1', NULL, 'N', 'SG01-RECV-01', CURRENT_TIMESTAMP - INTERVAL '45 minutes', 'SYSTEM'),
+('LP-PA-006', 'LP-PA-006', 'NIKE_KR', '1', NULL, 'N', 'KR01-RECV-01', CURRENT_TIMESTAMP - INTERVAL '30 minutes', 'SYSTEM'),
+('LP-PA-007', 'LP-PA-007', 'HM_KR', '9', NULL, 'N', 'KR02-STOR-B01', CURRENT_TIMESTAMP - INTERVAL '2 hours', 'SYSTEM'),  -- Completed
 -- Error scenario LP
-('LP-ERR-001', 'NIKE_KR', '1', NULL, 'N', 'KR01-RECV-01', CURRENT_TIMESTAMP - INTERVAL '30 minutes', 'SYSTEM');
+('LP-ERR-001', 'LP-ERR-001', 'NIKE_KR', '1', NULL, 'N', 'KR01-RECV-01', CURRENT_TIMESTAMP - INTERVAL '30 minutes', 'SYSTEM');
 
 
 -- =============================================================================

@@ -65,7 +65,10 @@ INSERT INTO sku (storerkey, sku, descr, lotcontrol, status, stdgrosswgt, stdnetw
 ('TEST_STORER_002', 'TEST-SKU-001', 'Test SKU India', 'Y', '1', 1.0, 0.9, 0.01, NULL, NULL),
 ('TEST_STORER_002', 'TEST-SKU-002', 'Test SKU India GST', 'Y', '1', 1.0, 0.9, 0.01, NULL, NULL),
 
-('TEST_STORER_003', 'TEST-SKU-001', 'Test SKU Singapore', 'Y', '1', 1.0, 0.9, 0.01, NULL, NULL)
+('TEST_STORER_003', 'TEST-SKU-001', 'Test SKU Singapore', 'Y', '1', 1.0, 0.9, 0.01, NULL, NULL),
+
+-- Error test storer SKU (inactive storer)
+('TEST_STORER_ERR', 'TEST-SKU-001', 'Test SKU Error Storer', 'Y', '9', 1.0, 0.9, 0.01, NULL, NULL)
 ON CONFLICT (storerkey, sku) DO NOTHING;
 
 -- ═══════════════════════════════════════════════════════════════════════════
