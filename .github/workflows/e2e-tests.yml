@@ -96,13 +96,13 @@ jobs:
       matrix:
         flow-group:
           - name: 'Critical Flows (F1-F3)'
-            tags: '@F1 or @F2 or @F3'
+            test-methods: 'KarateTestRunner#testF1_POCreation+testF2_ASNPopulation+testF3_ReceiptFinalization'
           - name: 'Extended Flows (F4-F6)'
-            tags: '@F4 or @F5 or @F6'
+            test-methods: 'KarateTestRunner#testF4_CrossDock+testF5_LottableTracking+testF6_PutawayTask'
           - name: 'Lifecycle Flows (F7-F9)'
-            tags: '@F7 or @F8 or @F9'
+            test-methods: 'KarateTestRunner#testF7_TradeReturn+testF8_Cancellation+testF9_Archival'
           - name: 'Compensation (F10)'
-            tags: '@F10 or @Compensation'
+            test-methods: 'KarateTestRunner#testF10_Compensation'
 
     services:
       postgres:
@@ -232,7 +232,7 @@ jobs:
             -DskipUTs=true \
             -Dkarate.env=ci \
             -Dkarate.threads=${{ env.KARATE_THREADS }} \
-            -Dkarate.options="--tags '${{ matrix.flow-group.tags }}'"
+            -Dit.test="${{ matrix.flow-group.test-methods }}"
 
       - name: Upload Karate Results
         uses: actions/upload-artifact@v4
