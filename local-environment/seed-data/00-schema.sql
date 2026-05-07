@@ -120,6 +120,7 @@ CREATE TABLE IF NOT EXISTS putawaystrategy (
     putawayzone VARCHAR(20),
     zone VARCHAR(20),
     locationtype VARCHAR(20),
+    ruletype VARCHAR(20),
     priority INTEGER DEFAULT 1,
     description VARCHAR(200),
     status VARCHAR(10) DEFAULT '1',
@@ -315,6 +316,7 @@ CREATE TABLE IF NOT EXISTS inventorytransaction (
     tostatus VARCHAR(10),
     status VARCHAR(10) DEFAULT '1',
     transactiondate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    transactionby VARCHAR(50),
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     addwho VARCHAR(50),
     editdate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -377,6 +379,7 @@ CREATE TABLE IF NOT EXISTS taskassignment (
     userid VARCHAR(50),
     facility VARCHAR(20),
     assigneddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    assignedtime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     completeddate TIMESTAMP,
     status VARCHAR(10) DEFAULT '0',
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -391,6 +394,7 @@ CREATE TABLE IF NOT EXISTS taskhistory (
     fromstatus VARCHAR(10),
     tostatus VARCHAR(10),
     userid VARCHAR(50),
+    actionby VARCHAR(50),
     notes VARCHAR(500),
     actiontime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -405,6 +409,7 @@ CREATE TABLE IF NOT EXISTS taskqueue (
     tasktype VARCHAR(20),
     priority INTEGER DEFAULT 5,
     maxconcurrent INTEGER DEFAULT 10,
+    currentactive INTEGER DEFAULT 0,
     status VARCHAR(10) DEFAULT '1',
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -412,6 +417,7 @@ CREATE TABLE IF NOT EXISTS taskqueue (
 -- License Plate
 CREATE TABLE IF NOT EXISTS licenseplate (
     lpkey VARCHAR(50) PRIMARY KEY,
+    id VARCHAR(50),
     parentlpkey VARCHAR(50),
     storerkey VARCHAR(50),
     sku VARCHAR(50),
@@ -428,6 +434,7 @@ CREATE TABLE IF NOT EXISTS licenseplate (
 CREATE TABLE IF NOT EXISTS statushistory (
     historykey VARCHAR(50) PRIMARY KEY,
     tablename VARCHAR(50),
+    entitykey VARCHAR(100),
     recordkey VARCHAR(100),
     fromstatus VARCHAR(10),
     tostatus VARCHAR(10),
@@ -707,6 +714,7 @@ CREATE TABLE IF NOT EXISTS triggerconfig (
     targettable VARCHAR(50),
     targetcolumn VARCHAR(50),
     triggertype VARCHAR(20),
+    operation VARCHAR(20),
     aggregation VARCHAR(20),
     enabled VARCHAR(1) DEFAULT 'Y',
     description VARCHAR(500),
@@ -725,7 +733,8 @@ CREATE TABLE IF NOT EXISTS triggerauditlog (
     operation VARCHAR(20),
     userid VARCHAR(50),
     executiontime DECIMAL(18,4),
-    adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    addwho VARCHAR(50)
 );
 
 -- Cascade Rule
