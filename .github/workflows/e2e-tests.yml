@@ -184,6 +184,18 @@ jobs:
       - name: Build Application
         run: mvn clean install -DskipTests -B
 
+      - name: Copy Feature Files to Test Classes
+        run: |
+          # Ensure feature files are in test-classes (workaround for Maven resource processing issues)
+          echo "=== Copying feature files to test-classes ==="
+          mkdir -p po-test/target/test-classes/com/wms/po/e2e/karate
+          cp -r po-test/src/test/java/com/wms/po/e2e/karate/*.feature po-test/target/test-classes/com/wms/po/e2e/karate/ 2>/dev/null || true
+          cp -r po-test/src/test/java/com/wms/po/e2e/karate/features po-test/target/test-classes/com/wms/po/e2e/karate/ 2>/dev/null || true
+
+          echo "=== Verifying feature files ==="
+          find po-test/target/test-classes -name "*.feature" | wc -l
+          echo "feature files copied to test-classes"
+
       - name: Start Application
         run: |
           java -jar po-api/target/po-api-*-exec.jar \
