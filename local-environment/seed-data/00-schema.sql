@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS putawaystrategy (
     sku VARCHAR(50),
     skugroup VARCHAR(50),
     putawayzone VARCHAR(20),
+    zone VARCHAR(20),
     locationtype VARCHAR(20),
     priority INTEGER DEFAULT 1,
     description VARCHAR(200),
@@ -313,6 +314,7 @@ CREATE TABLE IF NOT EXISTS inventorytransaction (
     fromstatus VARCHAR(10),
     tostatus VARCHAR(10),
     status VARCHAR(10) DEFAULT '1',
+    transactiondate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     addwho VARCHAR(50),
     editdate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -371,8 +373,9 @@ CREATE TABLE IF NOT EXISTS taskdetail (
 -- Task Assignment
 CREATE TABLE IF NOT EXISTS taskassignment (
     assignmentkey VARCHAR(50) PRIMARY KEY,
-    taskkey VARCHAR(50) REFERENCES task(taskkey),
+    taskkey VARCHAR(50),
     userid VARCHAR(50),
+    facility VARCHAR(20),
     assigneddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     completeddate TIMESTAMP,
     status VARCHAR(10) DEFAULT '0',
@@ -383,12 +386,13 @@ CREATE TABLE IF NOT EXISTS taskassignment (
 -- Task History
 CREATE TABLE IF NOT EXISTS taskhistory (
     historykey VARCHAR(50) PRIMARY KEY,
-    taskkey VARCHAR(50) REFERENCES task(taskkey),
+    taskkey VARCHAR(50),
     action VARCHAR(50),
     fromstatus VARCHAR(10),
     tostatus VARCHAR(10),
     userid VARCHAR(50),
     notes VARCHAR(500),
+    actiontime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -397,11 +401,39 @@ CREATE TABLE IF NOT EXISTS taskqueue (
     queuekey VARCHAR(50) PRIMARY KEY,
     queuename VARCHAR(100),
     facility VARCHAR(20),
+    zone VARCHAR(20),
     tasktype VARCHAR(20),
     priority INTEGER DEFAULT 5,
     maxconcurrent INTEGER DEFAULT 10,
     status VARCHAR(10) DEFAULT '1',
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- License Plate
+CREATE TABLE IF NOT EXISTS licenseplate (
+    lpkey VARCHAR(50) PRIMARY KEY,
+    parentlpkey VARCHAR(50),
+    storerkey VARCHAR(50),
+    sku VARCHAR(50),
+    lot VARCHAR(50),
+    loc VARCHAR(50),
+    qty DECIMAL(18,4) DEFAULT 0,
+    lptype VARCHAR(20),
+    status VARCHAR(10) DEFAULT '1',
+    adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    addwho VARCHAR(50)
+);
+
+-- Status History
+CREATE TABLE IF NOT EXISTS statushistory (
+    historykey VARCHAR(50) PRIMARY KEY,
+    tablename VARCHAR(50),
+    recordkey VARCHAR(100),
+    fromstatus VARCHAR(10),
+    tostatus VARCHAR(10),
+    changedby VARCHAR(50),
+    changedate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    reason VARCHAR(500)
 );
 
 -- Code Lookup (Configuration)
@@ -669,10 +701,12 @@ CREATE TABLE IF NOT EXISTS locationcapacity (
 CREATE TABLE IF NOT EXISTS triggerconfig (
     triggerkey VARCHAR(50) PRIMARY KEY,
     triggername VARCHAR(100) NOT NULL,
+    tablename VARCHAR(50),
     sourcetable VARCHAR(50),
     sourcecolumn VARCHAR(50),
     targettable VARCHAR(50),
     targetcolumn VARCHAR(50),
+    triggertype VARCHAR(20),
     aggregation VARCHAR(20),
     enabled VARCHAR(1) DEFAULT 'Y',
     description VARCHAR(500),
@@ -690,6 +724,7 @@ CREATE TABLE IF NOT EXISTS triggerauditlog (
     newvalue VARCHAR(500),
     operation VARCHAR(20),
     userid VARCHAR(50),
+    executiontime DECIMAL(18,4),
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -702,6 +737,7 @@ CREATE TABLE IF NOT EXISTS cascaderule (
     targettable VARCHAR(50),
     targetcolumn VARCHAR(50),
     aggregation VARCHAR(20),
+    cascadetype VARCHAR(20),
     enabled VARCHAR(1) DEFAULT 'Y',
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

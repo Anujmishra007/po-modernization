@@ -26,10 +26,14 @@ INSERT INTO storer (storerkey, company, type, status, country, defaultfacility, 
 ('UNILEVER_IN', 'Unilever India', '1', '1', 'IN', 'IN02', 'FMCG', 'STANDARD'),
 ('TATA_IN', 'Tata Consumer', '1', '1', 'IN', 'IN02', 'FMCG', 'STANDARD'),
 
+-- India Additional Storers
+('ADIDAS_IN', 'Adidas India Pvt Ltd', '1', '1', 'IN', 'IN01', 'FOOTWEAR', 'PREMIUM'),
+
 -- Singapore Storers (ASIA-SG region)
 ('NIKE_SG', 'Nike Singapore', '1', '1', 'SG', 'SG01', 'FOOTWEAR', 'PREMIUM'),
 ('ADIDAS_SG', 'Adidas Singapore', '1', '1', 'SG', 'SG01', 'FOOTWEAR', 'PREMIUM'),
 ('DYSON_SG', 'Dyson Singapore', '1', '1', 'SG', 'SG01', 'ELECTRONICS', 'HIGHVALUE'),
+('UNI_SG', 'Unilever Singapore', '1', '1', 'SG', 'SG01', 'FMCG', 'STANDARD'),
 
 -- Test Storers (for automated tests)
 ('TEST_STORER_001', 'Test Storer 001', '1', '1', 'KR', 'TEST01', 'TEST', 'AUTOMATED'),
