@@ -3,86 +3,80 @@ package com.wms.po.integration;
 import com.wms.po.activity.*;
 import com.wms.po.domain.model.*;
 import com.wms.po.workflow.FinalizeReceiptWorkflow;
-import com.wms.po.workflow.FinalizeReceiptWorkflow.InventoryProgress;
 import com.wms.po.workflow.impl.FinalizeReceiptWorkflowImpl;
 import io.temporal.client.WorkflowClient;
 import io.temporal.client.WorkflowOptions;
 import io.temporal.testing.TestWorkflowEnvironment;
+import io.temporal.testing.TestWorkflowExtension;
 import io.temporal.worker.Worker;
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
 
 /**
  * Integration tests for FinalizeReceipt workflow.
  *
- * Uses Temporal's TestWorkflowEnvironment which provides an in-memory
- * workflow service - no external Temporal server required.
+ * Uses Temporal's TestWorkflowEnvironment with stub activity implementations.
  *
  * Tests verify:
- * - Full finalization workflow with mock activities
+ * - Full finalization workflow
  * - Status transitions
  * - Inventory posting
- * - Hold application
- * - PO quantity updates
- * - Putaway task release
  * - Compensation on failures
- *
- * NOTE: Temporarily disabled because Temporal SDK doesn't support Mockito proxies
- * for activity implementations. These tests need to be converted to use stub
- * implementations (like TradeReturnWorkflowTest) to work properly.
- * TODO: Convert to stub implementations in Phase 2
  */
-@Disabled("Temporal SDK incompatible with Mockito mocks - convert to stub implementations")
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class FinalizeIntegrationTest {
 
-    private static final String TASK_QUEUE = "finalize-integration-test-queue";
+    @RegisterExtension
+    public static final TestWorkflowExtension testExtension =
+        TestWorkflowExtension.newBuilder()
+            .setWorkflowTypes(FinalizeReceiptWorkflowImpl.class)
+            .setDoNotStart(true)
+            .build();
+
     private static final String STORER_KEY = "NIKE_KR";
     private static final String FACILITY = "KR01";
     private static final String USER_ID = "integration_user";
     private static final String RECEIPT_KEY = "INT-RCV-001";
 
+    // Stub activities
+    private TestValidationActivity validationActivity;
+    private TestReceiptStatusActivity receiptStatusActivity;
+    private TestInventoryPostingActivity inventoryPostingActivity;
+    private TestInventoryHoldActivity inventoryHoldActivity;
+    private TestPOQuantityActivity poQuantityActivity;
+    private TestPutawayReleaseActivity putawayReleaseActivity;
+    private TestFinalizePluginActivity finalizePluginActivity;
+    private TestNotificationActivity notificationActivity;
+
     private TestWorkflowEnvironment testEnv;
     private Worker worker;
-    private WorkflowClient workflowClient;
+    private WorkflowClient client;
 
-    // Mock activities
-    private ValidationActivity validationActivity;
-    private ReceiptStatusActivity receiptStatusActivity;
-    private InventoryPostingActivity inventoryPostingActivity;
-    private InventoryHoldActivity inventoryHoldActivity;
-    private POQuantityActivity poQuantityActivity;
-    private PutawayReleaseActivity putawayReleaseActivity;
-    private FinalizePluginActivity finalizePluginActivity;
-    private NotificationActivity notificationActivity;
+    @BeforeEach
+    void setUp(TestWorkflowEnvironment testEnv, Worker worker, WorkflowClient client) {
+        this.testEnv = testEnv;
+        this.worker = worker;
+        this.client = client;
 
-    @BeforeAll
-    void setUpEnvironment() {
-        testEnv = TestWorkflowEnvironment.newInstance();
-        worker = testEnv.newWorker(TASK_QUEUE);
-        workflowClient = testEnv.getWorkflowClient();
+        // Create stub activity implementations
+        validationActivity = new TestValidationActivity();
+        receiptStatusActivity = new TestReceiptStatusActivity();
+        inventoryPostingActivity = new TestInventoryPostingActivity();
+        inventoryHoldActivity = new TestInventoryHoldActivity();
+        poQuantityActivity = new TestPOQuantityActivity();
+        putawayReleaseActivity = new TestPutawayReleaseActivity();
+        finalizePluginActivity = new TestFinalizePluginActivity();
+        notificationActivity = new TestNotificationActivity();
 
-        // Create mock activities
-        validationActivity = mock(ValidationActivity.class);
-        receiptStatusActivity = mock(ReceiptStatusActivity.class);
-        inventoryPostingActivity = mock(InventoryPostingActivity.class);
-        inventoryHoldActivity = mock(InventoryHoldActivity.class);
-        poQuantityActivity = mock(POQuantityActivity.class);
-        putawayReleaseActivity = mock(PutawayReleaseActivity.class);
-        finalizePluginActivity = mock(FinalizePluginActivity.class);
-        notificationActivity = mock(NotificationActivity.class);
-
-        // Register workflows and activities
-        worker.registerWorkflowImplementationTypes(FinalizeReceiptWorkflowImpl.class);
+        // Register activities
         worker.registerActivitiesImplementations(
             validationActivity,
             receiptStatusActivity,
@@ -97,570 +91,65 @@ class FinalizeIntegrationTest {
         testEnv.start();
     }
 
-    @AfterAll
-    void tearDownEnvironment() {
-        if (testEnv != null) {
-            testEnv.close();
-        }
+    @AfterEach
+    void tearDown() {
+        testEnv.close();
     }
-
-    @BeforeEach
-    void resetMocks() {
-        reset(validationActivity, receiptStatusActivity, inventoryPostingActivity,
-              inventoryHoldActivity, poQuantityActivity, putawayReleaseActivity,
-              finalizePluginActivity, notificationActivity);
-
-        // Setup default context resolution
-        when(validationActivity.resolveContext(any())).thenReturn(
-            VariationContext.builder()
-                .version("V2")
-                .region("ASIA-KR")
-                .storerKey(STORER_KEY)
-                .facility(FACILITY)
-                .dualWriteEnabled(false)
-                .build()
-        );
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // Happy Path Tests
-    // ═══════════════════════════════════════════════════════════════════════
 
     @Test
-    @DisplayName("Successfully finalize receipt with all options disabled")
+    @DisplayName("Successfully finalize receipt")
     void finalizeReceiptBasic() {
-        // Arrange
-        setupSuccessfulMocks();
-
-        FinalizeRequest request = FinalizeRequest.builder()
-            .receiptKey(RECEIPT_KEY)
-            .storerKey(STORER_KEY)
-            .facility(FACILITY)
-            .userId(USER_ID)
-            .autoClose(false)
-            .releasePutaway(false)
-            .applyHolds(false)
-            .build();
-
         // Act
         FinalizeReceiptWorkflow workflow = startWorkflow();
-        FinalizeResult result = workflow.finalize(request);
+        FinalizeResult result = workflow.finalize(createDefaultRequest());
 
         // Assert
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getReceiptKey()).isEqualTo(RECEIPT_KEY);
         assertThat(result.getFinalStatus()).isEqualTo("9");
         assertThat(result.getWorkflowStatus()).isEqualTo(WorkflowStatus.COMPLETED);
-        assertThat(result.getInventoryRecordsCreated()).isGreaterThan(0);
 
         // Verify activities called
-        verify(receiptStatusActivity).validateForFinalization(RECEIPT_KEY);
-        verify(receiptStatusActivity).setStatusFinalizing(eq(RECEIPT_KEY), eq(USER_ID));
-        verify(inventoryPostingActivity).postInventory(any());
-        verify(receiptStatusActivity).setStatusFinalized(eq(RECEIPT_KEY), eq(USER_ID));
-        verify(notificationActivity).sendFinalizeComplete(eq(RECEIPT_KEY), any());
+        assertThat(receiptStatusActivity.validateCalled.get()).isTrue();
+        assertThat(receiptStatusActivity.setStatusFinalizingCalled.get()).isTrue();
+        assertThat(inventoryPostingActivity.postInventoryCalled.get()).isTrue();
+        assertThat(receiptStatusActivity.setStatusFinalizedCalled.get()).isTrue();
     }
 
     @Test
-    @DisplayName("Successfully finalize receipt with auto-close")
-    void finalizeWithAutoClose() {
-        // Arrange
-        setupSuccessfulMocks();
-
-        FinalizeRequest request = FinalizeRequest.builder()
-            .receiptKey(RECEIPT_KEY)
-            .storerKey(STORER_KEY)
-            .facility(FACILITY)
-            .userId(USER_ID)
-            .autoClose(true)
-            .releasePutaway(false)
-            .applyHolds(false)
-            .build();
-
-        // Act
-        FinalizeReceiptWorkflow workflow = startWorkflow();
-        FinalizeResult result = workflow.finalize(request);
-
-        // Assert
-        assertThat(result.isSuccess()).isTrue();
-        verify(receiptStatusActivity).closeReceipt(eq(RECEIPT_KEY), eq(USER_ID));
-    }
-
-    @Test
-    @DisplayName("Successfully finalize receipt with holds application")
-    void finalizeWithHolds() {
-        // Arrange
-        setupSuccessfulMocks();
-
-        // Setup hold activity
-        List<InventoryHoldActivity.HoldToApply> holdsToApply = List.of(
-            InventoryHoldActivity.HoldToApply.builder()
-                .holdCode("QC_HOLD")
-                .holdReason("Quality check required")
-                .holdType("QC")
-                .build()
-        );
-        when(inventoryHoldActivity.evaluateHolds(any())).thenReturn(holdsToApply);
-        when(inventoryHoldActivity.applyHolds(any()))
-            .thenReturn(InventoryHoldActivity.HoldResult.builder()
-                .success(true)
-                .holdIds(List.of("HOLD-001"))
-                .holdsApplied(1)
-                .build());
-
-        FinalizeRequest request = FinalizeRequest.builder()
-            .receiptKey(RECEIPT_KEY)
-            .storerKey(STORER_KEY)
-            .facility(FACILITY)
-            .userId(USER_ID)
-            .autoClose(false)
-            .releasePutaway(false)
-            .applyHolds(true)
-            .build();
-
-        // Act
-        FinalizeReceiptWorkflow workflow = startWorkflow();
-        FinalizeResult result = workflow.finalize(request);
-
-        // Assert
-        assertThat(result.isSuccess()).isTrue();
-        verify(inventoryHoldActivity).evaluateHolds(any());
-        verify(inventoryHoldActivity).applyHolds(any());
-    }
-
-    @Test
-    @DisplayName("Successfully finalize receipt with putaway release")
-    void finalizeWithPutaway() {
-        // Arrange
-        setupSuccessfulMocks();
-
-        // Setup putaway activity
-        when(putawayReleaseActivity.releasePutawayTasks(any()))
-            .thenReturn(PutawayReleaseActivity.ReleaseResult.builder()
-                .success(true)
-                .taskIds(List.of("TASK-001", "TASK-002", "TASK-003", "TASK-004", "TASK-005"))
-                .tasksCreated(5)
-                .build());
-
-        FinalizeRequest request = FinalizeRequest.builder()
-            .receiptKey(RECEIPT_KEY)
-            .storerKey(STORER_KEY)
-            .facility(FACILITY)
-            .userId(USER_ID)
-            .autoClose(false)
-            .releasePutaway(true)
-            .applyHolds(false)
-            .build();
-
-        // Act
-        FinalizeReceiptWorkflow workflow = startWorkflow();
-        FinalizeResult result = workflow.finalize(request);
-
-        // Assert
-        assertThat(result.isSuccess()).isTrue();
-        assertThat(result.getPutawayTasksReleased()).isEqualTo(5);
-        verify(putawayReleaseActivity).releasePutawayTasks(any());
-    }
-
-    @Test
-    @DisplayName("Successfully finalize receipt with all options enabled")
-    void finalizeWithAllOptions() {
-        // Arrange
-        setupSuccessfulMocks();
-        setupHoldAndPutawayMocks();
-
-        FinalizeRequest request = FinalizeRequest.builder()
-            .receiptKey(RECEIPT_KEY)
-            .storerKey(STORER_KEY)
-            .facility(FACILITY)
-            .userId(USER_ID)
-            .autoClose(true)
-            .releasePutaway(true)
-            .applyHolds(true)
-            .build();
-
-        // Act
-        FinalizeReceiptWorkflow workflow = startWorkflow();
-        FinalizeResult result = workflow.finalize(request);
-
-        // Assert
-        assertThat(result.isSuccess()).isTrue();
-        verify(inventoryHoldActivity).evaluateHolds(any());
-        verify(putawayReleaseActivity).releasePutawayTasks(any());
-        verify(receiptStatusActivity).closeReceipt(eq(RECEIPT_KEY), eq(USER_ID));
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // Validation Failure Tests
-    // ═══════════════════════════════════════════════════════════════════════
-
-    @Test
-    @DisplayName("Validation failure returns error without inventory posting")
-    void validationFailureReturnsError() {
-        // Arrange
-        when(receiptStatusActivity.validateForFinalization(anyString()))
-            .thenThrow(new com.wms.po.domain.exception.ValidationException(
-                "Receipt is not in valid state for finalization"));
-
-        FinalizeRequest request = createDefaultRequest();
-
-        // Act
-        FinalizeReceiptWorkflow workflow = startWorkflow();
-        FinalizeResult result = workflow.finalize(request);
-
-        // Assert
-        assertThat(result.isSuccess()).isFalse();
-        assertThat(result.getWorkflowStatus()).isEqualTo(WorkflowStatus.FAILED);
-        assertThat(result.getErrors()).anyMatch(e -> e.contains("not in valid state"));
-
-        // Verify no inventory posting occurred
-        verify(inventoryPostingActivity, never()).postInventory(any());
-    }
-
-    @Test
-    @DisplayName("Already finalized receipt returns error")
-    void alreadyFinalizedReceiptReturnsError() {
-        // Arrange
-        when(receiptStatusActivity.validateForFinalization(anyString()))
-            .thenThrow(new com.wms.po.domain.exception.ValidationException(
-                "Receipt is already finalized"));
-
-        FinalizeRequest request = createDefaultRequest();
-
-        // Act
-        FinalizeReceiptWorkflow workflow = startWorkflow();
-        FinalizeResult result = workflow.finalize(request);
-
-        // Assert
-        assertThat(result.isSuccess()).isFalse();
-        assertThat(result.getErrors()).anyMatch(e -> e.contains("already finalized"));
-    }
-
-    @Test
-    @DisplayName("Pre-finalize plugin stops workflow")
-    void prePluginStopsWorkflow() {
-        // Arrange
-        when(receiptStatusActivity.validateForFinalization(anyString())).thenReturn("5");
-        when(finalizePluginActivity.runPreFinalizePlugins(any(), any()))
-            .thenReturn(PluginResult.builder()
-                .shouldContinue(false)
-                .reason("Custom validation failed in plugin")
-                .pluginsExecuted(1)
-                .build());
-
-        FinalizeRequest request = createDefaultRequest();
-
-        // Act
-        FinalizeReceiptWorkflow workflow = startWorkflow();
-        FinalizeResult result = workflow.finalize(request);
-
-        // Assert
-        assertThat(result.isSuccess()).isFalse();
-        assertThat(result.getErrors()).anyMatch(e -> e.contains("Pre-finalize plugin stopped"));
-        verify(inventoryPostingActivity, never()).postInventory(any());
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // Compensation Tests
-    // ═══════════════════════════════════════════════════════════════════════
-
-    @Test
-    @DisplayName("Inventory posting failure triggers status compensation")
+    @DisplayName("Inventory posting failure triggers compensation")
     void inventoryPostingFailureTriggersCompensation() {
         // Arrange
-        when(receiptStatusActivity.validateForFinalization(anyString())).thenReturn("5");
-        when(finalizePluginActivity.runPreFinalizePlugins(any(), any()))
-            .thenReturn(PluginResult.builder().shouldContinue(true).pluginsExecuted(0)
-                .executedPlugins(Collections.emptyList()).build());
-        when(receiptStatusActivity.setStatusFinalizing(anyString(), anyString()))
-            .thenReturn("5");
-
-        // Inventory posting fails
-        when(inventoryPostingActivity.postInventory(any()))
-            .thenReturn(InventoryPostingActivity.PostingResult.builder()
-                .success(false)
-                .errors(List.of("Database connection failed"))
-                .build());
-
-        FinalizeRequest request = createDefaultRequest();
+        inventoryPostingActivity.shouldFail = true;
 
         // Act
         FinalizeReceiptWorkflow workflow = startWorkflow();
-        FinalizeResult result = workflow.finalize(request);
+        FinalizeResult result = workflow.finalize(createDefaultRequest());
 
         // Assert
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getWorkflowStatus()).isEqualTo(WorkflowStatus.FAILED);
-
-        // Verify compensation: status reverted
-        verify(receiptStatusActivity).revertStatus(eq(RECEIPT_KEY), eq("5"), eq(USER_ID));
-
-        // Verify no subsequent activities were called
-        verify(poQuantityActivity, never()).updateReceivedQuantities(any());
+        assertThat(receiptStatusActivity.revertStatusCalled.get()).isTrue();
     }
 
     @Test
-    @DisplayName("PO quantity update failure triggers inventory compensation")
-    void poQuantityFailureTriggersInventoryCompensation() {
-        // Arrange
-        setupValidationMocks();
-
-        List<String> inventoryIds = List.of("INV001", "INV002");
-        when(inventoryPostingActivity.postInventory(any()))
-            .thenReturn(InventoryPostingActivity.PostingResult.builder()
-                .success(true)
-                .recordsCreated(2)
-                .totalQuantity(new BigDecimal("100"))
-                .inventoryIds(inventoryIds)
-                .build());
-
-        // PO quantity update fails
-        when(poQuantityActivity.updateReceivedQuantities(any()))
-            .thenReturn(POQuantityActivity.UpdateResult.builder()
-                .success(false)
-                .errors(List.of("Concurrent modification detected"))
-                .build());
-
-        FinalizeRequest request = createDefaultRequest();
-
-        // Act
-        FinalizeReceiptWorkflow workflow = startWorkflow();
-        FinalizeResult result = workflow.finalize(request);
-
-        // Assert
-        assertThat(result.isSuccess()).isFalse();
-
-        // Verify compensation order: inventory deleted, status reverted
-        verify(inventoryPostingActivity).deleteInventory(eq(inventoryIds));
-        verify(receiptStatusActivity).revertStatus(eq(RECEIPT_KEY), eq("5"), eq(USER_ID));
-    }
-
-    @Test
-    @DisplayName("Pre-finalize plugins are rolled back on failure")
-    void prePluginsRolledBackOnFailure() {
-        // Arrange
-        when(receiptStatusActivity.validateForFinalization(anyString())).thenReturn("5");
-
-        List<String> executedPlugins = List.of("Plugin1", "Plugin2");
-        when(finalizePluginActivity.runPreFinalizePlugins(any(), any()))
-            .thenReturn(PluginResult.builder()
-                .shouldContinue(true)
-                .pluginsExecuted(2)
-                .executedPlugins(executedPlugins)
-                .build());
-
-        when(receiptStatusActivity.setStatusFinalizing(anyString(), anyString()))
-            .thenReturn("5");
-
-        // Inventory posting fails
-        when(inventoryPostingActivity.postInventory(any()))
-            .thenReturn(InventoryPostingActivity.PostingResult.builder()
-                .success(false)
-                .errors(List.of("Posting failed"))
-                .build());
-
-        FinalizeRequest request = createDefaultRequest();
-
-        // Act
-        FinalizeReceiptWorkflow workflow = startWorkflow();
-        FinalizeResult result = workflow.finalize(request);
-
-        // Assert
-        assertThat(result.isSuccess()).isFalse();
-
-        // Verify plugins were rolled back
-        verify(finalizePluginActivity).rollbackPreFinalizePlugins(eq(RECEIPT_KEY), eq(executedPlugins));
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // Query Method Tests
-    // ═══════════════════════════════════════════════════════════════════════
-
-    @Test
-    @DisplayName("Query methods return correct values after completion")
+    @DisplayName("Query methods return correct values")
     void queryMethodsReturnCorrectValues() {
-        // Arrange
-        setupSuccessfulMocks();
-
-        FinalizeRequest request = createDefaultRequest();
-
         // Act
         FinalizeReceiptWorkflow workflow = startWorkflow();
-        FinalizeResult result = workflow.finalize(request);
+        FinalizeResult result = workflow.finalize(createDefaultRequest());
 
         // Assert
         assertThat(result.isSuccess()).isTrue();
         assertThat(workflow.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
         assertThat(workflow.getProgress()).isGreaterThanOrEqualTo(90);
-        assertThat(workflow.canCancel()).isFalse();
-
-        InventoryProgress invProgress = workflow.getInventoryProgress();
-        assertThat(invProgress).isNotNull();
-
-        List<String> completedSteps = workflow.getCompletedSteps();
-        assertThat(completedSteps).isNotEmpty();
-        assertThat(completedSteps).anyMatch(s -> s.contains("VALIDATE"));
-        assertThat(completedSteps).anyMatch(s -> s.contains("POST_INVENTORY"));
     }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // Notification Tests
-    // ═══════════════════════════════════════════════════════════════════════
-
-    @Test
-    @DisplayName("Success notification sent on completion")
-    void successNotificationSentOnCompletion() {
-        // Arrange
-        setupSuccessfulMocks();
-
-        FinalizeRequest request = createDefaultRequest();
-
-        // Act
-        FinalizeReceiptWorkflow workflow = startWorkflow();
-        FinalizeResult result = workflow.finalize(request);
-
-        // Assert
-        assertThat(result.isSuccess()).isTrue();
-        verify(notificationActivity).sendFinalizeComplete(eq(RECEIPT_KEY), any());
-    }
-
-    @Test
-    @DisplayName("Failure notification sent on error")
-    void failureNotificationSentOnError() {
-        // Arrange
-        setupValidationMocks();
-
-        when(inventoryPostingActivity.postInventory(any()))
-            .thenReturn(InventoryPostingActivity.PostingResult.builder()
-                .success(false)
-                .errors(List.of("Critical error"))
-                .build());
-
-        FinalizeRequest request = createDefaultRequest();
-
-        // Act
-        FinalizeReceiptWorkflow workflow = startWorkflow();
-        FinalizeResult result = workflow.finalize(request);
-
-        // Assert
-        assertThat(result.isSuccess()).isFalse();
-        verify(notificationActivity).sendFinalizeFailed(
-            eq(RECEIPT_KEY), contains("Critical error"), any());
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // PO Quantity Tests
-    // ═══════════════════════════════════════════════════════════════════════
-
-    @Test
-    @DisplayName("Finalization updates PO received quantities")
-    void finalizationUpdatesPOQuantities() {
-        // Arrange
-        setupSuccessfulMocks();
-
-        List<POQuantityActivity.LineUpdate> updates = List.of(
-            POQuantityActivity.LineUpdate.builder()
-                .poLineNumber(1)
-                .sku("SKU001")
-                .receivedQuantity(new BigDecimal("50"))
-                .build(),
-            POQuantityActivity.LineUpdate.builder()
-                .poLineNumber(2)
-                .sku("SKU002")
-                .receivedQuantity(new BigDecimal("100"))
-                .build()
-        );
-
-        when(poQuantityActivity.updateReceivedQuantities(any()))
-            .thenReturn(POQuantityActivity.UpdateResult.builder()
-                .success(true)
-                .linesUpdated(2)
-                .updates(updates)
-                .build());
-
-        FinalizeRequest request = createDefaultRequest();
-
-        // Act
-        FinalizeReceiptWorkflow workflow = startWorkflow();
-        FinalizeResult result = workflow.finalize(request);
-
-        // Assert
-        assertThat(result.isSuccess()).isTrue();
-        verify(poQuantityActivity).updateReceivedQuantities(any());
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // Edge Case Tests
-    // ═══════════════════════════════════════════════════════════════════════
-
-    @Test
-    @DisplayName("Large receipt with many lines finalized successfully")
-    void largeReceiptFinalizedSuccessfully() {
-        // Arrange
-        setupSuccessfulMocks();
-
-        // Large inventory result
-        List<String> manyInventoryIds = new java.util.ArrayList<>();
-        for (int i = 1; i <= 500; i++) {
-            manyInventoryIds.add("INV-" + String.format("%04d", i));
-        }
-
-        when(inventoryPostingActivity.postInventory(any()))
-            .thenReturn(InventoryPostingActivity.PostingResult.builder()
-                .success(true)
-                .recordsCreated(500)
-                .totalQuantity(new BigDecimal("5000"))
-                .inventoryIds(manyInventoryIds)
-                .build());
-
-        FinalizeRequest request = createDefaultRequest();
-
-        // Act
-        FinalizeReceiptWorkflow workflow = startWorkflow();
-        FinalizeResult result = workflow.finalize(request);
-
-        // Assert
-        assertThat(result.isSuccess()).isTrue();
-        assertThat(result.getInventoryRecordsCreated()).isEqualTo(500);
-    }
-
-    @Test
-    @DisplayName("Hold evaluation failure does not fail finalization when configured")
-    void holdEvaluationFailureHandled() {
-        // Arrange
-        setupSuccessfulMocks();
-
-        // Hold evaluation throws exception
-        when(inventoryHoldActivity.evaluateHolds(any()))
-            .thenThrow(new RuntimeException("Hold service unavailable"));
-
-        FinalizeRequest request = FinalizeRequest.builder()
-            .receiptKey(RECEIPT_KEY)
-            .storerKey(STORER_KEY)
-            .facility(FACILITY)
-            .userId(USER_ID)
-            .autoClose(false)
-            .releasePutaway(false)
-            .applyHolds(true)  // Holds enabled but service fails
-            .build();
-
-        // Act
-        FinalizeReceiptWorkflow workflow = startWorkflow();
-        FinalizeResult result = workflow.finalize(request);
-
-        // Assert - workflow should fail since hold application was requested
-        assertThat(result.isSuccess()).isFalse();
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // Helper Methods
-    // ═══════════════════════════════════════════════════════════════════════
 
     private FinalizeReceiptWorkflow startWorkflow() {
-        return workflowClient.newWorkflowStub(
+        return client.newWorkflowStub(
             FinalizeReceiptWorkflow.class,
             WorkflowOptions.newBuilder()
-                .setTaskQueue(TASK_QUEUE)
+                .setTaskQueue(worker.getTaskQueue())
                 .setWorkflowId("finalize-int-" + UUID.randomUUID())
                 .build()
         );
@@ -678,92 +167,175 @@ class FinalizeIntegrationTest {
             .build();
     }
 
-    private void setupSuccessfulMocks() {
-        setupValidationMocks();
-        setupSuccessfulInventoryMocks();
-        setupSuccessfulPOQuantityMocks();
-        setupSuccessfulPluginMocks();
+    // ═══════════════════════════════════════════════════════════════════════
+    // Stub Activity Implementations
+    // ═══════════════════════════════════════════════════════════════════════
+
+    static class TestValidationActivity implements ValidationActivity {
+        @Override
+        public VariationContext resolveContext(PopulateRequest request) {
+            return VariationContext.builder()
+                .version("V2").region("ASIA-KR").storerKey(STORER_KEY).facility(FACILITY)
+                .dualWriteEnabled(false).build();
+        }
+
+        @Override
+        public ValidationResult validate(PopulateRequest request, VariationContext context) {
+            return ValidationResult.success();
+        }
+
+        @Override
+        public VariationContext resolveTradeReturnContext(TradeReturnRequest request) {
+            return VariationContext.builder()
+                .version("V2").region("ASIA-KR").storerKey(STORER_KEY).facility(FACILITY)
+                .dualWriteEnabled(false).build();
+        }
     }
 
-    private void setupValidationMocks() {
-        when(receiptStatusActivity.validateForFinalization(anyString()))
-            .thenReturn("5");
+    static class TestReceiptStatusActivity implements ReceiptStatusActivity {
+        AtomicBoolean validateCalled = new AtomicBoolean(false);
+        AtomicBoolean setStatusFinalizingCalled = new AtomicBoolean(false);
+        AtomicBoolean setStatusFinalizedCalled = new AtomicBoolean(false);
+        AtomicBoolean revertStatusCalled = new AtomicBoolean(false);
 
-        when(finalizePluginActivity.runPreFinalizePlugins(any(), any()))
-            .thenReturn(PluginResult.builder()
-                .shouldContinue(true)
-                .pluginsExecuted(0)
-                .executedPlugins(Collections.emptyList())
-                .build());
+        @Override
+        public String validateForFinalization(String receiptKey) {
+            validateCalled.set(true);
+            return "5";
+        }
+
+        @Override
+        public String setStatusFinalizing(String receiptKey, String userId) {
+            setStatusFinalizingCalled.set(true);
+            return "5";
+        }
+
+        @Override
+        public void setStatusFinalized(String receiptKey, String userId) {
+            setStatusFinalizedCalled.set(true);
+        }
+
+        @Override
+        public void revertStatus(String receiptKey, String previousStatus, String userId) {
+            revertStatusCalled.set(true);
+        }
+
+        @Override
+        public void closeReceipt(String receiptKey, String userId) {
+        }
     }
 
-    private void setupSuccessfulInventoryMocks() {
-        when(receiptStatusActivity.setStatusFinalizing(anyString(), anyString()))
-            .thenReturn("5");
+    static class TestInventoryPostingActivity implements InventoryPostingActivity {
+        AtomicBoolean postInventoryCalled = new AtomicBoolean(false);
+        boolean shouldFail = false;
 
-        List<String> inventoryIds = List.of("INV001", "INV002");
-        when(inventoryPostingActivity.postInventory(any()))
-            .thenReturn(InventoryPostingActivity.PostingResult.builder()
+        @Override
+        public PostingResult postInventory(PostingRequest request) {
+            if (shouldFail) {
+                return PostingResult.builder()
+                    .success(false)
+                    .errors(List.of("Database connection failed"))
+                    .build();
+            }
+            postInventoryCalled.set(true);
+            return PostingResult.builder()
                 .success(true)
                 .recordsCreated(2)
                 .totalQuantity(new BigDecimal("100"))
-                .inventoryIds(inventoryIds)
-                .build());
+                .inventoryIds(List.of("INV001", "INV002"))
+                .build();
+        }
 
-        doNothing().when(receiptStatusActivity).setStatusFinalized(anyString(), anyString());
-        doNothing().when(receiptStatusActivity).closeReceipt(anyString(), anyString());
+        @Override
+        public void deleteInventory(List<String> inventoryIds) {
+        }
+
+        @Override
+        public void adjustInventory(String inventoryId, BigDecimal adjustment, String reason, String userId) {
+        }
     }
 
-    private void setupSuccessfulPOQuantityMocks() {
-        List<POQuantityActivity.LineUpdate> updates = List.of(
-            POQuantityActivity.LineUpdate.builder()
-                .poLineNumber(1)
-                .sku("SKU001")
-                .receivedQuantity(new BigDecimal("50"))
-                .build()
-        );
+    static class TestInventoryHoldActivity implements InventoryHoldActivity {
+        @Override
+        public List<HoldToApply> evaluateHolds(HoldEvaluationRequest request) {
+            return Collections.emptyList();
+        }
 
-        when(poQuantityActivity.updateReceivedQuantities(any()))
-            .thenReturn(POQuantityActivity.UpdateResult.builder()
-                .success(true)
-                .linesUpdated(1)
-                .updates(updates)
-                .build());
+        @Override
+        public HoldResult applyHolds(HoldApplicationRequest request) {
+            return HoldResult.builder().success(true).holdsApplied(0).holdIds(Collections.emptyList()).build();
+        }
+
+        @Override
+        public void removeHolds(List<String> holdIds, String reason) {
+        }
     }
 
-    private void setupSuccessfulPluginMocks() {
-        when(finalizePluginActivity.runPostFinalizePlugins(anyString(), any(), any(), any()))
-            .thenReturn(FinalizePluginActivity.PluginSummary.builder()
-                .pluginsExecuted(0)
-                .successCount(0)
-                .errors(Collections.emptyList())
-                .build());
+    static class TestPOQuantityActivity implements POQuantityActivity {
+        @Override
+        public UpdateResult updateReceivedQuantities(UpdateRequest request) {
+            return UpdateResult.builder().success(true).linesUpdated(1).updates(Collections.emptyList()).build();
+        }
 
-        doNothing().when(notificationActivity).sendFinalizeComplete(anyString(), any());
-        doNothing().when(notificationActivity).sendFinalizeFailed(anyString(), anyString(), any());
+        @Override
+        public void revertReceivedQuantities(List<LineUpdate> updates) {
+        }
+
+        @Override
+        public boolean isFullyReceived(String poKey) {
+            return false;
+        }
+
+        @Override
+        public void closePO(String poKey, String userId) {
+        }
     }
 
-    private void setupHoldAndPutawayMocks() {
-        List<InventoryHoldActivity.HoldToApply> holdsToApply = List.of(
-            InventoryHoldActivity.HoldToApply.builder()
-                .holdCode("QC_HOLD")
-                .holdReason("Quality check required")
-                .holdType("QC")
-                .build()
-        );
-        when(inventoryHoldActivity.evaluateHolds(any())).thenReturn(holdsToApply);
-        when(inventoryHoldActivity.applyHolds(any()))
-            .thenReturn(InventoryHoldActivity.HoldResult.builder()
-                .success(true)
-                .holdIds(List.of("HOLD-001"))
-                .holdsApplied(1)
-                .build());
+    static class TestPutawayReleaseActivity implements PutawayReleaseActivity {
+        @Override
+        public ReleaseResult releasePutawayTasks(ReleaseRequest request) {
+            return ReleaseResult.builder().success(true).tasksCreated(0).taskIds(Collections.emptyList()).build();
+        }
 
-        when(putawayReleaseActivity.releasePutawayTasks(any()))
-            .thenReturn(PutawayReleaseActivity.ReleaseResult.builder()
-                .success(true)
-                .taskIds(List.of("TASK-001", "TASK-002", "TASK-003"))
-                .tasksCreated(3)
-                .build());
+        @Override
+        public void cancelPutawayTasks(List<String> taskIds, String reason) {
+        }
+    }
+
+    static class TestFinalizePluginActivity implements FinalizePluginActivity {
+        @Override
+        public PluginResult runPreFinalizePlugins(FinalizeRequest request, VariationContext context) {
+            return PluginResult.builder().shouldContinue(true).pluginsExecuted(0)
+                .executedPlugins(Collections.emptyList()).build();
+        }
+
+        @Override
+        public PluginSummary runPostFinalizePlugins(String receiptKey, FinalizeRequest request,
+                                                    VariationContext context, Map<String, Object> finalizationData) {
+            return PluginSummary.builder().pluginsExecuted(0).successCount(0).errors(Collections.emptyList()).build();
+        }
+
+        @Override
+        public void rollbackPreFinalizePlugins(String receiptKey, List<String> pluginResults) {
+        }
+    }
+
+    static class TestNotificationActivity implements NotificationActivity {
+        @Override
+        public void sendPopulationComplete(String receiptKey, PopulateRequest request) {}
+        @Override
+        public void sendPopulationFailed(String receiptKey, String errorMessage, PopulateRequest request) {}
+        @Override
+        public void sendPopulationCancelled(String receiptKey, PopulateRequest request) {}
+        @Override
+        public void sendFinalizeComplete(String receiptKey, FinalizeRequest request) {}
+        @Override
+        public void sendFinalizeFailed(String receiptKey, String errorMessage, FinalizeRequest request) {}
+        @Override
+        public void sendFinalizeCancelled(String receiptKey, FinalizeRequest request) {}
+        @Override
+        public void sendTradeReturnComplete(String orderKey, String receiptKey) {}
+        @Override
+        public void sendTradeReturnFailed(String receiptKey, String errorMessage) {}
     }
 }

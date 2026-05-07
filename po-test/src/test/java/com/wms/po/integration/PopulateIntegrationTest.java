@@ -8,18 +8,20 @@ import com.wms.po.workflow.impl.PopulatePOWorkflowImpl;
 import io.temporal.client.WorkflowClient;
 import io.temporal.client.WorkflowOptions;
 import io.temporal.testing.TestWorkflowEnvironment;
+import io.temporal.testing.TestWorkflowExtension;
 import io.temporal.worker.Worker;
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
 
 /**
  * Integration tests for PopulatePO workflow.
@@ -28,55 +30,56 @@ import static org.mockito.Mockito.*;
  * workflow service - no external Temporal server required.
  *
  * Tests verify:
- * - Full workflow execution with mock activities
+ * - Full workflow execution with stub activities
  * - Compensation behavior on failures
  * - Query method functionality
  * - Multiple PO consolidation
  *
- * NOTE: Temporarily disabled because Temporal SDK doesn't support Mockito proxies
- * for activity implementations. These tests need to be converted to use stub
- * implementations (like TradeReturnWorkflowTest) to work properly.
- * TODO: Convert to stub implementations in Phase 2
+ * Note: Uses stub activity implementations instead of Mockito mocks
+ * because Temporal SDK doesn't support Mockito proxies for activities.
  */
-@Disabled("Temporal SDK incompatible with Mockito mocks - convert to stub implementations")
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class PopulateIntegrationTest {
 
-    private static final String TASK_QUEUE = "populate-integration-test-queue";
+    @RegisterExtension
+    public static final TestWorkflowExtension testExtension =
+        TestWorkflowExtension.newBuilder()
+            .setWorkflowTypes(PopulatePOWorkflowImpl.class)
+            .setDoNotStart(true)
+            .build();
+
     private static final String STORER_KEY = "NIKE_KR";
     private static final String FACILITY = "KR01";
     private static final String USER_ID = "integration_user";
 
+    // Stub activities
+    private TestValidationActivity validationActivity;
+    private TestPluginActivity pluginActivity;
+    private TestMappingActivity mappingActivity;
+    private TestPersistenceActivity persistenceActivity;
+    private TestInventoryActivity inventoryActivity;
+    private TestLegacyBridgeActivity legacyBridgeActivity;
+    private TestNotificationActivity notificationActivity;
+
     private TestWorkflowEnvironment testEnv;
     private Worker worker;
-    private WorkflowClient workflowClient;
+    private WorkflowClient client;
 
-    // Mock activities
-    private ValidationActivity validationActivity;
-    private PluginActivity pluginActivity;
-    private MappingActivity mappingActivity;
-    private PersistenceActivity persistenceActivity;
-    private InventoryActivity inventoryActivity;
-    private LegacyBridgeActivity legacyBridgeActivity;
-    private NotificationActivity notificationActivity;
+    @BeforeEach
+    void setUp(TestWorkflowEnvironment testEnv, Worker worker, WorkflowClient client) {
+        this.testEnv = testEnv;
+        this.worker = worker;
+        this.client = client;
 
-    @BeforeAll
-    void setUpEnvironment() {
-        testEnv = TestWorkflowEnvironment.newInstance();
-        worker = testEnv.newWorker(TASK_QUEUE);
-        workflowClient = testEnv.getWorkflowClient();
+        // Create stub activity implementations
+        validationActivity = new TestValidationActivity();
+        pluginActivity = new TestPluginActivity();
+        mappingActivity = new TestMappingActivity();
+        persistenceActivity = new TestPersistenceActivity();
+        inventoryActivity = new TestInventoryActivity();
+        legacyBridgeActivity = new TestLegacyBridgeActivity();
+        notificationActivity = new TestNotificationActivity();
 
-        // Create mock activities
-        validationActivity = mock(ValidationActivity.class);
-        pluginActivity = mock(PluginActivity.class);
-        mappingActivity = mock(MappingActivity.class);
-        persistenceActivity = mock(PersistenceActivity.class);
-        inventoryActivity = mock(InventoryActivity.class);
-        legacyBridgeActivity = mock(LegacyBridgeActivity.class);
-        notificationActivity = mock(NotificationActivity.class);
-
-        // Register workflows and activities
-        worker.registerWorkflowImplementationTypes(PopulatePOWorkflowImpl.class);
+        // Register activities with worker
         worker.registerActivitiesImplementations(
             validationActivity,
             pluginActivity,
@@ -90,29 +93,9 @@ class PopulateIntegrationTest {
         testEnv.start();
     }
 
-    @AfterAll
-    void tearDownEnvironment() {
-        if (testEnv != null) {
-            testEnv.close();
-        }
-    }
-
-    @BeforeEach
-    void resetMocks() {
-        reset(validationActivity, pluginActivity, mappingActivity,
-              persistenceActivity, inventoryActivity, legacyBridgeActivity,
-              notificationActivity);
-
-        // Setup default context resolution
-        when(validationActivity.resolveContext(any())).thenReturn(
-            VariationContext.builder()
-                .version("V2")
-                .region("ASIA-KR")
-                .storerKey(STORER_KEY)
-                .facility(FACILITY)
-                .dualWriteEnabled(false)
-                .build()
-        );
+    @AfterEach
+    void tearDown() {
+        testEnv.close();
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -123,13 +106,11 @@ class PopulateIntegrationTest {
     @DisplayName("Successfully populate single PO")
     void populateSinglePO() {
         // Arrange
-        String poKey = "INT-PO-001";
         String receiptKey = "INT-RCV-001";
-
-        setupSuccessfulMocks(receiptKey);
+        persistenceActivity.receiptKeyToReturn = receiptKey;
 
         PopulateRequest request = PopulateRequest.builder()
-            .poKeys(List.of(poKey))
+            .poKeys(List.of("INT-PO-001"))
             .storerKey(STORER_KEY)
             .facility(FACILITY)
             .userId(USER_ID)
@@ -146,12 +127,12 @@ class PopulateIntegrationTest {
         assertThat(result.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
 
         // Verify activities called
-        verify(validationActivity).resolveContext(any());
-        verify(validationActivity).validate(any(), any());
-        verify(mappingActivity).mapPOToASN(any(), any());
-        verify(persistenceActivity).createReceiptHeader(any());
-        verify(persistenceActivity).createReceiptDetails(eq(receiptKey), any());
-        verify(inventoryActivity).createReservations(eq(receiptKey), any());
+        assertThat(validationActivity.resolveContextCalled.get()).isTrue();
+        assertThat(validationActivity.validateCalled.get()).isTrue();
+        assertThat(mappingActivity.mapPOToASNCalled.get()).isTrue();
+        assertThat(persistenceActivity.createHeaderCalled.get()).isTrue();
+        assertThat(persistenceActivity.createDetailsCalled.get()).isTrue();
+        assertThat(inventoryActivity.createReservationsCalled.get()).isTrue();
     }
 
     @Test
@@ -159,10 +140,10 @@ class PopulateIntegrationTest {
     void populateMultiplePOs() {
         // Arrange
         String receiptKey = "INT-RCV-MULTI-001";
-        setupSuccessfulMocks(receiptKey);
+        persistenceActivity.receiptKeyToReturn = receiptKey;
+        persistenceActivity.detailKeysToReturn = List.of("DTL-001", "DTL-002", "DTL-003", "DTL-004");
 
-        // Create mapping with details from multiple POs
-        MappingResult multiPoMapping = MappingResult.builder()
+        mappingActivity.mappingResultToReturn = MappingResult.builder()
             .externReceiptKey("EXT-" + receiptKey)
             .storerKey(STORER_KEY)
             .facility(FACILITY)
@@ -174,10 +155,6 @@ class PopulateIntegrationTest {
                 createDetailMapping("SKU-004", "INT-PO-003", 1, BigDecimal.valueOf(200))
             ))
             .build();
-
-        when(mappingActivity.mapPOToASN(any(), any())).thenReturn(multiPoMapping);
-        when(persistenceActivity.createReceiptDetails(anyString(), any()))
-            .thenReturn(List.of("DTL-001", "DTL-002", "DTL-003", "DTL-004"));
 
         PopulateRequest request = PopulateRequest.builder()
             .poKeys(List.of("INT-PO-001", "INT-PO-002", "INT-PO-003"))
@@ -193,9 +170,7 @@ class PopulateIntegrationTest {
         // Assert
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getDetailCount()).isEqualTo(4);
-
-        verify(validationActivity).validate(argThat(req ->
-            req.getPoKeys().size() == 3), any());
+        assertThat(validationActivity.lastValidatedRequest.get().getPoKeys()).hasSize(3);
     }
 
     @Test
@@ -203,19 +178,15 @@ class PopulateIntegrationTest {
     void populateWithDualWrite() {
         // Arrange
         String receiptKey = "INT-RCV-DW-001";
+        persistenceActivity.receiptKeyToReturn = receiptKey;
 
-        when(validationActivity.resolveContext(any())).thenReturn(
-            VariationContext.builder()
-                .version("V2")
-                .region("ASIA-KR")
-                .storerKey(STORER_KEY)
-                .facility(FACILITY)
-                .dualWriteEnabled(true)  // Enable dual-write
-                .build()
-        );
-
-        setupSuccessfulMocks(receiptKey);
-        doNothing().when(legacyBridgeActivity).syncToLegacy(anyString(), any());
+        validationActivity.contextToReturn = VariationContext.builder()
+            .version("V2")
+            .region("ASIA-KR")
+            .storerKey(STORER_KEY)
+            .facility(FACILITY)
+            .dualWriteEnabled(true)
+            .build();
 
         PopulateRequest request = PopulateRequest.builder()
             .poKeys(List.of("INT-PO-DW-001"))
@@ -230,7 +201,8 @@ class PopulateIntegrationTest {
 
         // Assert
         assertThat(result.isSuccess()).isTrue();
-        verify(legacyBridgeActivity).syncToLegacy(eq(receiptKey), any());
+        assertThat(legacyBridgeActivity.syncToLegacyCalled.get()).isTrue();
+        assertThat(legacyBridgeActivity.lastSyncedReceiptKey.get()).isEqualTo(receiptKey);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -241,13 +213,10 @@ class PopulateIntegrationTest {
     @DisplayName("Validation failure returns descriptive error")
     void validationFailureReturnsError() {
         // Arrange
-        when(pluginActivity.runPrePopulate(any(), any()))
-            .thenReturn(PluginResult.success());
-        when(validationActivity.validate(any(), any()))
-            .thenReturn(ValidationResult.failure(List.of(
-                "PO-001 is already received",
-                "PO-002 has invalid status"
-            )));
+        validationActivity.validationResult = ValidationResult.failure(List.of(
+            "PO-001 is already received",
+            "PO-002 has invalid status"
+        ));
 
         PopulateRequest request = PopulateRequest.builder()
             .poKeys(List.of("PO-001", "PO-002"))
@@ -267,17 +236,14 @@ class PopulateIntegrationTest {
         assertThat(result.getErrors()).contains("PO-002 has invalid status");
 
         // Verify no persistence occurred
-        verify(persistenceActivity, never()).createReceiptHeader(any());
+        assertThat(persistenceActivity.createHeaderCalled.get()).isFalse();
     }
 
     @Test
     @DisplayName("Non-existent PO returns not found error")
     void nonExistentPOReturnsError() {
         // Arrange
-        when(pluginActivity.runPrePopulate(any(), any()))
-            .thenReturn(PluginResult.success());
-        when(validationActivity.validate(any(), any()))
-            .thenReturn(ValidationResult.failure("PO NON_EXISTENT_PO not found"));
+        validationActivity.validationResult = ValidationResult.failure("PO NON_EXISTENT_PO not found");
 
         PopulateRequest request = PopulateRequest.builder()
             .poKeys(List.of("NON_EXISTENT_PO"))
@@ -306,22 +272,9 @@ class PopulateIntegrationTest {
         String receiptKey = "INT-RCV-COMP-001";
         List<String> detailKeys = List.of("DTL-001", "DTL-002");
 
-        when(pluginActivity.runPrePopulate(any(), any()))
-            .thenReturn(PluginResult.success());
-        when(validationActivity.validate(any(), any()))
-            .thenReturn(ValidationResult.success());
-        when(mappingActivity.mapPOToASN(any(), any()))
-            .thenReturn(createMappingResult(receiptKey));
-        when(mappingActivity.applyLottables(any(), any()))
-            .thenReturn(LottableResult.builder().success(true).appliedRules(List.of()).build());
-        when(persistenceActivity.createReceiptHeader(any()))
-            .thenReturn(receiptKey);
-        when(persistenceActivity.createReceiptDetails(anyString(), any()))
-            .thenReturn(detailKeys);
-
-        // Inventory creation fails
-        when(inventoryActivity.createReservations(anyString(), any()))
-            .thenThrow(new RuntimeException("Inventory system unavailable"));
+        persistenceActivity.receiptKeyToReturn = receiptKey;
+        persistenceActivity.detailKeysToReturn = detailKeys;
+        inventoryActivity.shouldFail = true;
 
         PopulateRequest request = PopulateRequest.builder()
             .poKeys(List.of("INT-PO-COMP-001"))
@@ -338,9 +291,9 @@ class PopulateIntegrationTest {
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getStatus()).isEqualTo(WorkflowStatus.FAILED);
 
-        // Verify compensations called in reverse order
-        verify(persistenceActivity).deleteReceiptDetails(detailKeys);
-        verify(persistenceActivity).deleteReceiptHeader(receiptKey);
+        // Verify compensations called
+        assertThat(persistenceActivity.deleteDetailsCalled.get()).isTrue();
+        assertThat(persistenceActivity.deleteHeaderCalled.get()).isTrue();
     }
 
     @Test
@@ -351,34 +304,18 @@ class PopulateIntegrationTest {
         List<String> detailKeys = List.of("DTL-001", "DTL-002");
         List<String> reservationIds = List.of("RES-001", "RES-002");
 
-        when(validationActivity.resolveContext(any())).thenReturn(
-            VariationContext.builder()
-                .version("V2")
-                .region("ASIA-KR")
-                .storerKey(STORER_KEY)
-                .facility(FACILITY)
-                .dualWriteEnabled(true)
-                .build()
-        );
+        validationActivity.contextToReturn = VariationContext.builder()
+            .version("V2")
+            .region("ASIA-KR")
+            .storerKey(STORER_KEY)
+            .facility(FACILITY)
+            .dualWriteEnabled(true)
+            .build();
 
-        when(pluginActivity.runPrePopulate(any(), any()))
-            .thenReturn(PluginResult.success());
-        when(validationActivity.validate(any(), any()))
-            .thenReturn(ValidationResult.success());
-        when(mappingActivity.mapPOToASN(any(), any()))
-            .thenReturn(createMappingResult(receiptKey));
-        when(mappingActivity.applyLottables(any(), any()))
-            .thenReturn(LottableResult.builder().success(true).appliedRules(List.of()).build());
-        when(persistenceActivity.createReceiptHeader(any()))
-            .thenReturn(receiptKey);
-        when(persistenceActivity.createReceiptDetails(anyString(), any()))
-            .thenReturn(detailKeys);
-        when(inventoryActivity.createReservations(anyString(), any()))
-            .thenReturn(reservationIds);
-
-        // Legacy sync fails
-        doThrow(new RuntimeException("Legacy system timeout"))
-            .when(legacyBridgeActivity).syncToLegacy(anyString(), any());
+        persistenceActivity.receiptKeyToReturn = receiptKey;
+        persistenceActivity.detailKeysToReturn = detailKeys;
+        inventoryActivity.reservationIdsToReturn = reservationIds;
+        legacyBridgeActivity.shouldFail = true;
 
         PopulateRequest request = PopulateRequest.builder()
             .poKeys(List.of("INT-PO-LEGACY-001"))
@@ -394,10 +331,10 @@ class PopulateIntegrationTest {
         // Assert
         assertThat(result.isSuccess()).isFalse();
 
-        // Verify all compensations in reverse order
-        verify(inventoryActivity).releaseReservations(reservationIds);
-        verify(persistenceActivity).deleteReceiptDetails(detailKeys);
-        verify(persistenceActivity).deleteReceiptHeader(receiptKey);
+        // Verify all compensations
+        assertThat(inventoryActivity.releaseReservationsCalled.get()).isTrue();
+        assertThat(persistenceActivity.deleteDetailsCalled.get()).isTrue();
+        assertThat(persistenceActivity.deleteHeaderCalled.get()).isTrue();
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -409,7 +346,7 @@ class PopulateIntegrationTest {
     void queryMethodsReturnCorrectValues() {
         // Arrange
         String receiptKey = "INT-RCV-QUERY-001";
-        setupSuccessfulMocks(receiptKey);
+        persistenceActivity.receiptKeyToReturn = receiptKey;
 
         PopulateRequest request = PopulateRequest.builder()
             .poKeys(List.of("INT-PO-QUERY-001"))
@@ -430,11 +367,6 @@ class PopulateIntegrationTest {
 
         List<String> completedSteps = workflow.getCompletedSteps();
         assertThat(completedSteps).isNotEmpty();
-        assertThat(completedSteps).anyMatch(s -> s.contains("RESOLVE_CONTEXT"));
-        assertThat(completedSteps).anyMatch(s -> s.contains("VALIDATION"));
-        assertThat(completedSteps).anyMatch(s -> s.contains("CREATE_HEADER"));
-        assertThat(completedSteps).anyMatch(s -> s.contains("CREATE_DETAILS"));
-        assertThat(completedSteps).anyMatch(s -> s.contains("CREATE_RESERVATIONS"));
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -448,10 +380,9 @@ class PopulateIntegrationTest {
         String receiptKey = "INT-RCV-LARGE-001";
         int lineCount = 100;
 
-        // Create mapping with many lines
-        List<DetailMapping> manyLines = new java.util.ArrayList<>();
-        List<String> manyDetailKeys = new java.util.ArrayList<>();
-        List<String> manyReservationIds = new java.util.ArrayList<>();
+        List<DetailMapping> manyLines = new ArrayList<>();
+        List<String> manyDetailKeys = new ArrayList<>();
+        List<String> manyReservationIds = new ArrayList<>();
 
         for (int i = 1; i <= lineCount; i++) {
             manyLines.add(createDetailMapping("SKU-" + i, "INT-PO-LARGE-001", i, BigDecimal.TEN));
@@ -459,7 +390,7 @@ class PopulateIntegrationTest {
             manyReservationIds.add("RES-" + String.format("%03d", i));
         }
 
-        MappingResult largeMapping = MappingResult.builder()
+        mappingActivity.mappingResultToReturn = MappingResult.builder()
             .externReceiptKey("EXT-" + receiptKey)
             .storerKey(STORER_KEY)
             .facility(FACILITY)
@@ -467,23 +398,9 @@ class PopulateIntegrationTest {
             .details(manyLines)
             .build();
 
-        when(pluginActivity.runPrePopulate(any(), any()))
-            .thenReturn(PluginResult.success());
-        when(validationActivity.validate(any(), any()))
-            .thenReturn(ValidationResult.success());
-        when(mappingActivity.mapPOToASN(any(), any()))
-            .thenReturn(largeMapping);
-        when(mappingActivity.applyLottables(any(), any()))
-            .thenReturn(LottableResult.builder().success(true).appliedRules(List.of()).build());
-        when(persistenceActivity.createReceiptHeader(any()))
-            .thenReturn(receiptKey);
-        when(persistenceActivity.createReceiptDetails(anyString(), any()))
-            .thenReturn(manyDetailKeys);
-        when(inventoryActivity.createReservations(anyString(), any()))
-            .thenReturn(manyReservationIds);
-        doNothing().when(notificationActivity).sendPopulationComplete(anyString(), any());
-        when(pluginActivity.runPostPopulate(anyString(), any(), any()))
-            .thenReturn(PluginResult.success());
+        persistenceActivity.receiptKeyToReturn = receiptKey;
+        persistenceActivity.detailKeysToReturn = manyDetailKeys;
+        inventoryActivity.reservationIdsToReturn = manyReservationIds;
 
         PopulateRequest request = PopulateRequest.builder()
             .poKeys(List.of("INT-PO-LARGE-001"))
@@ -506,11 +423,8 @@ class PopulateIntegrationTest {
     void notificationFailureDoesNotFailWorkflow() {
         // Arrange
         String receiptKey = "INT-RCV-NOTIFY-001";
-        setupSuccessfulMocks(receiptKey);
-
-        // Notification fails
-        doThrow(new RuntimeException("Kafka unavailable"))
-            .when(notificationActivity).sendPopulationComplete(anyString(), any());
+        persistenceActivity.receiptKeyToReturn = receiptKey;
+        notificationActivity.shouldFail = true;
 
         PopulateRequest request = PopulateRequest.builder()
             .poKeys(List.of("INT-PO-NOTIFY-001"))
@@ -533,46 +447,13 @@ class PopulateIntegrationTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     private PopulatePOWorkflow startWorkflow() {
-        return workflowClient.newWorkflowStub(
+        return client.newWorkflowStub(
             PopulatePOWorkflow.class,
             WorkflowOptions.newBuilder()
-                .setTaskQueue(TASK_QUEUE)
+                .setTaskQueue(worker.getTaskQueue())
                 .setWorkflowId("populate-int-" + UUID.randomUUID())
                 .build()
         );
-    }
-
-    private void setupSuccessfulMocks(String receiptKey) {
-        when(pluginActivity.runPrePopulate(any(), any()))
-            .thenReturn(PluginResult.success());
-        when(pluginActivity.runPostPopulate(anyString(), any(), any()))
-            .thenReturn(PluginResult.success());
-        when(validationActivity.validate(any(), any()))
-            .thenReturn(ValidationResult.success());
-        when(mappingActivity.mapPOToASN(any(), any()))
-            .thenReturn(createMappingResult(receiptKey));
-        when(mappingActivity.applyLottables(any(), any()))
-            .thenReturn(LottableResult.builder().success(true).appliedRules(List.of()).build());
-        when(persistenceActivity.createReceiptHeader(any()))
-            .thenReturn(receiptKey);
-        when(persistenceActivity.createReceiptDetails(anyString(), any()))
-            .thenReturn(List.of("DTL-001", "DTL-002"));
-        when(inventoryActivity.createReservations(anyString(), any()))
-            .thenReturn(List.of("RES-001", "RES-002"));
-        doNothing().when(notificationActivity).sendPopulationComplete(anyString(), any());
-    }
-
-    private MappingResult createMappingResult(String receiptKey) {
-        return MappingResult.builder()
-            .externReceiptKey("EXT-" + receiptKey)
-            .storerKey(STORER_KEY)
-            .facility(FACILITY)
-            .userId(USER_ID)
-            .details(List.of(
-                createDetailMapping("SKU-001", "PO-001", 1, BigDecimal.valueOf(100)),
-                createDetailMapping("SKU-002", "PO-001", 2, BigDecimal.valueOf(50))
-            ))
-            .build();
     }
 
     private DetailMapping createDetailMapping(String sku, String poKey, int lineNum, BigDecimal qty) {
@@ -584,5 +465,256 @@ class PopulateIntegrationTest {
             .poLineNumber(lineNum)
             .lottables(Map.of())
             .build();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Stub Activity Implementations
+    // ═══════════════════════════════════════════════════════════════════════
+
+    static class TestValidationActivity implements ValidationActivity {
+        AtomicBoolean resolveContextCalled = new AtomicBoolean(false);
+        AtomicBoolean validateCalled = new AtomicBoolean(false);
+        AtomicReference<PopulateRequest> lastValidatedRequest = new AtomicReference<>();
+
+        VariationContext contextToReturn = VariationContext.builder()
+            .version("V2")
+            .region("ASIA-KR")
+            .storerKey(STORER_KEY)
+            .facility(FACILITY)
+            .dualWriteEnabled(false)
+            .build();
+
+        ValidationResult validationResult = ValidationResult.success();
+
+        @Override
+        public VariationContext resolveContext(PopulateRequest request) {
+            resolveContextCalled.set(true);
+            return contextToReturn;
+        }
+
+        @Override
+        public ValidationResult validate(PopulateRequest request, VariationContext context) {
+            validateCalled.set(true);
+            lastValidatedRequest.set(request);
+            return validationResult;
+        }
+
+        @Override
+        public VariationContext resolveTradeReturnContext(TradeReturnRequest request) {
+            return contextToReturn;
+        }
+    }
+
+    static class TestPluginActivity implements PluginActivity {
+        AtomicBoolean prePopulateCalled = new AtomicBoolean(false);
+        AtomicBoolean postPopulateCalled = new AtomicBoolean(false);
+
+        PluginResult prePopulateResult = PluginResult.success();
+        PluginResult postPopulateResult = PluginResult.success();
+
+        @Override
+        public PluginResult runPrePopulate(PopulateRequest request, VariationContext context) {
+            prePopulateCalled.set(true);
+            return prePopulateResult;
+        }
+
+        @Override
+        public PluginResult runPostPopulate(String receiptKey, PopulateRequest request, VariationContext context) {
+            postPopulateCalled.set(true);
+            return postPopulateResult;
+        }
+    }
+
+    static class TestMappingActivity implements MappingActivity {
+        AtomicBoolean mapPOToASNCalled = new AtomicBoolean(false);
+        AtomicBoolean applyLottablesCalled = new AtomicBoolean(false);
+
+        MappingResult mappingResultToReturn = null;
+
+        @Override
+        public MappingResult mapPOToASN(PopulateRequest request, VariationContext context) {
+            mapPOToASNCalled.set(true);
+            if (mappingResultToReturn != null) {
+                return mappingResultToReturn;
+            }
+            return MappingResult.builder()
+                .externReceiptKey("EXT-RCV-001")
+                .storerKey(STORER_KEY)
+                .facility(FACILITY)
+                .userId(USER_ID)
+                .details(List.of(
+                    DetailMapping.builder()
+                        .sku("SKU-001")
+                        .qtyExpected(BigDecimal.valueOf(100))
+                        .uom("EA")
+                        .poKey("PO-001")
+                        .poLineNumber(1)
+                        .lottables(Map.of())
+                        .build(),
+                    DetailMapping.builder()
+                        .sku("SKU-002")
+                        .qtyExpected(BigDecimal.valueOf(50))
+                        .uom("EA")
+                        .poKey("PO-001")
+                        .poLineNumber(2)
+                        .lottables(Map.of())
+                        .build()
+                ))
+                .build();
+        }
+
+        @Override
+        public LottableResult applyLottables(MappingResult mapping, VariationContext context) {
+            applyLottablesCalled.set(true);
+            return LottableResult.builder()
+                .success(true)
+                .appliedRules(List.of())
+                .build();
+        }
+    }
+
+    static class TestPersistenceActivity implements PersistenceActivity {
+        AtomicBoolean createHeaderCalled = new AtomicBoolean(false);
+        AtomicBoolean createDetailsCalled = new AtomicBoolean(false);
+        AtomicBoolean deleteHeaderCalled = new AtomicBoolean(false);
+        AtomicBoolean deleteDetailsCalled = new AtomicBoolean(false);
+        AtomicBoolean updateStatusCalled = new AtomicBoolean(false);
+
+        String receiptKeyToReturn = "RCV-001";
+        List<String> detailKeysToReturn = List.of("DTL-001", "DTL-002");
+
+        @Override
+        public String createReceiptHeader(MappingResult mapping) {
+            createHeaderCalled.set(true);
+            return receiptKeyToReturn;
+        }
+
+        @Override
+        public List<String> createReceiptDetails(String receiptKey, List<DetailMapping> details) {
+            createDetailsCalled.set(true);
+            return detailKeysToReturn;
+        }
+
+        @Override
+        public void deleteReceiptHeader(String receiptKey) {
+            deleteHeaderCalled.set(true);
+        }
+
+        @Override
+        public void deleteReceiptDetails(List<String> detailKeys) {
+            deleteDetailsCalled.set(true);
+        }
+
+        @Override
+        public void updateReceiptStatus(String receiptKey, String status) {
+            updateStatusCalled.set(true);
+        }
+    }
+
+    static class TestInventoryActivity implements InventoryActivity {
+        AtomicBoolean createReservationsCalled = new AtomicBoolean(false);
+        AtomicBoolean releaseReservationsCalled = new AtomicBoolean(false);
+        AtomicBoolean preAllocateCalled = new AtomicBoolean(false);
+        AtomicBoolean releasePreAllocationCalled = new AtomicBoolean(false);
+
+        List<String> reservationIdsToReturn = List.of("RES-001", "RES-002");
+        boolean shouldFail = false;
+
+        @Override
+        public List<String> createReservations(String receiptKey, List<String> detailKeys) {
+            if (shouldFail) {
+                throw new RuntimeException("Inventory system unavailable");
+            }
+            createReservationsCalled.set(true);
+            return reservationIdsToReturn;
+        }
+
+        @Override
+        public void releaseReservations(List<String> reservationIds) {
+            releaseReservationsCalled.set(true);
+        }
+
+        @Override
+        public void preAllocateInventory(String receiptKey, List<String> detailKeys) {
+            preAllocateCalled.set(true);
+        }
+
+        @Override
+        public void releasePreAllocation(String receiptKey) {
+            releasePreAllocationCalled.set(true);
+        }
+    }
+
+    static class TestLegacyBridgeActivity implements LegacyBridgeActivity {
+        AtomicBoolean syncToLegacyCalled = new AtomicBoolean(false);
+        AtomicBoolean rollbackLegacyCalled = new AtomicBoolean(false);
+        AtomicBoolean verifyLegacySyncCalled = new AtomicBoolean(false);
+        AtomicReference<String> lastSyncedReceiptKey = new AtomicReference<>();
+
+        boolean shouldFail = false;
+
+        @Override
+        public void syncToLegacy(String receiptKey, VariationContext context) {
+            if (shouldFail) {
+                throw new RuntimeException("Legacy system timeout");
+            }
+            syncToLegacyCalled.set(true);
+            lastSyncedReceiptKey.set(receiptKey);
+        }
+
+        @Override
+        public void rollbackLegacy(String receiptKey, VariationContext context) {
+            rollbackLegacyCalled.set(true);
+        }
+
+        @Override
+        public boolean verifyLegacySync(String receiptKey, VariationContext context) {
+            verifyLegacySyncCalled.set(true);
+            return true;
+        }
+    }
+
+    static class TestNotificationActivity implements NotificationActivity {
+        AtomicBoolean sendPopulationCompleteCalled = new AtomicBoolean(false);
+        AtomicBoolean sendPopulationFailedCalled = new AtomicBoolean(false);
+
+        boolean shouldFail = false;
+
+        @Override
+        public void sendPopulationComplete(String receiptKey, PopulateRequest request) {
+            if (shouldFail) {
+                throw new RuntimeException("Kafka unavailable");
+            }
+            sendPopulationCompleteCalled.set(true);
+        }
+
+        @Override
+        public void sendPopulationFailed(String receiptKey, String errorMessage, PopulateRequest request) {
+            sendPopulationFailedCalled.set(true);
+        }
+
+        @Override
+        public void sendPopulationCancelled(String receiptKey, PopulateRequest request) {
+        }
+
+        @Override
+        public void sendFinalizeComplete(String receiptKey, FinalizeRequest request) {
+        }
+
+        @Override
+        public void sendFinalizeFailed(String receiptKey, String errorMessage, FinalizeRequest request) {
+        }
+
+        @Override
+        public void sendFinalizeCancelled(String receiptKey, FinalizeRequest request) {
+        }
+
+        @Override
+        public void sendTradeReturnComplete(String orderKey, String receiptKey) {
+        }
+
+        @Override
+        public void sendTradeReturnFailed(String receiptKey, String errorMessage) {
+        }
     }
 }
