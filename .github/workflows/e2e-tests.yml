@@ -207,29 +207,15 @@ jobs:
 
       - name: Run Karate E2E Tests - ${{ matrix.flow-group.name }}
         run: |
-          echo "=== Verifying test resources ==="
-          # Process test resources to ensure feature files are copied
-          mvn process-test-resources -pl po-test -B
-
-          FEATURE_COUNT=$(find po-test/target/test-classes -name "*.feature" 2>/dev/null | wc -l)
-          echo "Feature files in test-classes: $FEATURE_COUNT"
-
-          if [ "$FEATURE_COUNT" -eq 0 ]; then
-            echo "ERROR: No feature files found! Check pom.xml testResources configuration."
-            echo "Source feature files:"
-            find po-test/src/test/java -name "*.feature" | head -10
-            exit 1
-          fi
-
-          echo ""
           echo "=== Running Karate E2E Tests ==="
+          echo "Feature files in source: $(find po-test/src/test/resources -name '*.feature' | wc -l)"
+
           mvn verify -B \
             -pl po-test \
             -DskipUTs=true \
             -Dkarate.env=ci \
             -Dkarate.threads=${{ env.KARATE_THREADS }} \
-            -Dkarate.options="--tags '${{ matrix.flow-group.tags }}'" \
-            --fail-at-end || true
+            -Dkarate.options="--tags '${{ matrix.flow-group.tags }}'"
 
       - name: Upload Karate Results
         uses: actions/upload-artifact@v4
@@ -364,17 +350,12 @@ jobs:
 
       - name: Run Performance Tests
         run: |
-          # Ensure test resources are processed
-          mvn process-test-resources -pl po-test -B
-
-          # Run performance tests via failsafe
           mvn verify -B \
             -pl po-test \
             -DskipUTs=true \
             -Dkarate.env=ci \
             -Dkarate.threads=10 \
-            -Dkarate.options="--tags @performance" \
-            --fail-at-end || true
+            -Dkarate.options="--tags @performance"
 
       - name: Upload Performance Results
         uses: actions/upload-artifact@v4

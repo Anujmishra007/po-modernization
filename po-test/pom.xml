@@ -166,22 +166,7 @@
     </dependencies>
 
     <build>
-        <testResources>
-            <testResource>
-                <directory>src/test/resources</directory>
-                <filtering>false</filtering>
-            </testResource>
-            <!-- Karate requires feature files alongside Java test classes -->
-            <testResource>
-                <directory>src/test/java</directory>
-                <filtering>false</filtering>
-                <includes>
-                    <include>**/*.feature</include>
-                    <include>**/*.json</include>
-                    <include>**/*.js</include>
-                </includes>
-            </testResource>
-        </testResources>
+        <!-- Feature files are now in src/test/resources (standard Maven location) -->
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
