@@ -143,6 +143,25 @@ function fn() {
       var sql = "SELECT 1 FROM dbo." + table + " WHERE " + whereClause + " LIMIT 1";
       var result = config.db.query(sql);
       return result && result.length > 0;
+    },
+
+    // Execute update/insert/delete statement
+    execute: function(sql) {
+      if (!config.dbConfig) {
+        karate.log('DB validation disabled in', env, 'environment');
+        return 0;
+      }
+      var DbUtils = Java.type('com.wms.po.test.util.DbUtils');
+      return DbUtils.execute(config.dbConfig, sql);
+    },
+
+    // Execute update/insert/delete with parameters
+    executeWithParams: function(sql, params) {
+      if (!config.dbConfig) {
+        return 0;
+      }
+      var DbUtils = Java.type('com.wms.po.test.util.DbUtils');
+      return DbUtils.executeWithParams(config.dbConfig, sql, params);
     }
   };
 

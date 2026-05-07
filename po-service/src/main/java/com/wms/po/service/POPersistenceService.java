@@ -44,7 +44,7 @@ public class POPersistenceService {
             log.info("Creating PO with key: {}", poKey);
 
             String sql = """
-                INSERT INTO ORDERS (POKEY, STORERKEY, FACILITY, STATUS, ADDDATE, ADDWHO, EDITDATE, EDITWHO)
+                INSERT INTO po (pokey, storerkey, facility, status, adddate, addwho, editdate, editwho)
                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP, ?)
                 """;
 
@@ -88,13 +88,13 @@ public class POPersistenceService {
 
         try {
             String sql = """
-                SELECT POKEY, STORERKEY, FACILITY, STATUS, ADDDATE, EDITDATE
-                FROM ORDERS WHERE POKEY = ?
+                SELECT pokey, storerkey, facility, status, adddate, editdate
+                FROM po WHERE pokey = ?
                 """;
 
             List<PopulateResult> results = jdbcTemplate.query(sql,
                 (rs, rowNum) -> PopulateResult.builder()
-                    .receiptKey(rs.getString("POKEY"))
+                    .receiptKey(rs.getString("pokey"))
                     .success(true)
                     .build(),
                 poKey);
@@ -122,8 +122,8 @@ public class POPersistenceService {
 
         try {
             String sql = """
-                UPDATE ORDERS SET STORERKEY = ?, FACILITY = ?, EDITDATE = CURRENT_TIMESTAMP, EDITWHO = ?
-                WHERE POKEY = ?
+                UPDATE po SET storerkey = ?, facility = ?, editdate = CURRENT_TIMESTAMP, editwho = ?
+                WHERE pokey = ?
                 """;
 
             int updated = jdbcTemplate.update(sql,
@@ -159,7 +159,7 @@ public class POPersistenceService {
         log.info("Deleting PO: {}", poKey);
 
         try {
-            String sql = "DELETE FROM ORDERS WHERE POKEY = ?";
+            String sql = "DELETE FROM po WHERE pokey = ?";
             int deleted = jdbcTemplate.update(sql, poKey);
 
             if (deleted == 0) {
@@ -198,23 +198,23 @@ public class POPersistenceService {
 
         try {
             StringBuilder sql = new StringBuilder("""
-                SELECT POKEY, STORERKEY, FACILITY, STATUS, ADDDATE, EDITDATE
-                FROM ORDERS WHERE 1=1
+                SELECT pokey, storerkey, facility, status, adddate, editdate
+                FROM po WHERE 1=1
                 """);
 
             if (criteria.getStorerKey() != null) {
-                sql.append(" AND STORERKEY = '").append(criteria.getStorerKey()).append("'");
+                sql.append(" AND storerkey = '").append(criteria.getStorerKey()).append("'");
             }
             if (criteria.getFacility() != null) {
-                sql.append(" AND FACILITY = '").append(criteria.getFacility()).append("'");
+                sql.append(" AND facility = '").append(criteria.getFacility()).append("'");
             }
             if (criteria.getStatus() != null) {
-                sql.append(" AND STATUS = '").append(criteria.getStatus()).append("'");
+                sql.append(" AND status = '").append(criteria.getStatus()).append("'");
             }
 
             return jdbcTemplate.query(sql.toString(),
                 (rs, rowNum) -> PopulateResult.builder()
-                    .receiptKey(rs.getString("POKEY"))
+                    .receiptKey(rs.getString("pokey"))
                     .success(true)
                     .build());
 
@@ -249,12 +249,12 @@ public class POPersistenceService {
 
         try {
             String sql = """
-                SELECT POKEY, STORERKEY, FACILITY, STATUS FROM ORDERS WHERE STORERKEY = ?
+                SELECT pokey, storerkey, facility, status FROM po WHERE storerkey = ?
                 """;
 
             return jdbcTemplate.query(sql,
                 (rs, rowNum) -> PopulateResult.builder()
-                    .receiptKey(rs.getString("POKEY"))
+                    .receiptKey(rs.getString("pokey"))
                     .success(true)
                     .build(),
                 storerKey);
@@ -289,13 +289,13 @@ public class POPersistenceService {
 
         try {
             String sql = """
-                SELECT POKEY, STORERKEY, FACILITY, STATUS FROM ORDERS
-                WHERE FACILITY = ? AND STATUS = '0'
+                SELECT pokey, storerkey, facility, status FROM po
+                WHERE facility = ? AND status = '0'
                 """;
 
             return jdbcTemplate.query(sql,
                 (rs, rowNum) -> PopulateResult.builder()
-                    .receiptKey(rs.getString("POKEY"))
+                    .receiptKey(rs.getString("pokey"))
                     .success(true)
                     .build(),
                 facility);
