@@ -104,31 +104,30 @@ public class POService {
 
         try {
             String sql = """
-                SELECT POKEY, STORERKEY, EXTERNPOKEY, FACILITY, SUPPLIERKEY,
-                       STATUS, TYPE, PODATE, EXPECTEDRECEIPTDATE,
-                       ADDDATE, ADDWHO, EDITDATE, EDITWHO
-                FROM ORDERS WHERE POKEY = ?
+                SELECT pokey, storerkey, externpokey, facility, supplierkey,
+                       status, potype, expecteddate,
+                       adddate, addwho, editdate, editwho
+                FROM dbo.po WHERE pokey = ?
                 """;
 
             List<POResponse> results = jdbcTemplate.query(sql, (rs, rowNum) ->
                 POResponse.builder()
-                    .poKey(rs.getString("POKEY"))
-                    .storerKey(rs.getString("STORERKEY"))
-                    .externPoKey(rs.getString("EXTERNPOKEY"))
-                    .facility(rs.getString("FACILITY"))
-                    .supplierKey(rs.getString("SUPPLIERKEY"))
-                    .status(rs.getString("STATUS"))
-                    .type(rs.getString("TYPE"))
-                    .poDate(rs.getDate("PODATE") != null ?
-                        rs.getDate("PODATE").toLocalDate() : null)
-                    .expectedReceiptDate(rs.getDate("EXPECTEDRECEIPTDATE") != null ?
-                        rs.getDate("EXPECTEDRECEIPTDATE").toLocalDate() : null)
-                    .addDate(rs.getTimestamp("ADDDATE") != null ?
-                        rs.getTimestamp("ADDDATE").toLocalDateTime() : null)
-                    .addWho(rs.getString("ADDWHO"))
-                    .editDate(rs.getTimestamp("EDITDATE") != null ?
-                        rs.getTimestamp("EDITDATE").toLocalDateTime() : null)
-                    .editWho(rs.getString("EDITWHO"))
+                    .poKey(rs.getString("pokey"))
+                    .storerKey(rs.getString("storerkey"))
+                    .externPoKey(rs.getString("externpokey"))
+                    .facility(rs.getString("facility"))
+                    .supplierKey(rs.getString("supplierkey"))
+                    .status(rs.getString("status"))
+                    .type(rs.getString("potype"))
+                    .poDate(null)
+                    .expectedReceiptDate(rs.getDate("expecteddate") != null ?
+                        rs.getDate("expecteddate").toLocalDate() : null)
+                    .addDate(rs.getTimestamp("adddate") != null ?
+                        rs.getTimestamp("adddate").toLocalDateTime() : null)
+                    .addWho(rs.getString("addwho"))
+                    .editDate(rs.getTimestamp("editdate") != null ?
+                        rs.getTimestamp("editdate").toLocalDateTime() : null)
+                    .editWho(rs.getString("editwho"))
                     .build(),
                 poKey);
 
@@ -176,32 +175,31 @@ public class POService {
 
         try {
             String sql = """
-                SELECT POKEY, STORERKEY, EXTERNPOKEY, FACILITY, SUPPLIERKEY,
-                       STATUS, TYPE, PODATE, EXPECTEDRECEIPTDATE,
-                       ADDDATE, ADDWHO, EDITDATE, EDITWHO
-                FROM ORDERS WHERE STORERKEY = ? AND FACILITY = ?
-                ORDER BY ADDDATE DESC
+                SELECT pokey, storerkey, externpokey, facility, supplierkey,
+                       status, potype, expecteddate,
+                       adddate, addwho, editdate, editwho
+                FROM dbo.po WHERE storerkey = ? AND facility = ?
+                ORDER BY adddate DESC
                 """;
 
             return jdbcTemplate.query(sql, (rs, rowNum) ->
                 POResponse.builder()
-                    .poKey(rs.getString("POKEY"))
-                    .storerKey(rs.getString("STORERKEY"))
-                    .externPoKey(rs.getString("EXTERNPOKEY"))
-                    .facility(rs.getString("FACILITY"))
-                    .supplierKey(rs.getString("SUPPLIERKEY"))
-                    .status(rs.getString("STATUS"))
-                    .type(rs.getString("TYPE"))
-                    .poDate(rs.getDate("PODATE") != null ?
-                        rs.getDate("PODATE").toLocalDate() : null)
-                    .expectedReceiptDate(rs.getDate("EXPECTEDRECEIPTDATE") != null ?
-                        rs.getDate("EXPECTEDRECEIPTDATE").toLocalDate() : null)
-                    .addDate(rs.getTimestamp("ADDDATE") != null ?
-                        rs.getTimestamp("ADDDATE").toLocalDateTime() : null)
-                    .addWho(rs.getString("ADDWHO"))
-                    .editDate(rs.getTimestamp("EDITDATE") != null ?
-                        rs.getTimestamp("EDITDATE").toLocalDateTime() : null)
-                    .editWho(rs.getString("EDITWHO"))
+                    .poKey(rs.getString("pokey"))
+                    .storerKey(rs.getString("storerkey"))
+                    .externPoKey(rs.getString("externpokey"))
+                    .facility(rs.getString("facility"))
+                    .supplierKey(rs.getString("supplierkey"))
+                    .status(rs.getString("status"))
+                    .type(rs.getString("potype"))
+                    .poDate(null)
+                    .expectedReceiptDate(rs.getDate("expecteddate") != null ?
+                        rs.getDate("expecteddate").toLocalDate() : null)
+                    .addDate(rs.getTimestamp("adddate") != null ?
+                        rs.getTimestamp("adddate").toLocalDateTime() : null)
+                    .addWho(rs.getString("addwho"))
+                    .editDate(rs.getTimestamp("editdate") != null ?
+                        rs.getTimestamp("editdate").toLocalDateTime() : null)
+                    .editWho(rs.getString("editwho"))
                     .build(),
                 storerKey, facility);
 
@@ -307,11 +305,11 @@ public class POService {
             validationService.validateForDelete(poKey, context);
 
             // Delete details first
-            int detailsDeleted = jdbcTemplate.update("DELETE FROM ORDERDETAIL WHERE POKEY = ?", poKey);
+            int detailsDeleted = jdbcTemplate.update("DELETE FROM dbo.podetail WHERE pokey = ?", poKey);
             log.debug("Deleted {} detail records for PO: {}", detailsDeleted, poKey);
 
             // Delete header
-            int headerDeleted = jdbcTemplate.update("DELETE FROM ORDERS WHERE POKEY = ?", poKey);
+            int headerDeleted = jdbcTemplate.update("DELETE FROM dbo.po WHERE pokey = ?", poKey);
             if (headerDeleted == 0) {
                 log.error("PO header not found during delete: {} (legacy error 68800)", poKey);
                 throw BusinessException.poNotFound(poKey);
