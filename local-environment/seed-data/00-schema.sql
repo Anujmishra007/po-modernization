@@ -380,6 +380,7 @@ CREATE TABLE IF NOT EXISTS taskassignment (
     assignmentkey VARCHAR(50) PRIMARY KEY,
     taskkey VARCHAR(50),
     userid VARCHAR(50),
+    device VARCHAR(50),
     facility VARCHAR(20),
     assigneddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     assignedtime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -448,6 +449,7 @@ CREATE TABLE IF NOT EXISTS statushistory (
     fromstatus VARCHAR(10),
     tostatus VARCHAR(10),
     changedby VARCHAR(50),
+    transitionby VARCHAR(50),
     changedate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     transitiontime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     reason VARCHAR(500)
@@ -727,6 +729,7 @@ CREATE TABLE IF NOT EXISTS triggerconfig (
     operation VARCHAR(20),
     aggregation VARCHAR(20),
     cascadeaction VARCHAR(20),
+    priority INTEGER DEFAULT 1,
     auditlog VARCHAR(1) DEFAULT 'Y',
     enabled VARCHAR(1) DEFAULT 'Y',
     description VARCHAR(500),
