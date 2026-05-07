@@ -145,10 +145,10 @@ INSERT INTO receipt (receiptkey, orderkey, storerkey, facility, externreceiptkey
 ('NIKE-RCV-001', 'NIKE-PO-002', 'NIKE_KR', 'KR01', 'NIKE-EXT-RCV-001', '5', CURRENT_TIMESTAMP)
 ON CONFLICT (receiptkey) DO NOTHING;
 
-INSERT INTO receiptdetail (receiptkey, receiptlinenumber, orderkey, orderlinenumber, storerkey, sku, qtyexpected, qtyreceived, status, toloc, lottable01, lottable02) VALUES
-('NIKE-RCV-001', 1, 'NIKE-PO-002', 1, 'NIKE_KR', 'NK-AIRMAX90-BLK', 500, 500, '5', 'KR01-RECV-01', 'STYLE-AM90-2024', 'COLOR-001-BLK'),
-('NIKE-RCV-001', 2, 'NIKE-PO-002', 2, 'NIKE_KR', 'NK-AF1-BLK', 300, 300, '5', 'KR01-RECV-02', 'STYLE-AF1-2024', 'COLOR-001-BLK')
-ON CONFLICT (receiptkey, receiptlinenumber) DO NOTHING;
+INSERT INTO receiptdetail (receiptdetailkey, receiptkey, receiptlinenumber, orderkey, orderlinenumber, storerkey, sku, qtyexpected, qtyreceived, status, toloc, lottable01, lottable02) VALUES
+('NIKE-RCV-001-1', 'NIKE-RCV-001', 1, 'NIKE-PO-002', 1, 'NIKE_KR', 'NK-AIRMAX90-BLK', 500, 500, '5', 'KR01-RECV-01', 'STYLE-AM90-2024', 'COLOR-001-BLK'),
+('NIKE-RCV-001-2', 'NIKE-RCV-001', 2, 'NIKE-PO-002', 2, 'NIKE_KR', 'NK-AF1-BLK', 300, 300, '5', 'KR01-RECV-02', 'STYLE-AF1-2024', 'COLOR-001-BLK')
+ON CONFLICT (receiptdetailkey) DO NOTHING;
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Verification

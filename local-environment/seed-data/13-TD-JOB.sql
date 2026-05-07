@@ -142,12 +142,12 @@ INSERT INTO receipt (receiptkey, pokey, storerkey, status, type, facility, recei
 ('JOB-RCV-002', 'JOB-PO-003', 'HM_KR', '5', 'Normal', 'KR02', CURRENT_TIMESTAMP - INTERVAL '15 minutes', CURRENT_TIMESTAMP - INTERVAL '15 minutes', 'SYSTEM'),
 ('JOB-RCV-003', 'JOB-PO-004', 'ADIDAS_IN', '5', 'Normal', 'IN01', CURRENT_TIMESTAMP - INTERVAL '45 minutes', CURRENT_TIMESTAMP - INTERVAL '45 minutes', 'SYSTEM');
 
-INSERT INTO receiptdetail (receiptkey, receiptlinenumber, pokey, polinenumber, storerkey, sku, qtyexpected, qtyreceived, status, toloc, toid, adddate, addwho) VALUES
-('JOB-RCV-001', '00001', 'JOB-PO-001', '00001', 'NIKE_KR', 'NK-AIRMAX90-BLK', 100, 100, '5', 'KR01-RECV-01', 'LP-JOB-001', CURRENT_TIMESTAMP, 'SYSTEM'),
-('JOB-RCV-001', '00002', 'JOB-PO-001', '00002', 'NIKE_KR', 'NK-AIRMAX90-WHT', 100, 100, '5', 'KR01-RECV-01', 'LP-JOB-002', CURRENT_TIMESTAMP, 'SYSTEM'),
-('JOB-RCV-002', '00001', 'JOB-PO-003', '00001', 'HM_KR', 'HM-BASIC-TEE-M', 500, 500, '5', 'KR02-RECV-01', 'LP-JOB-003', CURRENT_TIMESTAMP, 'SYSTEM'),
-('JOB-RCV-002', '00002', 'JOB-PO-003', '00002', 'HM_KR', 'HM-BASIC-TEE-L', 500, 500, '5', 'KR02-RECV-01', 'LP-JOB-004', CURRENT_TIMESTAMP, 'SYSTEM'),
-('JOB-RCV-003', '00001', 'JOB-PO-004', '00001', 'ADIDAS_IN', 'ADI-ULTRABOOST-BLK', 50, 50, '5', 'IN01-RECV-01', 'LP-JOB-005', CURRENT_TIMESTAMP, 'SYSTEM');
+INSERT INTO receiptdetail (receiptdetailkey, receiptkey, receiptlinenumber, pokey, polinenumber, storerkey, sku, qtyexpected, qtyreceived, status, toloc, toid, adddate, addwho) VALUES
+('JOB-RCV-001-1', 'JOB-RCV-001', 1, 'JOB-PO-001', 1, 'NIKE_KR', 'NK-AIRMAX90-BLK', 100, 100, '5', 'KR01-RECV-01', 'LP-JOB-001', CURRENT_TIMESTAMP, 'SYSTEM'),
+('JOB-RCV-001-2', 'JOB-RCV-001', 2, 'JOB-PO-001', 2, 'NIKE_KR', 'NK-AIRMAX90-WHT', 100, 100, '5', 'KR01-RECV-01', 'LP-JOB-002', CURRENT_TIMESTAMP, 'SYSTEM'),
+('JOB-RCV-002-1', 'JOB-RCV-002', 1, 'JOB-PO-003', 1, 'HM_KR', 'HM-BASIC-TEE-M', 500, 500, '5', 'KR02-RECV-01', 'LP-JOB-003', CURRENT_TIMESTAMP, 'SYSTEM'),
+('JOB-RCV-002-2', 'JOB-RCV-002', 2, 'JOB-PO-003', 2, 'HM_KR', 'HM-BASIC-TEE-L', 500, 500, '5', 'KR02-RECV-01', 'LP-JOB-004', CURRENT_TIMESTAMP, 'SYSTEM'),
+('JOB-RCV-003-1', 'JOB-RCV-003', 1, 'JOB-PO-004', 1, 'ADIDAS_IN', 'ADI-ULTRABOOST-BLK', 50, 50, '5', 'IN01-RECV-01', 'LP-JOB-005', CURRENT_TIMESTAMP, 'SYSTEM');
 
 
 -- =============================================================================

@@ -215,12 +215,13 @@ CREATE TABLE IF NOT EXISTS receipt (
 
 -- Receipt Detail
 CREATE TABLE IF NOT EXISTS receiptdetail (
+    receiptdetailkey VARCHAR(50) PRIMARY KEY,
     receiptkey VARCHAR(50) NOT NULL,
-    receiptlinenumber VARCHAR(10) NOT NULL,
+    receiptlinenumber INTEGER NOT NULL,
     orderkey VARCHAR(50),
-    orderlinenumber VARCHAR(10),
+    orderlinenumber INTEGER,
     pokey VARCHAR(50),
-    polinenumber VARCHAR(10),
+    polinenumber INTEGER,
     storerkey VARCHAR(50) NOT NULL,
     sku VARCHAR(50) NOT NULL,
     qtyexpected DECIMAL(18,4) DEFAULT 0,
@@ -228,6 +229,8 @@ CREATE TABLE IF NOT EXISTS receiptdetail (
     status VARCHAR(10) DEFAULT '0',
     toloc VARCHAR(50),
     toid VARCHAR(50),
+    uom VARCHAR(10),
+    packkey VARCHAR(50),
     lottable01 VARCHAR(50),
     lottable02 VARCHAR(50),
     lottable03 VARCHAR(50),
@@ -241,7 +244,8 @@ CREATE TABLE IF NOT EXISTS receiptdetail (
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     editdate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     addwho VARCHAR(50),
-    PRIMARY KEY (receiptkey, receiptlinenumber),
+    editwho VARCHAR(50),
+    UNIQUE (receiptkey, receiptlinenumber),
     FOREIGN KEY (receiptkey) REFERENCES receipt(receiptkey),
     FOREIGN KEY (storerkey, sku) REFERENCES sku(storerkey, sku)
 );

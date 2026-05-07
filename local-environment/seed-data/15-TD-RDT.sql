@@ -133,13 +133,13 @@ INSERT INTO receipt (receiptkey, pokey, storerkey, status, type, facility, recei
 ('RDT-RCV-001', 'RDT-PO-001', 'NIKE_KR', '5', 'Normal', 'KR01', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'SYSTEM'),
 ('RDT-RCV-002', 'RDT-PO-002', 'HM_KR', '5', 'Normal', 'KR02', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'SYSTEM');
 
-INSERT INTO receiptdetail (receiptkey, receiptlinenumber, pokey, polinenumber, storerkey, sku, qtyexpected, qtyreceived, status, toloc, toid, adddate, addwho) VALUES
+INSERT INTO receiptdetail (receiptdetailkey, receiptkey, receiptlinenumber, pokey, polinenumber, storerkey, sku, qtyexpected, qtyreceived, status, toloc, toid, adddate, addwho) VALUES
 -- RDT-RCV-001
-('RDT-RCV-001', '00001', 'RDT-PO-001', '00001', 'NIKE_KR', 'NK-AIRMAX90-BLK', 50, 50, '5', 'KR01-RECV-01', 'LP-RDT-001', CURRENT_TIMESTAMP, 'SYSTEM'),
-('RDT-RCV-001', '00002', 'RDT-PO-001', '00002', 'NIKE_KR', 'NK-AIRMAX90-WHT', 50, 50, '5', 'KR01-RECV-01', 'LP-RDT-002', CURRENT_TIMESTAMP, 'SYSTEM'),
+('RDT-RCV-001-1', 'RDT-RCV-001', 1, 'RDT-PO-001', 1, 'NIKE_KR', 'NK-AIRMAX90-BLK', 50, 50, '5', 'KR01-RECV-01', 'LP-RDT-001', CURRENT_TIMESTAMP, 'SYSTEM'),
+('RDT-RCV-001-2', 'RDT-RCV-001', 2, 'RDT-PO-001', 2, 'NIKE_KR', 'NK-AIRMAX90-WHT', 50, 50, '5', 'KR01-RECV-01', 'LP-RDT-002', CURRENT_TIMESTAMP, 'SYSTEM'),
 -- RDT-RCV-002
-('RDT-RCV-002', '00001', 'RDT-PO-002', '00001', 'HM_KR', 'HM-BASIC-TEE-M', 200, 200, '5', 'KR02-RECV-01', 'LP-RDT-003', CURRENT_TIMESTAMP, 'SYSTEM'),
-('RDT-RCV-002', '00002', 'RDT-PO-002', '00002', 'HM_KR', 'HM-SLIM-JEANS-32', 100, 100, '5', 'KR02-RECV-01', 'LP-RDT-004', CURRENT_TIMESTAMP, 'SYSTEM');
+('RDT-RCV-002-1', 'RDT-RCV-002', 1, 'RDT-PO-002', 1, 'HM_KR', 'HM-BASIC-TEE-M', 200, 200, '5', 'KR02-RECV-01', 'LP-RDT-003', CURRENT_TIMESTAMP, 'SYSTEM'),
+('RDT-RCV-002-2', 'RDT-RCV-002', 2, 'RDT-PO-002', 2, 'HM_KR', 'HM-SLIM-JEANS-32', 100, 100, '5', 'KR02-RECV-01', 'LP-RDT-004', CURRENT_TIMESTAMP, 'SYSTEM');
 
 
 -- =============================================================================

@@ -72,11 +72,11 @@ INSERT INTO receipt (receiptkey, pokey, storerkey, status, type, facility, recei
 -- Receipt for cascade update
 ('TRG-RCV-CASCADE', 'TRG-PO-CASCADE', 'ADIDAS_IN', '5', 'Normal', 'IN01', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'SYSTEM');
 
-INSERT INTO receiptdetail (receiptkey, receiptlinenumber, pokey, polinenumber, storerkey, sku, qtyexpected, qtyreceived, status, toloc, toid, adddate, addwho) VALUES
-('TRG-RCV-001', '00001', 'TRG-PO-001', '00001', 'NIKE_KR', 'NK-AIRMAX90-BLK', 100, 0, '0', 'KR01-RECV-01', NULL, CURRENT_TIMESTAMP, 'SYSTEM'),
-('TRG-RCV-002', '00001', 'TRG-PO-002', '00001', 'HM_KR', 'HM-BASIC-TEE-M', 200, 200, '5', 'KR02-RECV-01', 'LP-TRG-001', CURRENT_TIMESTAMP, 'SYSTEM'),
-('TRG-RCV-CASCADE', '00001', 'TRG-PO-CASCADE', '00001', 'ADIDAS_IN', 'ADI-ULTRABOOST-BLK', 50, 50, '5', 'IN01-RECV-01', 'LP-TRG-002', CURRENT_TIMESTAMP, 'SYSTEM'),
-('TRG-RCV-CASCADE', '00002', 'TRG-PO-CASCADE', '00002', 'ADIDAS_IN', 'ADI-SUPERSTAR-WHT', 50, 50, '5', 'IN01-RECV-01', 'LP-TRG-003', CURRENT_TIMESTAMP, 'SYSTEM');
+INSERT INTO receiptdetail (receiptdetailkey, receiptkey, receiptlinenumber, pokey, polinenumber, storerkey, sku, qtyexpected, qtyreceived, status, toloc, toid, adddate, addwho) VALUES
+('TRG-RCV-001-1', 'TRG-RCV-001', 1, 'TRG-PO-001', 1, 'NIKE_KR', 'NK-AIRMAX90-BLK', 100, 0, '0', 'KR01-RECV-01', NULL, CURRENT_TIMESTAMP, 'SYSTEM'),
+('TRG-RCV-002-1', 'TRG-RCV-002', 1, 'TRG-PO-002', 1, 'HM_KR', 'HM-BASIC-TEE-M', 200, 200, '5', 'KR02-RECV-01', 'LP-TRG-001', CURRENT_TIMESTAMP, 'SYSTEM'),
+('TRG-RCV-CASC-1', 'TRG-RCV-CASCADE', 1, 'TRG-PO-CASCADE', 1, 'ADIDAS_IN', 'ADI-ULTRABOOST-BLK', 50, 50, '5', 'IN01-RECV-01', 'LP-TRG-002', CURRENT_TIMESTAMP, 'SYSTEM'),
+('TRG-RCV-CASC-2', 'TRG-RCV-CASCADE', 2, 'TRG-PO-CASCADE', 2, 'ADIDAS_IN', 'ADI-SUPERSTAR-WHT', 50, 50, '5', 'IN01-RECV-01', 'LP-TRG-003', CURRENT_TIMESTAMP, 'SYSTEM');
 
 
 -- =============================================================================
