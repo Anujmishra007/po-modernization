@@ -44,8 +44,13 @@ function fn() {
     config.baseUrl = 'http://localhost:8080';
     config.dbConfig.url = 'jdbc:postgresql://localhost:5433/po_test';
   } else if (env == 'docker') {
+    // Docker Compose environment (service names as hostnames)
     config.baseUrl = 'http://po-api:8080';
     config.dbConfig.url = 'jdbc:postgresql://postgres:5432/po_test';
+  } else if (env == 'ci') {
+    // GitHub Actions CI environment (localhost with mapped ports)
+    config.baseUrl = 'http://localhost:8080';
+    config.dbConfig.url = 'jdbc:postgresql://localhost:5433/po_test';
   } else if (env == 'staging') {
     config.baseUrl = 'https://po-modernization-staging.example.com';
     config.dbConfig.url = 'jdbc:postgresql://pg-staging.example.com:5432/po_staging';
