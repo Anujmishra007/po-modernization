@@ -5,44 +5,25 @@ import com.intuit.karate.junit5.Karate;
 /**
  * Karate test runner for E2E tests (3-Layer Approach - Layer 1).
  *
+ * <p>Feature files are located in src/test/resources/com/wms/po/e2e/karate/
+ * and are discovered using relativeTo(getClass()) which looks for features
+ * in the same package location as this runner class.
+ *
  * <p>Run all tests:
  * <pre>
- *   mvn test -Dtest=KarateTestRunner -Dkarate.env=local
- *   mvn test -Dtest=KarateTestRunner -Dkarate.env=docker
+ *   mvn verify -pl po-test -Dkarate.env=local
+ *   mvn verify -pl po-test -Dkarate.env=ci
  * </pre>
  *
  * <p>Run by flow:
  * <pre>
- *   mvn test -Dtest=KarateTestRunner -Dkarate.options="--tags @F1"
- *   mvn test -Dtest=KarateTestRunner -Dkarate.options="--tags @F2"
- *   mvn test -Dtest=KarateTestRunner -Dkarate.options="--tags @F3"
- *   mvn test -Dtest=KarateTestRunner -Dkarate.options="--tags @F10"
- * </pre>
- *
- * <p>Run by type:
- * <pre>
- *   mvn test -Dtest=KarateTestRunner -Dkarate.options="--tags @Happy"
- *   mvn test -Dtest=KarateTestRunner -Dkarate.options="--tags @Unhappy"
- *   mvn test -Dtest=KarateTestRunner -Dkarate.options="--tags @Compensation"
- * </pre>
- *
- * <p>Run by priority:
- * <pre>
- *   mvn test -Dtest=KarateTestRunner -Dkarate.options="--tags @P1"
- *   mvn test -Dtest=KarateTestRunner -Dkarate.options="--tags @P1 or @P2"
- * </pre>
- *
- * <p>Run by entry point:
- * <pre>
- *   mvn test -Dtest=KarateTestRunner -Dkarate.options="--tags @API"
- *   mvn test -Dtest=KarateTestRunner -Dkarate.options="--tags @EDI"
- *   mvn test -Dtest=KarateTestRunner -Dkarate.options="--tags @Job"
+ *   mvn verify -pl po-test -Dkarate.options="--tags @F1"
+ *   mvn verify -pl po-test -Dkarate.options="--tags @F2"
+ *   mvn verify -pl po-test -Dkarate.options="--tags @F3"
+ *   mvn verify -pl po-test -Dkarate.options="--tags @F10"
  * </pre>
  */
 public class KarateTestRunner {
-
-    // Base classpath for all Karate features
-    private static final String FEATURES_PATH = "classpath:com/wms/po/e2e/karate";
 
     // ═══════════════════════════════════════════════════════════
     // Run All Tests
@@ -50,7 +31,7 @@ public class KarateTestRunner {
 
     @Karate.Test
     Karate testAll() {
-        return Karate.run(FEATURES_PATH);
+        return Karate.run().relativeTo(getClass());
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -59,22 +40,22 @@ public class KarateTestRunner {
 
     @Karate.Test
     Karate testF1_POCreation() {
-        return Karate.run(FEATURES_PATH).tags("@F1");
+        return Karate.run().relativeTo(getClass()).tags("@F1");
     }
 
     @Karate.Test
     Karate testF2_ASNPopulation() {
-        return Karate.run(FEATURES_PATH).tags("@F2");
+        return Karate.run().relativeTo(getClass()).tags("@F2");
     }
 
     @Karate.Test
     Karate testF3_ReceiptFinalization() {
-        return Karate.run(FEATURES_PATH).tags("@F3");
+        return Karate.run().relativeTo(getClass()).tags("@F3");
     }
 
     @Karate.Test
     Karate testF10_Compensation() {
-        return Karate.run(FEATURES_PATH).tags("@F10 or @Compensation");
+        return Karate.run().relativeTo(getClass()).tags("@F10", "@Compensation");
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -83,17 +64,17 @@ public class KarateTestRunner {
 
     @Karate.Test
     Karate testHappyPath() {
-        return Karate.run(FEATURES_PATH).tags("@Happy");
+        return Karate.run().relativeTo(getClass()).tags("@Happy");
     }
 
     @Karate.Test
     Karate testUnhappyPath() {
-        return Karate.run(FEATURES_PATH).tags("@Unhappy");
+        return Karate.run().relativeTo(getClass()).tags("@Unhappy");
     }
 
     @Karate.Test
     Karate testCompensation() {
-        return Karate.run(FEATURES_PATH).tags("@Compensation or @Saga");
+        return Karate.run().relativeTo(getClass()).tags("@Compensation", "@Saga");
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -102,12 +83,12 @@ public class KarateTestRunner {
 
     @Karate.Test
     Karate testP1Critical() {
-        return Karate.run(FEATURES_PATH).tags("@P1");
+        return Karate.run().relativeTo(getClass()).tags("@P1");
     }
 
     @Karate.Test
     Karate testP1andP2() {
-        return Karate.run(FEATURES_PATH).tags("@P1 or @P2");
+        return Karate.run().relativeTo(getClass()).tags("@P1", "@P2");
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -116,17 +97,17 @@ public class KarateTestRunner {
 
     @Karate.Test
     Karate testAPIEntry() {
-        return Karate.run(FEATURES_PATH).tags("@API");
+        return Karate.run().relativeTo(getClass()).tags("@API");
     }
 
     @Karate.Test
     Karate testEDIEntry() {
-        return Karate.run(FEATURES_PATH).tags("@EDI");
+        return Karate.run().relativeTo(getClass()).tags("@EDI");
     }
 
     @Karate.Test
     Karate testJobEntry() {
-        return Karate.run(FEATURES_PATH).tags("@Job");
+        return Karate.run().relativeTo(getClass()).tags("@Job");
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -135,26 +116,26 @@ public class KarateTestRunner {
 
     @Karate.Test
     Karate testSmoke() {
-        return Karate.run(FEATURES_PATH).tags("@smoke");
+        return Karate.run().relativeTo(getClass()).tags("@smoke");
     }
 
     @Karate.Test
     Karate testPopulate() {
-        return Karate.run(FEATURES_PATH).tags("@populate");
+        return Karate.run().relativeTo(getClass()).tags("@populate");
     }
 
     @Karate.Test
     Karate testSaga() {
-        return Karate.run(FEATURES_PATH).tags("@saga");
+        return Karate.run().relativeTo(getClass()).tags("@saga");
     }
 
     @Karate.Test
     Karate testCRUD() {
-        return Karate.run(FEATURES_PATH).tags("@crud");
+        return Karate.run().relativeTo(getClass()).tags("@crud");
     }
 
     @Karate.Test
     Karate testRegression() {
-        return Karate.run(FEATURES_PATH).tags("@Regression");
+        return Karate.run().relativeTo(getClass()).tags("@Regression");
     }
 }
