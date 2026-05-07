@@ -7,6 +7,7 @@ import com.wms.po.workflow.PopulatePOWorkflow;
 import com.wms.po.workflow.impl.PopulatePOWorkflowImpl;
 import io.temporal.client.WorkflowClient;
 import io.temporal.client.WorkflowOptions;
+import io.temporal.failure.ApplicationFailure;
 import io.temporal.testing.TestWorkflowEnvironment;
 import io.temporal.testing.TestWorkflowExtension;
 import io.temporal.worker.Worker;
@@ -623,7 +624,8 @@ class PopulateIntegrationTest {
         @Override
         public List<String> createReservations(String receiptKey, List<String> detailKeys) {
             if (shouldFail) {
-                throw new RuntimeException("Inventory system unavailable");
+                throw ApplicationFailure.newNonRetryableFailure(
+                    "Inventory system unavailable", "INVENTORY_UNAVAILABLE");
             }
             createReservationsCalled.set(true);
             return reservationIdsToReturn;
@@ -656,7 +658,8 @@ class PopulateIntegrationTest {
         @Override
         public void syncToLegacy(String receiptKey, VariationContext context) {
             if (shouldFail) {
-                throw new RuntimeException("Legacy system timeout");
+                throw ApplicationFailure.newNonRetryableFailure(
+                    "Legacy system timeout", "LEGACY_SYNC_FAILED");
             }
             syncToLegacyCalled.set(true);
             lastSyncedReceiptKey.set(receiptKey);
@@ -683,7 +686,8 @@ class PopulateIntegrationTest {
         @Override
         public void sendPopulationComplete(String receiptKey, PopulateRequest request) {
             if (shouldFail) {
-                throw new RuntimeException("Kafka unavailable");
+                throw ApplicationFailure.newNonRetryableFailure(
+                    "Kafka unavailable", "NOTIFICATION_FAILED");
             }
             sendPopulationCompleteCalled.set(true);
         }
