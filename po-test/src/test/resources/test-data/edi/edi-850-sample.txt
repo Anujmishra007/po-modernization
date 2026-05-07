@@ -1,0 +1,26 @@
+ISA*00*          *00*          *ZZ*TESTSENDER     *ZZ*TESTRECEIVER   *240506*1200*U*00401*000000001*0*P*>~
+GS*PO*TESTSENDER*TESTRECEIVER*20240506*1200*1*X*004010~
+ST*850*0001~
+BEG*00*NE*EDI-PO-001**20240506~
+REF*IA*TEST_STORER_001~
+REF*DP*TEST01~
+DTM*002*20240513~
+N1*BY*Test Buyer Company*92*BUYER001~
+N3*123 Buyer Street~
+N4*Test City*TS*12345*KR~
+N1*ST*Test Ship To*92*SHIPTO001~
+N3*456 Warehouse Road~
+N4*Warehouse City*WH*67890*KR~
+N1*VN*Test Supplier*92*SUPPLIER001~
+N3*789 Supplier Ave~
+N4*Supplier City*SP*11111*VN~
+PO1*1*100*EA*10.50**UP*123456789012*VN*TEST-SKU-001*PD*Test SKU Valid Standard~
+PID*F****Standard test product for E2E testing~
+PO1*2*50*EA*15.75**UP*123456789013*VN*TEST-SKU-002*PD*Test SKU No Lot Control~
+PID*F****No lot control test product~
+PO1*3*75*EA*8.25**UP*123456789014*VN*TEST-SKU-003*PD*Test SKU Perishable~
+PID*F****Perishable test product with shelf life~
+CTT*3*225~
+SE*25*0001~
+GE*1*1~
+IEA*1*000000001~

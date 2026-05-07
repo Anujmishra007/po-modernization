@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS storer (
     city VARCHAR(100),
     state VARCHAR(50),
     zip VARCHAR(20),
+    defaultfacility VARCHAR(20),
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     editdate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -49,6 +50,7 @@ CREATE TABLE IF NOT EXISTS sku (
     stdnetwgt DECIMAL(18,6),
     lotcontrol VARCHAR(10) DEFAULT 'Y',
     shelflife INTEGER,
+    hazmatcode VARCHAR(20),
     status VARCHAR(10) DEFAULT '1',
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (storerkey, sku),
@@ -62,6 +64,8 @@ CREATE TABLE IF NOT EXISTS loc (
     loctype VARCHAR(10),
     putawayzone VARCHAR(20),
     locationflag VARCHAR(10) DEFAULT 'AVAILABLE',
+    maxweight DECIMAL(18,4),
+    maxcube DECIMAL(18,4),
     status VARCHAR(10) DEFAULT '1',
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -74,6 +78,7 @@ CREATE TABLE IF NOT EXISTS orders (
     externorderkey VARCHAR(50),
     ordertype VARCHAR(10) DEFAULT 'PO',
     status VARCHAR(10) DEFAULT '0',
+    orderdate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     expecteddate TIMESTAMP,
     supplierkey VARCHAR(50),
     suppliername VARCHAR(100),
@@ -200,6 +205,7 @@ CREATE TABLE IF NOT EXISTS codelkup (
     listname VARCHAR(50) NOT NULL,
     code VARCHAR(50) NOT NULL,
     description VARCHAR(200),
+    shortdescription VARCHAR(50),
     shortdescr VARCHAR(50),
     longdescr VARCHAR(500),
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
