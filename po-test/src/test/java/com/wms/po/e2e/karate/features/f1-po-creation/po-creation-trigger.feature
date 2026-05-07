@@ -13,8 +13,8 @@ Feature: F1 - PO Creation Trigger Tests
     * def api = apiPath
     * call read('classpath:com/wms/po/e2e/karate/features/common/common.feature')
     * def authToken = karate.callSingle('classpath:karate-auth.js').token
-    * def timestamp = function() { return java.lang.System.currentTimeMillis() }
-    * def sleep = function(millis) { java.lang.Thread.sleep(millis) }
+    * def timestamp = function(){ return java.lang.System.currentTimeMillis() }
+    * def sleep = function(millis){ java.lang.Thread.sleep(millis) }
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC18: Trigger fires on PO insert
@@ -79,10 +79,8 @@ Feature: F1 - PO Creation Trigger Tests
   Scenario: PO detail trigger fires on line insert
     * def request = testData.validPORequest()
     * request.externalOrderKey = 'PO-TRG-CASC-' + timestamp()
-    * request.lines = [
-        { "sku": "NK-AIRMAX90-BLK", "qtyOrdered": 100 },
-        { "sku": "NK-AF1-BLK", "qtyOrdered": 50 }
-      ]
+    * def lines = [{sku: 'NK-AIRMAX90-BLK', qtyOrdered: 100}, {sku: 'NK-AF1-BLK', qtyOrdered: 50}]
+    * request.lines = lines
 
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
@@ -105,10 +103,8 @@ Feature: F1 - PO Creation Trigger Tests
   Scenario: Trigger calculates and updates summary fields
     * def request = testData.validPORequest()
     * request.externalOrderKey = 'PO-TRG-SUM-' + timestamp()
-    * request.lines = [
-        { "sku": "NK-AIRMAX90-BLK", "qtyOrdered": 100, "unitPrice": 89.99 },
-        { "sku": "NK-AF1-BLK", "qtyOrdered": 50, "unitPrice": 109.99 }
-      ]
+    * def lines = [{sku: 'NK-AIRMAX90-BLK', qtyOrdered: 100, unitPrice: 89.99}, {sku: 'NK-AF1-BLK', qtyOrdered: 50, unitPrice: 109.99}]
+    * request.lines = lines
 
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
@@ -130,17 +126,8 @@ Feature: F1 - PO Creation Trigger Tests
   @F1-TC38 @P2 @ConstraintTrigger
   Scenario: Trigger constraint violation handled gracefully
     # Attempt to create PO with FK violation
-    * def request =
-      """
-      {
-        "storerKey": "NON_EXISTENT_STORER",
-        "facility": "KR01",
-        "externalOrderKey": "#('PO-TRG-FK-' + timestamp())",
-        "lines": [
-          { "sku": "NK-AIRMAX90-BLK", "qtyOrdered": 100 }
-        ]
-      }
-      """
+    * def extKey = 'PO-TRG-FK-' + timestamp()
+    * def request = {storerKey: 'NON_EXISTENT_STORER', facility: 'KR01', externalOrderKey: '#(extKey)', lines: [{sku: 'NK-AIRMAX90-BLK', qtyOrdered: 100}]}
 
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
@@ -156,30 +143,10 @@ Feature: F1 - PO Creation Trigger Tests
   # ─────────────────────────────────────────────────────────────
   @F1-TC39 @P3 @TriggerPerformance
   Scenario: Trigger performance acceptable for large PO
-    * def generateLines =
-      """
-      function(count) {
-        var lines = [];
-        for (var i = 0; i < count; i++) {
-          lines.push({
-            "sku": "HM-BASIC-TEE-M",
-            "qtyOrdered": 10,
-            "unitPrice": 4.99
-          });
-        }
-        return lines;
-      }
-      """
-
-    * def request =
-      """
-      {
-        "storerKey": "HM_KR",
-        "facility": "KR02",
-        "externalOrderKey": "#('PO-TRG-PERF-' + timestamp())",
-        "lines": "#(generateLines(200))"
-      }
-      """
+    * def generateLines = function(count){ var lines = []; for(var i = 0; i < count; i++){ lines.push({sku: 'HM-BASIC-TEE-M', qtyOrdered: 10, unitPrice: 4.99}); } return lines; }
+    * def extKey = 'PO-TRG-PERF-' + timestamp()
+    * def generatedLines = generateLines(200)
+    * def request = {storerKey: 'HM_KR', facility: 'KR02', externalOrderKey: '#(extKey)', lines: '#(generatedLines)'}
 
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
@@ -187,5 +154,4 @@ Feature: F1 - PO Creation Trigger Tests
     And request request
     When method post
     Then status 201
-    And responseTime < 10000  # Should complete within 10 seconds with triggers
-
+    And responseTime < 10000
