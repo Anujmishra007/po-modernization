@@ -173,7 +173,7 @@ jobs:
         run: chmod +x ./mvnw || true
 
       - name: Build Application
-        run: mvn clean package -DskipTests -B
+        run: mvn clean install -DskipTests -B
 
       - name: Start Application
         run: |
@@ -320,7 +320,7 @@ jobs:
 
       - name: Build & Start Application
         run: |
-          mvn clean package -DskipTests -B
+          mvn clean install -DskipTests -B
           java -jar po-api/target/po-api-*-exec.jar \
             --spring.profiles.active=test \
             --spring.datasource.url=jdbc:postgresql://localhost:5433/po_test &
