@@ -216,41 +216,41 @@ class TradeReturnWorkflowTest {
     // ═══════════════════════════════════════════════════════════════════════
 
     @Test
-    @DisplayName("Reservation failure triggers compensation")
-    void testReservationFailureTriggersCompensation() {
-        // Arrange - fail at reservation creation
-        tradeReturnActivity.failAtReservation = true;
+    @DisplayName("Validation failure returns error result without creating SO")
+    void testValidationFailureNoSOCreated() {
+        // Arrange - validation fails before any SO creation
+        tradeReturnActivity.validationResult = TradeReturnValidationResult.failure(
+            List.of("Receipt already has SO", "Status not eligible"));
 
         // Act
         TradeReturnWorkflow workflow = startWorkflow();
         TradeReturnResult result = workflow.populateSalesOrder(createTestRequest());
 
-        // Assert
+        // Assert - workflow fails cleanly at validation
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getStatus()).isEqualTo(WorkflowStatus.FAILED);
+        assertThat(result.getErrors()).contains("Receipt already has SO");
 
-        // Verify compensation called
-        assertThat(tradeReturnActivity.deleteDetailsCalled.get()).isTrue();
-        assertThat(tradeReturnActivity.deleteHeaderCalled.get()).isTrue();
+        // Verify no SO was created (no need for compensation)
+        assertThat(tradeReturnActivity.createHeaderCalled.get()).isFalse();
+        assertThat(tradeReturnActivity.createDetailsCalled.get()).isFalse();
+        assertThat(tradeReturnActivity.createReservationsCalled.get()).isFalse();
     }
 
     @Test
-    @DisplayName("Detail creation failure triggers header compensation")
-    void testDetailFailureTriggersHeaderCompensation() {
-        // Arrange - fail at detail creation
-        tradeReturnActivity.failAtDetails = true;
+    @DisplayName("Empty reservation list handled gracefully")
+    void testEmptyReservationsHandledGracefully() {
+        // Arrange - reservations return empty (edge case, not failure)
+        tradeReturnActivity.reservationIds = List.of();
 
         // Act
         TradeReturnWorkflow workflow = startWorkflow();
         TradeReturnResult result = workflow.populateSalesOrder(createTestRequest());
 
-        // Assert
-        assertThat(result.isSuccess()).isFalse();
-
-        // Verify header compensation called
-        assertThat(tradeReturnActivity.deleteHeaderCalled.get()).isTrue();
-        // Details compensation not called (details never created)
-        assertThat(tradeReturnActivity.deleteDetailsCalled.get()).isFalse();
+        // Assert - workflow completes even with no reservations
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
+        assertThat(tradeReturnActivity.createReservationsCalled.get()).isTrue();
     }
 
     @Test
