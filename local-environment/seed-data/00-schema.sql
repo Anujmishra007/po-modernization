@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS putawaystrategy (
     zone VARCHAR(20),
     locationtype VARCHAR(20),
     ruletype VARCHAR(20),
+    maxqty DECIMAL(18,4),
     priority INTEGER DEFAULT 1,
     description VARCHAR(200),
     status VARCHAR(10) DEFAULT '1',
@@ -310,6 +311,7 @@ CREATE TABLE IF NOT EXISTS inventorytransaction (
     toqty DECIMAL(18,4) DEFAULT 0,
     sourcekey VARCHAR(50),
     sourcetype VARCHAR(20),
+    reference VARCHAR(100),
     fromloc VARCHAR(50),
     toloc VARCHAR(50),
     fromstatus VARCHAR(10),
@@ -380,6 +382,7 @@ CREATE TABLE IF NOT EXISTS taskassignment (
     facility VARCHAR(20),
     assigneddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     assignedtime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    starttime TIMESTAMP,
     completeddate TIMESTAMP,
     status VARCHAR(10) DEFAULT '0',
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -411,13 +414,15 @@ CREATE TABLE IF NOT EXISTS taskqueue (
     maxconcurrent INTEGER DEFAULT 10,
     currentactive INTEGER DEFAULT 0,
     status VARCHAR(10) DEFAULT '1',
-    adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    addwho VARCHAR(50)
 );
 
 -- License Plate
 CREATE TABLE IF NOT EXISTS licenseplate (
     lpkey VARCHAR(50) PRIMARY KEY,
     id VARCHAR(50),
+    parentid VARCHAR(50),
     parentlpkey VARCHAR(50),
     storerkey VARCHAR(50),
     sku VARCHAR(50),
@@ -434,6 +439,7 @@ CREATE TABLE IF NOT EXISTS licenseplate (
 CREATE TABLE IF NOT EXISTS statushistory (
     historykey VARCHAR(50) PRIMARY KEY,
     tablename VARCHAR(50),
+    entitytype VARCHAR(50),
     entitykey VARCHAR(100),
     recordkey VARCHAR(100),
     fromstatus VARCHAR(10),
@@ -716,6 +722,7 @@ CREATE TABLE IF NOT EXISTS triggerconfig (
     triggertype VARCHAR(20),
     operation VARCHAR(20),
     aggregation VARCHAR(20),
+    auditlog VARCHAR(1) DEFAULT 'Y',
     enabled VARCHAR(1) DEFAULT 'Y',
     description VARCHAR(500),
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
