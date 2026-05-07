@@ -142,15 +142,13 @@ INSERT INTO cascaderule (rulekey, sourcetable, sourcecolumn, targettable, target
 -- SECTION 8: TRIGGER ERROR SCENARIOS
 -- =============================================================================
 
--- Data that will cause trigger errors for testing
+-- Data for error scenario testing
+-- Note: Using inactive storer (TEST_STORER_ERR status=9) for error tests
 INSERT INTO po (pokey, storerkey, externpokey, potype, status, facility, expecteddate, adddate, addwho) VALUES
--- PO with invalid storer (trigger should reject)
-('TRG-PO-ERR-STORER', 'INVALID_STORER_XXX', 'TRG-EXT-ERR-1', 'STANDARD', '0', 'KR01', CURRENT_TIMESTAMP + INTERVAL '3 days', CURRENT_TIMESTAMP, 'SYSTEM'),
--- PO that would cause duplicate key trigger error
+-- PO with inactive storer (trigger should reject during processing)
+('TRG-PO-ERR-STORER', 'TEST_STORER_ERR', 'TRG-EXT-ERR-1', 'STANDARD', '0', 'TEST01', CURRENT_TIMESTAMP + INTERVAL '3 days', CURRENT_TIMESTAMP, 'SYSTEM'),
+-- PO that would cause duplicate key trigger error (same externpokey as TRG-PO-DUP)
 ('TRG-PO-ERR-DUP', 'NIKE_KR', 'TRG-EXT-DUP', 'STANDARD', '0', 'KR01', CURRENT_TIMESTAMP + INTERVAL '3 days', CURRENT_TIMESTAMP, 'SYSTEM');
-
--- Note: These may fail on insert due to FK constraints or trigger validation
--- That's intentional for error testing
 
 
 -- =============================================================================

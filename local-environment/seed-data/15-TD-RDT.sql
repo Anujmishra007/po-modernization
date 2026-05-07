@@ -9,7 +9,22 @@
 SET search_path TO dbo, public;
 
 -- =============================================================================
--- SECTION 1: WMS USERS (Operators)
+-- SECTION 1: USER GROUPS (Roles) - Must be created before users
+-- =============================================================================
+
+DELETE FROM usergroup WHERE usergroupkey IN ('RECEIVER', 'PUTAWAY', 'PICKER', 'SUPERVISOR', 'AUDITOR');
+
+INSERT INTO usergroup (usergroupkey, description, status) VALUES
+('RECEIVER', 'Receiving Operators', '1'),
+('PUTAWAY', 'Putaway Operators', '1'),
+('PICKER', 'Picking Operators', '1'),
+('SUPERVISOR', 'Floor Supervisors', '1'),
+('AUDITOR', 'Inventory Auditors', '1')
+ON CONFLICT (usergroupkey) DO NOTHING;
+
+
+-- =============================================================================
+-- SECTION 2: WMS USERS (Operators)
 -- =============================================================================
 -- Users who operate RDT devices for receiving, putaway, picking
 
@@ -30,20 +45,6 @@ INSERT INTO wmsuser (userid, username, password, usergroup, facility, status, la
 -- Error test users
 ('RDT-INACTIVE', 'Inactive User', 'hashed_pwd_x', 'RECEIVER', 'KR01', '0', 'EN', 'RECV_MENU', CURRENT_TIMESTAMP, 'SYSTEM'),
 ('RDT-LOCKED', 'Locked User', 'hashed_pwd_x', 'RECEIVER', 'KR01', '9', 'EN', 'RECV_MENU', CURRENT_TIMESTAMP, 'SYSTEM');
-
-
--- =============================================================================
--- SECTION 2: USER GROUPS (Roles)
--- =============================================================================
-
-DELETE FROM usergroup WHERE usergroupkey LIKE 'RECEIVER' OR usergroupkey LIKE 'PUTAWAY' OR usergroupkey LIKE 'PICKER' OR usergroupkey LIKE 'SUPERVISOR';
-
-INSERT INTO usergroup (usergroupkey, description, status) VALUES
-('RECEIVER', 'Receiving Operators', '1'),
-('PUTAWAY', 'Putaway Operators', '1'),
-('PICKER', 'Picking Operators', '1'),
-('SUPERVISOR', 'Floor Supervisors', '1'),
-('AUDITOR', 'Inventory Auditors', '1');
 
 
 -- =============================================================================

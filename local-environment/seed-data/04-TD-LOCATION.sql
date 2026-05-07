@@ -108,6 +108,19 @@ INSERT INTO loc (loc, facility, loctype, putawayzone, locationflag, status, maxw
 ('KR01-HAZMAT-01', 'KR01', 'HAZMAT', 'HAZMAT', 'AVAILABLE', '1', 500, 10),
 ('KR01-HAZMAT-02', 'KR01', 'HAZMAT', 'HAZMAT', 'AVAILABLE', '1', 500, 10),
 
+-- Korea DC 1 - Additional Storage (used by seed data)
+('KR01-STOR-A01', 'KR01', 'STORAGE', 'ZONE-A', 'AVAILABLE', '1', 1000, 20),
+('KR01-STOR-A02', 'KR01', 'STORAGE', 'ZONE-A', 'AVAILABLE', '1', 1000, 20),
+('KR01-STOR-B01', 'KR01', 'STORAGE', 'ZONE-B', 'AVAILABLE', '1', 800, 30),
+('KR01-STOR-FULL', 'KR01', 'STORAGE', 'ZONE-A', 'FULL', '1', 1000, 20),
+('KR01-HOLD-01', 'KR01', 'HOLD', 'ZONE-A', 'HOLD', '1', 1000, 20),
+
+-- Korea DC 2 - Additional Storage
+('KR02-STOR-A01', 'KR02', 'STORAGE', 'ZONE-A', 'AVAILABLE', '1', 1000, 20),
+('KR02-STOR-A02', 'KR02', 'STORAGE', 'ZONE-A', 'AVAILABLE', '1', 1000, 20),
+('KR02-STOR-B01', 'KR02', 'STORAGE', 'ZONE-B', 'AVAILABLE', '1', 800, 30),
+('KR02-HOLD-01', 'KR02', 'HOLD', 'ZONE-A', 'HOLD', '1', 1000, 20),
+
 -- India DC 1 - Core Locations (15)
 ('IN01-RECV-01', 'IN01', 'RECV', 'RECEIVING', 'AVAILABLE', '1', 5000, 100),
 ('IN01-RECV-02', 'IN01', 'RECV', 'RECEIVING', 'AVAILABLE', '1', 5000, 100),
@@ -125,6 +138,12 @@ INSERT INTO loc (loc, facility, loctype, putawayzone, locationflag, status, maxw
 ('IN01-XDOCK-02', 'IN01', 'XDOCK', 'CROSSDOCK', 'AVAILABLE', '1', 2000, 40),
 ('IN01-XDOCK-03', 'IN01', 'XDOCK', 'CROSSDOCK', 'AVAILABLE', '1', 2000, 40),
 
+-- India DC 1 - Additional Storage (used by seed data)
+('IN01-STOR-A01', 'IN01', 'STORAGE', 'ZONE-A', 'AVAILABLE', '1', 1000, 20),
+('IN01-STOR-A02', 'IN01', 'STORAGE', 'ZONE-A', 'AVAILABLE', '1', 1000, 20),
+('IN01-STOR-LOW', 'IN01', 'STORAGE', 'ZONE-A', 'AVAILABLE', '1', 1000, 20),
+('IN01-HOLD-01', 'IN01', 'HOLD', 'ZONE-A', 'HOLD', '1', 1000, 20),
+
 -- Singapore DC 1 - Core Locations (15)
 ('SG01-RECV-01', 'SG01', 'RECV', 'RECEIVING', 'AVAILABLE', '1', 5000, 100),
 ('SG01-RECV-02', 'SG01', 'RECV', 'RECEIVING', 'AVAILABLE', '1', 5000, 100),
@@ -141,6 +160,9 @@ INSERT INTO loc (loc, facility, loctype, putawayzone, locationflag, status, maxw
 ('SG01-XDOCK-01', 'SG01', 'XDOCK', 'CROSSDOCK', 'AVAILABLE', '1', 2000, 40),
 ('SG01-XDOCK-02', 'SG01', 'XDOCK', 'CROSSDOCK', 'AVAILABLE', '1', 2000, 40),
 ('SG01-XDOCK-03', 'SG01', 'XDOCK', 'CROSSDOCK', 'AVAILABLE', '1', 2000, 40),
+
+-- Singapore DC 1 - Additional Storage (used by seed data)
+('SG01-STOR-A01', 'SG01', 'STORAGE', 'ZONE-A', 'AVAILABLE', '1', 1000, 20),
 
 -- Test Facility - Locations (20)
 ('TEST-RECV-01', 'TEST01', 'RECV', 'RECEIVING', 'AVAILABLE', '1', 5000, 100),

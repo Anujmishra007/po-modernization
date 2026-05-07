@@ -34,6 +34,10 @@ INSERT INTO sku (storerkey, sku, descr, lotcontrol, status, stdgrosswgt, stdnetw
 ('ADIDAS_KR', 'AD-ULTRABOOST-WHT', 'Adidas Ultraboost White', 'Y', '1', 1.1, 0.95, 0.014, NULL, NULL),
 ('ADIDAS_KR', 'AD-STAN-SMITH', 'Adidas Stan Smith', 'Y', '1', 1.0, 0.85, 0.013, NULL, NULL),
 
+-- Adidas India SKUs (Lot Controlled)
+('ADIDAS_IN', 'ADI-ULTRABOOST-BLK', 'Adidas Ultraboost Black India', 'Y', '1', 1.1, 0.95, 0.014, NULL, NULL),
+('ADIDAS_IN', 'ADI-SUPERSTAR-WHT', 'Adidas Superstar White India', 'Y', '1', 1.0, 0.85, 0.013, NULL, NULL),
+
 -- Nike India SKUs (copies for regional testing)
 ('NIKE_IN', 'NK-AIRMAX90-BLK', 'Nike Air Max 90 Black', 'Y', '1', 1.2, 1.0, 0.015, NULL, NULL),
 ('NIKE_IN', 'NK-AF1-BLK', 'Nike Air Force 1 Black', 'Y', '1', 1.3, 1.1, 0.016, NULL, NULL),
@@ -42,6 +46,9 @@ INSERT INTO sku (storerkey, sku, descr, lotcontrol, status, stdgrosswgt, stdnetw
 ('UNILEVER_IN', 'UL-SOAP-LUX', 'Lux Beauty Soap 100g', 'Y', '1', 0.12, 0.1, 0.001, NULL, 730),
 ('UNILEVER_IN', 'UL-SHAMPOO-DOVE', 'Dove Shampoo 200ml', 'Y', '1', 0.25, 0.22, 0.002, NULL, 1095),
 ('UNILEVER_IN', 'UL-CREAM-FAIR', 'Fair & Lovely Cream 50g', 'Y', '1', 0.08, 0.05, 0.0008, NULL, 365),
+
+-- Unilever Singapore SKUs (FMCG - Perishable with Shelf Life)
+('UNI_SG', 'UNI-DOVE-SOAP-100', 'Dove Soap 100g Singapore', 'Y', '1', 0.12, 0.1, 0.001, NULL, 730),
 
 -- Samsung Korea SKUs (Electronics - High Value)
 ('SAMSUNG_KR', 'SAM-GALAXY-S24', 'Samsung Galaxy S24', 'Y', '1', 0.2, 0.18, 0.002, NULL, NULL),
