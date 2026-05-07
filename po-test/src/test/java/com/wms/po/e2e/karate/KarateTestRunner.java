@@ -41,14 +41,16 @@ import com.intuit.karate.junit5.Karate;
  */
 public class KarateTestRunner {
 
+    // Base classpath for all Karate features
+    private static final String FEATURES_PATH = "classpath:com/wms/po/e2e/karate";
+
     // ═══════════════════════════════════════════════════════════
     // Run All Tests
     // ═══════════════════════════════════════════════════════════
 
     @Karate.Test
     Karate testAll() {
-        return Karate.run()
-            .relativeTo(getClass());
+        return Karate.run(FEATURES_PATH);
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -57,30 +59,22 @@ public class KarateTestRunner {
 
     @Karate.Test
     Karate testF1_POCreation() {
-        return Karate.run()
-            .tags("@F1")
-            .relativeTo(getClass());
+        return Karate.run(FEATURES_PATH).tags("@F1");
     }
 
     @Karate.Test
     Karate testF2_ASNPopulation() {
-        return Karate.run()
-            .tags("@F2")
-            .relativeTo(getClass());
+        return Karate.run(FEATURES_PATH).tags("@F2");
     }
 
     @Karate.Test
     Karate testF3_ReceiptFinalization() {
-        return Karate.run()
-            .tags("@F3")
-            .relativeTo(getClass());
+        return Karate.run(FEATURES_PATH).tags("@F3");
     }
 
     @Karate.Test
     Karate testF10_Compensation() {
-        return Karate.run()
-            .tags("@F10", "@Compensation")
-            .relativeTo(getClass());
+        return Karate.run(FEATURES_PATH).tags("@F10 or @Compensation");
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -89,23 +83,17 @@ public class KarateTestRunner {
 
     @Karate.Test
     Karate testHappyPath() {
-        return Karate.run()
-            .tags("@Happy")
-            .relativeTo(getClass());
+        return Karate.run(FEATURES_PATH).tags("@Happy");
     }
 
     @Karate.Test
     Karate testUnhappyPath() {
-        return Karate.run()
-            .tags("@Unhappy")
-            .relativeTo(getClass());
+        return Karate.run(FEATURES_PATH).tags("@Unhappy");
     }
 
     @Karate.Test
     Karate testCompensation() {
-        return Karate.run()
-            .tags("@Compensation", "@Saga")
-            .relativeTo(getClass());
+        return Karate.run(FEATURES_PATH).tags("@Compensation or @Saga");
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -114,16 +102,12 @@ public class KarateTestRunner {
 
     @Karate.Test
     Karate testP1Critical() {
-        return Karate.run()
-            .tags("@P1")
-            .relativeTo(getClass());
+        return Karate.run(FEATURES_PATH).tags("@P1");
     }
 
     @Karate.Test
     Karate testP1andP2() {
-        return Karate.run()
-            .tags("@P1", "@P2")
-            .relativeTo(getClass());
+        return Karate.run(FEATURES_PATH).tags("@P1 or @P2");
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -132,23 +116,17 @@ public class KarateTestRunner {
 
     @Karate.Test
     Karate testAPIEntry() {
-        return Karate.run()
-            .tags("@API")
-            .relativeTo(getClass());
+        return Karate.run(FEATURES_PATH).tags("@API");
     }
 
     @Karate.Test
     Karate testEDIEntry() {
-        return Karate.run()
-            .tags("@EDI")
-            .relativeTo(getClass());
+        return Karate.run(FEATURES_PATH).tags("@EDI");
     }
 
     @Karate.Test
     Karate testJobEntry() {
-        return Karate.run()
-            .tags("@Job")
-            .relativeTo(getClass());
+        return Karate.run(FEATURES_PATH).tags("@Job");
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -157,36 +135,26 @@ public class KarateTestRunner {
 
     @Karate.Test
     Karate testSmoke() {
-        return Karate.run()
-            .tags("@smoke")
-            .relativeTo(getClass());
+        return Karate.run(FEATURES_PATH).tags("@smoke");
     }
 
     @Karate.Test
     Karate testPopulate() {
-        return Karate.run()
-            .tags("@populate")
-            .relativeTo(getClass());
+        return Karate.run(FEATURES_PATH).tags("@populate");
     }
 
     @Karate.Test
     Karate testSaga() {
-        return Karate.run()
-            .tags("@saga")
-            .relativeTo(getClass());
+        return Karate.run(FEATURES_PATH).tags("@saga");
     }
 
     @Karate.Test
     Karate testCRUD() {
-        return Karate.run()
-            .tags("@crud")
-            .relativeTo(getClass());
+        return Karate.run(FEATURES_PATH).tags("@crud");
     }
 
     @Karate.Test
     Karate testRegression() {
-        return Karate.run()
-            .tags("@Regression")
-            .relativeTo(getClass());
+        return Karate.run(FEATURES_PATH).tags("@Regression");
     }
 }
