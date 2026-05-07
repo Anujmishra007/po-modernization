@@ -114,9 +114,11 @@ CREATE TABLE IF NOT EXISTS lot (
 -- Putaway Strategy
 CREATE TABLE IF NOT EXISTS putawaystrategy (
     strategykey VARCHAR(50) PRIMARY KEY,
-    storerkey VARCHAR(50) REFERENCES storer(storerkey),
+    storerkey VARCHAR(50),
     sku VARCHAR(50),
+    skugroup VARCHAR(50),
     putawayzone VARCHAR(20),
+    locationtype VARCHAR(20),
     priority INTEGER DEFAULT 1,
     description VARCHAR(200),
     status VARCHAR(10) DEFAULT '1',
@@ -241,12 +243,12 @@ CREATE TABLE IF NOT EXISTS receiptdetail (
 
 -- Inventory (LOTxLOCxID)
 CREATE TABLE IF NOT EXISTS lotxlocxid (
-    lotxlocxidkey VARCHAR(50) PRIMARY KEY,
+    lotxlocxidkey VARCHAR(50) DEFAULT gen_random_uuid()::VARCHAR(50),
     storerkey VARCHAR(50) NOT NULL,
     sku VARCHAR(50) NOT NULL,
-    loc VARCHAR(50) NOT NULL REFERENCES loc(loc),
+    loc VARCHAR(50) NOT NULL,
     lot VARCHAR(50),
-    id VARCHAR(50),
+    id VARCHAR(50) PRIMARY KEY,
     qty DECIMAL(18,4) DEFAULT 0,
     qtyallocated DECIMAL(18,4) DEFAULT 0,
     qtyavailable DECIMAL(18,4) DEFAULT 0,
@@ -267,15 +269,14 @@ CREATE TABLE IF NOT EXISTS lotxlocxid (
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     addwho VARCHAR(50),
     editdate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    editwho VARCHAR(50),
-    FOREIGN KEY (storerkey, sku) REFERENCES sku(storerkey, sku)
+    editwho VARCHAR(50)
 );
 
 -- Inventory Hold
 CREATE TABLE IF NOT EXISTS inventoryhold (
-    inventoryholdkey VARCHAR(50) PRIMARY KEY,
-    holdkey VARCHAR(50),
-    lotxlocxidkey VARCHAR(50) REFERENCES lotxlocxid(lotxlocxidkey),
+    inventoryholdkey VARCHAR(50) DEFAULT gen_random_uuid()::VARCHAR(50),
+    holdkey VARCHAR(50) PRIMARY KEY,
+    lotxlocxidkey VARCHAR(50),
     storerkey VARCHAR(50),
     sku VARCHAR(50),
     lot VARCHAR(50),
@@ -303,6 +304,8 @@ CREATE TABLE IF NOT EXISTS inventorytransaction (
     id VARCHAR(50),
     transactiontype VARCHAR(20) NOT NULL,
     qty DECIMAL(18,4) DEFAULT 0,
+    fromqty DECIMAL(18,4) DEFAULT 0,
+    toqty DECIMAL(18,4) DEFAULT 0,
     sourcekey VARCHAR(50),
     sourcetype VARCHAR(20),
     fromloc VARCHAR(50),
@@ -356,10 +359,49 @@ CREATE TABLE IF NOT EXISTS taskdetail (
     qty DECIMAL(18,4),
     qtyuom VARCHAR(10) DEFAULT 'EA',
     status VARCHAR(10) DEFAULT '0',
+    lottable01 VARCHAR(50),
+    lottable02 VARCHAR(50),
+    lottable03 VARCHAR(50),
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     addwho VARCHAR(50),
     editdate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     editwho VARCHAR(50)
+);
+
+-- Task Assignment
+CREATE TABLE IF NOT EXISTS taskassignment (
+    assignmentkey VARCHAR(50) PRIMARY KEY,
+    taskkey VARCHAR(50) REFERENCES task(taskkey),
+    userid VARCHAR(50),
+    assigneddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completeddate TIMESTAMP,
+    status VARCHAR(10) DEFAULT '0',
+    adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    addwho VARCHAR(50)
+);
+
+-- Task History
+CREATE TABLE IF NOT EXISTS taskhistory (
+    historykey VARCHAR(50) PRIMARY KEY,
+    taskkey VARCHAR(50) REFERENCES task(taskkey),
+    action VARCHAR(50),
+    fromstatus VARCHAR(10),
+    tostatus VARCHAR(10),
+    userid VARCHAR(50),
+    notes VARCHAR(500),
+    adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Task Queue
+CREATE TABLE IF NOT EXISTS taskqueue (
+    queuekey VARCHAR(50) PRIMARY KEY,
+    queuename VARCHAR(100),
+    facility VARCHAR(20),
+    tasktype VARCHAR(20),
+    priority INTEGER DEFAULT 5,
+    maxconcurrent INTEGER DEFAULT 10,
+    status VARCHAR(10) DEFAULT '1',
+    adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Code Lookup (Configuration)
