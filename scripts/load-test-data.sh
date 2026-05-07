@@ -66,11 +66,20 @@ load_schema() {
 load_test_data() {
     log_info "Loading test data..."
 
-    if [ -f "$SEED_DATA_DIR/01-test-data.sql" ]; then
-        run_sql "$SEED_DATA_DIR/01-test-data.sql"
-        log_success "Test data loaded"
+    # Load all TD-*.sql files in order (02-16)
+    local loaded=0
+    for f in "$SEED_DATA_DIR"/[0-1][0-9]-TD-*.sql; do
+        if [ -f "$f" ]; then
+            log_info "Loading: $(basename "$f")"
+            run_sql "$f"
+            ((loaded++))
+        fi
+    done
+
+    if [ $loaded -gt 0 ]; then
+        log_success "Test data loaded ($loaded files)"
     else
-        log_warn "Test data file not found: $SEED_DATA_DIR/01-test-data.sql"
+        log_warn "No test data files found in $SEED_DATA_DIR"
     fi
 }
 

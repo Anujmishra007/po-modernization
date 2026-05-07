@@ -164,10 +164,19 @@ jobs:
         env:
           PGPASSWORD: wms123
         run: |
+          # Load schema first
           psql -h localhost -p 5433 -U wms -d po_test \
             -f local-environment/seed-data/00-schema.sql
-          psql -h localhost -p 5433 -U wms -d po_test \
-            -f local-environment/seed-data/01-test-data.sql
+
+          # Load all TD-*.sql files in order (02-16)
+          for f in local-environment/seed-data/[0-1][0-9]-TD-*.sql; do
+            if [ -f "$f" ]; then
+              echo "Loading: $f"
+              psql -h localhost -p 5433 -U wms -d po_test -f "$f"
+            fi
+          done
+
+          echo "Test data loaded successfully"
 
       - name: Make Maven wrapper executable
         run: chmod +x ./mvnw || true
@@ -313,10 +322,19 @@ jobs:
         env:
           PGPASSWORD: wms123
         run: |
+          # Load schema first
           psql -h localhost -p 5433 -U wms -d po_test \
             -f local-environment/seed-data/00-schema.sql
-          psql -h localhost -p 5433 -U wms -d po_test \
-            -f local-environment/seed-data/01-test-data.sql
+
+          # Load all TD-*.sql files in order (02-16)
+          for f in local-environment/seed-data/[0-1][0-9]-TD-*.sql; do
+            if [ -f "$f" ]; then
+              echo "Loading: $f"
+              psql -h localhost -p 5433 -U wms -d po_test -f "$f"
+            fi
+          done
+
+          echo "Test data loaded successfully"
 
       - name: Build & Start Application
         run: |

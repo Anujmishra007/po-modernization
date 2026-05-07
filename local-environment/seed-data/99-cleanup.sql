@@ -33,5 +33,6 @@ BEGIN
     RAISE NOTICE '  Tasks: %', (SELECT COUNT(*) FROM task);
 END $$;
 
--- Re-run test data
-\i /docker-entrypoint-initdb.d/01-test-data.sql
+-- To reload test data after cleanup, run:
+-- for f in /docker-entrypoint-initdb.d/[0-1][0-9]-TD-*.sql; do psql -U wms -d po_test -f "$f"; done
+-- Or restart the Docker container to reload all data
