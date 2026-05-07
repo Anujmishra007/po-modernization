@@ -2,6 +2,7 @@ package com.wms.po.unit.activity;
 
 import com.wms.po.activity.impl.ValidationActivityImpl;
 import com.wms.po.domain.entity.POEntity;
+import com.wms.po.domain.exception.BusinessException;
 import com.wms.po.domain.model.PopulateRequest;
 import com.wms.po.domain.model.ValidationResult;
 import com.wms.po.domain.model.VariationContext;
@@ -99,7 +100,7 @@ class ValidationActivityTest {
         }
 
         @Test
-        @DisplayName("missing PO key fails validation")
+        @DisplayName("missing PO key fails validation with BusinessException")
         void missingPoKeyFails() {
             PopulateRequest emptyRequest = PopulateRequest.builder()
                 .poKeys(List.of())
@@ -107,28 +108,32 @@ class ValidationActivityTest {
                 .facility("KR01")
                 .build();
 
-            ValidationResult result = validationActivity.validate(emptyRequest, context);
+            BusinessException exception = org.junit.jupiter.api.Assertions.assertThrows(
+                BusinessException.class,
+                () -> validationActivity.validate(emptyRequest, context)
+            );
 
-            assertThat(result.isValid()).isFalse();
-            assertThat(result.getErrors()).contains("At least one PO key is required");
+            assertThat(exception.getMessage()).contains("At least one PO key is required");
         }
 
         @Test
-        @DisplayName("missing storer key fails validation")
+        @DisplayName("missing storer key fails validation with BusinessException")
         void missingStorerKeyFails() {
             PopulateRequest noStorerRequest = PopulateRequest.builder()
                 .poKeys(List.of("PO-001"))
                 .facility("KR01")
                 .build();
 
-            ValidationResult result = validationActivity.validate(noStorerRequest, context);
+            BusinessException exception = org.junit.jupiter.api.Assertions.assertThrows(
+                BusinessException.class,
+                () -> validationActivity.validate(noStorerRequest, context)
+            );
 
-            assertThat(result.isValid()).isFalse();
-            assertThat(result.getErrors()).contains("Storer key is required");
+            assertThat(exception.getMessage()).contains("Storer key is required");
         }
 
         @Test
-        @DisplayName("closed PO fails validation")
+        @DisplayName("closed PO fails validation with BusinessException")
         void closedPoFails() {
             POEntity closedPO = POEntity.builder()
                 .poKey("PO-001")
@@ -138,14 +143,16 @@ class ValidationActivityTest {
 
             when(poRepository.findByPoKeyIn(List.of("PO-001"))).thenReturn(List.of(closedPO));
 
-            ValidationResult result = validationActivity.validate(validRequest, context);
+            BusinessException exception = org.junit.jupiter.api.Assertions.assertThrows(
+                BusinessException.class,
+                () -> validationActivity.validate(validRequest, context)
+            );
 
-            assertThat(result.isValid()).isFalse();
-            assertThat(result.getErrors().get(0)).contains("closed");
+            assertThat(exception.getMessage()).contains("closed");
         }
 
         @Test
-        @DisplayName("cancelled PO fails validation")
+        @DisplayName("cancelled PO fails validation with BusinessException")
         void cancelledPoFails() {
             POEntity cancelledPO = POEntity.builder()
                 .poKey("PO-001")
@@ -155,25 +162,29 @@ class ValidationActivityTest {
 
             when(poRepository.findByPoKeyIn(List.of("PO-001"))).thenReturn(List.of(cancelledPO));
 
-            ValidationResult result = validationActivity.validate(validRequest, context);
+            BusinessException exception = org.junit.jupiter.api.Assertions.assertThrows(
+                BusinessException.class,
+                () -> validationActivity.validate(validRequest, context)
+            );
 
-            assertThat(result.isValid()).isFalse();
-            assertThat(result.getErrors().get(0)).contains("cancelled");
+            assertThat(exception.getMessage()).contains("cancelled");
         }
 
         @Test
-        @DisplayName("non-existent PO fails validation")
+        @DisplayName("non-existent PO fails validation with BusinessException")
         void nonExistentPoFails() {
             when(poRepository.findByPoKeyIn(List.of("PO-001"))).thenReturn(List.of());
 
-            ValidationResult result = validationActivity.validate(validRequest, context);
+            BusinessException exception = org.junit.jupiter.api.Assertions.assertThrows(
+                BusinessException.class,
+                () -> validationActivity.validate(validRequest, context)
+            );
 
-            assertThat(result.isValid()).isFalse();
-            assertThat(result.getErrors().get(0)).contains("not found");
+            assertThat(exception.getMessage()).contains("not found");
         }
 
         @Test
-        @DisplayName("PO with wrong storer fails validation")
+        @DisplayName("PO with wrong storer fails validation with BusinessException")
         void wrongStorerFails() {
             POEntity wrongStorerPO = POEntity.builder()
                 .poKey("PO-001")
@@ -183,10 +194,12 @@ class ValidationActivityTest {
 
             when(poRepository.findByPoKeyIn(List.of("PO-001"))).thenReturn(List.of(wrongStorerPO));
 
-            ValidationResult result = validationActivity.validate(validRequest, context);
+            BusinessException exception = org.junit.jupiter.api.Assertions.assertThrows(
+                BusinessException.class,
+                () -> validationActivity.validate(validRequest, context)
+            );
 
-            assertThat(result.isValid()).isFalse();
-            assertThat(result.getErrors().get(0)).contains("different storer");
+            assertThat(exception.getMessage()).containsIgnoringCase("storer");
         }
     }
 }
