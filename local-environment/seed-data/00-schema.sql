@@ -24,6 +24,11 @@ CREATE TABLE IF NOT EXISTS storer (
     state VARCHAR(50),
     zip VARCHAR(20),
     defaultfacility VARCHAR(20),
+    susr1 VARCHAR(50),
+    susr2 VARCHAR(50),
+    susr3 VARCHAR(50),
+    susr4 VARCHAR(50),
+    susr5 VARCHAR(50),
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     editdate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -70,6 +75,15 @@ CREATE TABLE IF NOT EXISTS loc (
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Putaway Zone
+CREATE TABLE IF NOT EXISTS putawayzone (
+    putawayzone VARCHAR(20) PRIMARY KEY,
+    facility VARCHAR(20),
+    description VARCHAR(100),
+    status VARCHAR(10) DEFAULT '1',
+    adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Purchase Order Header
 CREATE TABLE IF NOT EXISTS orders (
     orderkey VARCHAR(50) PRIMARY KEY,
@@ -83,6 +97,11 @@ CREATE TABLE IF NOT EXISTS orders (
     supplierkey VARCHAR(50),
     suppliername VARCHAR(100),
     notes VARCHAR(500),
+    susr1 VARCHAR(50),
+    susr2 VARCHAR(50),
+    susr3 VARCHAR(50),
+    susr4 VARCHAR(50),
+    susr5 VARCHAR(50),
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     editdate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     addwho VARCHAR(50),
@@ -102,8 +121,13 @@ CREATE TABLE IF NOT EXISTS orderdetail (
     lottable01 VARCHAR(50),
     lottable02 VARCHAR(50),
     lottable03 VARCHAR(50),
-    lottable04 TIMESTAMP,
-    lottable05 TIMESTAMP,
+    lottable04 VARCHAR(50),
+    lottable05 VARCHAR(50),
+    lottable06 VARCHAR(50),
+    lottable07 VARCHAR(50),
+    lottable08 VARCHAR(50),
+    lottable09 VARCHAR(50),
+    lottable10 VARCHAR(50),
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     editdate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (orderkey, orderlinenumber),
@@ -143,8 +167,13 @@ CREATE TABLE IF NOT EXISTS receiptdetail (
     lottable01 VARCHAR(50),
     lottable02 VARCHAR(50),
     lottable03 VARCHAR(50),
-    lottable04 TIMESTAMP,
-    lottable05 TIMESTAMP,
+    lottable04 VARCHAR(50),
+    lottable05 VARCHAR(50),
+    lottable06 VARCHAR(50),
+    lottable07 VARCHAR(50),
+    lottable08 VARCHAR(50),
+    lottable09 VARCHAR(50),
+    lottable10 VARCHAR(50),
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     editdate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (receiptkey, receiptlinenumber),
@@ -165,8 +194,13 @@ CREATE TABLE IF NOT EXISTS lotxlocxid (
     lottable01 VARCHAR(50),
     lottable02 VARCHAR(50),
     lottable03 VARCHAR(50),
-    lottable04 TIMESTAMP,
-    lottable05 TIMESTAMP,
+    lottable04 VARCHAR(50),
+    lottable05 VARCHAR(50),
+    lottable06 VARCHAR(50),
+    lottable07 VARCHAR(50),
+    lottable08 VARCHAR(50),
+    lottable09 VARCHAR(50),
+    lottable10 VARCHAR(50),
     status VARCHAR(10) DEFAULT 'OK',
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     editdate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -210,6 +244,32 @@ CREATE TABLE IF NOT EXISTS codelkup (
     longdescr VARCHAR(500),
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (listname, code)
+);
+
+-- Pack (for UOM conversion)
+CREATE TABLE IF NOT EXISTS pack (
+    storerkey VARCHAR(50) NOT NULL,
+    packkey VARCHAR(50) NOT NULL,
+    descr VARCHAR(200),
+    packuom1 VARCHAR(10),
+    packuom2 VARCHAR(10),
+    packuom3 VARCHAR(10),
+    casecnt INTEGER DEFAULT 1,
+    pallet INTEGER DEFAULT 1,
+    adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (storerkey, packkey)
+);
+
+-- SKU x Location (for location-specific SKU config)
+CREATE TABLE IF NOT EXISTS skuloc (
+    storerkey VARCHAR(50) NOT NULL,
+    sku VARCHAR(50) NOT NULL,
+    loc VARCHAR(50) NOT NULL,
+    maxqty DECIMAL(18,4),
+    minqty DECIMAL(18,4),
+    replenishqty DECIMAL(18,4),
+    status VARCHAR(10) DEFAULT '1',
+    PRIMARY KEY (storerkey, sku, loc)
 );
 
 -- ═══════════════════════════════════════════════════════════
