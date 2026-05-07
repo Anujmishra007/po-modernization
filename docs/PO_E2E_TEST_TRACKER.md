@@ -1,7 +1,7 @@
 # PO Modernization - E2E Test Tracker
 
-> **Last Updated:** 2026-05-06 (19:30 UTC)
-> **Version:** 1.5
+> **Last Updated:** 2026-05-07 (10:15 UTC)
+> **Version:** 1.6
 > **Total Test Cases:** 260
 > **Overall Progress:** 278/260 (107% - exceeds target)
 > **CI/CD Status:** ✅ Fully Operational
@@ -745,6 +745,202 @@ mvn test -B -pl po-service
 
 ---
 
+## Tool Stack & Recommendations
+
+### Current Tool Stack Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  E2E TESTING TOOL STACK                                                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  LAYER 1: E2E API TESTING                                                   │
+│  ├── Karate DSL 1.4.1              API testing + BDD scenarios              │
+│  ├── DbUtils (Custom)              Database validation helper               │
+│  ├── PostgreSQL Driver             JDBC connectivity                        │
+│  └── Allure Reports                Test reporting & visualization           │
+│                                                                              │
+│  LAYER 2: INTEGRATION TESTING                                               │
+│  ├── JUnit 5 (Jupiter)             Test framework                           │
+│  ├── Spring Boot Test 3.5.3        Context loading, DI                      │
+│  ├── Testcontainers 1.19.x         Docker-based integration tests           │
+│  ├── Mockito 5.x                   Mocking framework                        │
+│  └── AssertJ 3.x                   Fluent assertions                        │
+│                                                                              │
+│  LAYER 3: WORKFLOW/SAGA TESTING                                             │
+│  ├── Temporal SDK Test 1.22.x      Workflow test environment                │
+│  ├── TestWorkflowExtension         JUnit 5 extension for Temporal           │
+│  ├── TestWorkflowEnvironment       In-memory workflow execution             │
+│  └── Mock Activities               Activity simulation                      │
+│                                                                              │
+│  INFRASTRUCTURE                                                              │
+│  ├── Docker Compose                Local environment orchestration          │
+│  ├── PostgreSQL 15                 Test database                            │
+│  ├── Temporal Server               Workflow orchestration                   │
+│  ├── Apache Kafka                  Event streaming                          │
+│  ├── Redis 7                       Caching layer                            │
+│  └── GitHub Actions                CI/CD pipeline                           │
+│                                                                              │
+│  REPORTING & COVERAGE                                                        │
+│  ├── Allure Framework 2.24         Test reports with attachments            │
+│  ├── JaCoCo 0.8.11                 Code coverage                            │
+│  ├── Codecov                       Coverage tracking in CI                  │
+│  └── Surefire/Failsafe             Maven test plugins                       │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Layer 1: Karate DSL Tools
+
+| Tool | Version | Purpose | Status |
+|------|---------|---------|--------|
+| Karate DSL | 1.4.1 | API + BDD testing | ✅ Optimal |
+| DbUtils | Custom | SQL validation for dual-write | ✅ Optimal |
+| Allure | 2.24 | Rich HTML reports | ✅ Optimal |
+| PostgreSQL Driver | 42.7.x | JDBC connectivity | ✅ Optimal |
+
+**Why Karate?**
+- Native REST/HTTP support with minimal boilerplate
+- Built-in JSON/XML assertions
+- Embedded JavaScript for dynamic data
+- Parallel execution out of the box
+- Database validation via Java interop
+
+### Layer 2: Integration Test Tools
+
+| Tool | Version | Purpose | Status |
+|------|---------|---------|--------|
+| JUnit 5 | 5.10.x | Test framework | ✅ Optimal |
+| Spring Boot Test | 3.5.3 | Context management | ✅ Optimal |
+| Testcontainers | 1.19.x | Docker integration | ✅ Optimal |
+| Mockito | 5.x | Mocking | ✅ Optimal |
+| AssertJ | 3.x | Fluent assertions | ✅ Optimal |
+
+**Why Testcontainers?**
+- Real database instances (not H2 mocks)
+- Reproducible across dev/CI environments
+- Automatic cleanup after tests
+- Supports PostgreSQL, Kafka, Redis
+
+### Layer 3: Temporal Workflow Tools
+
+| Tool | Version | Purpose | Status |
+|------|---------|---------|--------|
+| Temporal SDK Test | 1.22.x | Workflow testing | ✅ Optimal |
+| TestWorkflowExtension | 1.22.x | JUnit 5 integration | ✅ Optimal |
+| TestWorkflowEnvironment | 1.22.x | In-memory execution | ✅ Optimal |
+
+**Why Temporal Test SDK?**
+- Deterministic workflow replay
+- Time manipulation (skip timers)
+- Activity mocking
+- Compensation verification
+
+### Infrastructure Tools
+
+| Tool | Version | Purpose | Port |
+|------|---------|---------|------|
+| Docker Compose | 2.x | Orchestration | - |
+| PostgreSQL | 15 | Test database | 5432 |
+| Temporal | 1.22 | Workflow engine | 7233 |
+| Kafka | 7.5 | Event streaming | 9092 |
+| Redis | 7 | Caching | 6379 |
+| Temporal UI | 2.21 | Dev debugging | 8080 |
+
+### CI/CD & Reporting Tools
+
+| Tool | Version | Purpose | Status |
+|------|---------|---------|--------|
+| GitHub Actions | - | CI/CD orchestration | ✅ Operational |
+| Maven | 3.9.x | Build management | ✅ Optimal |
+| JaCoCo | 0.8.11 | Code coverage | ✅ Optimal |
+| Codecov | - | Coverage reporting | ✅ Optimal |
+| Allure | 2.24 | Test reporting | ✅ Optimal |
+
+### Version Matrix
+
+| Category | Tool | Current | Recommended | Action |
+|----------|------|---------|-------------|--------|
+| Java | JDK | 17 | 17 LTS | ✅ Keep |
+| Framework | Spring Boot | 3.5.3 | 3.5.x | ✅ Keep |
+| Build | Maven | 3.9.x | 3.9.x | ✅ Keep |
+| Test | JUnit | 5.10.x | 5.10.x | ✅ Keep |
+| Test | Karate | 1.4.1 | 1.4.x | ✅ Keep |
+| Workflow | Temporal SDK | 1.22.x | 1.24.x | ⬆️ Consider |
+| Container | Testcontainers | 1.19.x | 1.20.x | ⬆️ Consider |
+| Coverage | JaCoCo | 0.8.11 | 0.8.12 | ⬆️ Minor |
+| Database | PostgreSQL | 15 | 16 | ⬆️ Consider |
+
+### Recommended Additions (Phase 2)
+
+| Tool | Purpose | Priority | Rationale |
+|------|---------|----------|-----------|
+| **Gatling** | Performance testing | P1 | Load test receipt finalization |
+| **WireMock** | External API mocking | P2 | Isolate third-party deps |
+| **ArchUnit** | Architecture testing | P2 | Enforce layer boundaries |
+| **Awaitility** | Async assertions | P2 | Cleaner async test code |
+| **Testcontainers Cloud** | Remote containers | P3 | Faster CI with cached images |
+
+### Tool Selection Rationale
+
+| Decision | Chosen | Alternative | Why Chosen |
+|----------|--------|-------------|------------|
+| API Testing | Karate | REST Assured | BDD syntax, built-in DB support |
+| Integration | Testcontainers | Embedded DB | Real PostgreSQL, not H2 |
+| Workflow | Temporal SDK | Custom mocks | Official, deterministic |
+| Mocking | Mockito | EasyMock | Industry standard, better API |
+| Assertions | AssertJ | Hamcrest | Fluent, IDE-friendly |
+| Coverage | JaCoCo | Cobertura | Maven native, accurate |
+| Reporting | Allure | ExtentReports | Rich UI, attachments |
+
+### Best Practices Applied
+
+**Karate:**
+```gherkin
+# Data-driven testing with Examples
+Scenario Outline: Validate <errorCode> returns <status>
+  Given path '/api/v1/po'
+  When method POST
+  Then status <status>
+  And match response.errorCode == '<errorCode>'
+  Examples:
+    | errorCode | status |
+    | VAL_001   | 400    |
+    | PO_001    | 404    |
+```
+
+**Temporal:**
+```java
+// Verify compensation order
+var inOrder = inOrder(activities);
+inOrder.verify(activities).compensateStep3(any());
+inOrder.verify(activities).compensateStep2(any());
+inOrder.verify(activities).compensateStep1(any());
+```
+
+**Testcontainers:**
+```java
+@Container
+static PostgreSQLContainer<?> postgres =
+    new PostgreSQLContainer<>("postgres:15")
+        .withDatabaseName("wms_test");
+```
+
+### Tool Stack Summary
+
+| Layer | Primary Tool | Status | Assessment |
+|-------|--------------|--------|------------|
+| Layer 1 (E2E) | Karate DSL | ✅ | Optimal choice |
+| Layer 2 (Integration) | JUnit 5 + Spring | ✅ | Industry standard |
+| Layer 3 (Workflow) | Temporal SDK Test | ✅ | Official framework |
+| Infrastructure | Docker Compose | ✅ | Lightweight, portable |
+| CI/CD | GitHub Actions | ✅ | Fully integrated |
+| Reporting | Allure + JaCoCo | ✅ | Comprehensive |
+
+**Overall Assessment:** Current tool stack is well-optimized for the 3-layer testing architecture. No major changes needed—focus on version upgrades and adding Gatling for performance testing in Phase 2.
+
+---
+
 ## Implementation Roadmap
 
 ### Week 1-2: Foundation ✅ COMPLETE
@@ -908,15 +1104,22 @@ mvn test -B -pl po-service
 
 ---
 
-## Summary of Recent Updates (2026-05-06)
+## Summary of Recent Updates
 
-### Layer 2 & 3 Tests Added
+### Tool Stack & Recommendations Added (v1.6 - 2026-05-07)
+- **Complete tool stack documentation** for all 3 layers
+- **Version matrix** with current vs recommended versions
+- **Tool selection rationale** explaining why each tool was chosen
+- **Best practices** with code examples for Karate, Temporal, Testcontainers
+- **Phase 2 recommendations**: Gatling, WireMock, ArchUnit, Awaitility
+
+### Layer 2 & 3 Tests Added (v1.4)
 - **5 new integration test files** (49 tests total)
 - **4 new/modified workflow test files** (56 tests total)
 - All previously disabled tests now enabled and working
 - All tests compile with zero errors/warnings
 
-### Error & Edge Case Coverage Matrix Added (v1.5)
+### Error & Edge Case Coverage Matrix Added (v1.5 - 2026-05-06)
 - **84 error codes** cataloged across **14 categories**
 - All error codes mapped to specific feature files
 - HTTP status codes documented for each error
