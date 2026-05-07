@@ -207,23 +207,27 @@ jobs:
 
       - name: Run Karate E2E Tests - ${{ matrix.flow-group.name }}
         run: |
-          echo "=== Diagnostic: Verifying test resources ==="
+          echo "=== Step 1: Force test-compile to ensure resources are processed ==="
+          mvn test-compile -pl po-test -B
+
+          echo ""
+          echo "=== Step 2: Diagnostic - Verify test resources ==="
           echo "Feature files in source:"
           find po-test/src/test/resources -name '*.feature' | head -5
-          echo "Total: $(find po-test/src/test/resources -name '*.feature' | wc -l)"
+          echo "Total source: $(find po-test/src/test/resources -name '*.feature' | wc -l)"
 
           echo ""
-          echo "Feature files in target/test-classes (after build):"
-          find po-test/target/test-classes -name '*.feature' 2>/dev/null | head -5 || echo "None found"
-          echo "Total: $(find po-test/target/test-classes -name '*.feature' 2>/dev/null | wc -l)"
+          echo "Feature files in target/test-classes:"
+          find po-test/target/test-classes -name '*.feature' 2>/dev/null | head -5 || echo "NONE FOUND!"
+          echo "Total target: $(find po-test/target/test-classes -name '*.feature' 2>/dev/null | wc -l)"
 
           echo ""
-          echo "KarateTestRunner class location:"
-          find po-test/target -name 'KarateTestRunner.class' 2>/dev/null || echo "Not found"
+          echo "Karate package structure in target:"
+          ls -la po-test/target/test-classes/com/wms/po/e2e/karate/ 2>/dev/null || echo "Directory missing!"
 
           echo ""
-          echo "=== Running Karate E2E Tests ==="
-          mvn verify -B \
+          echo "=== Step 3: Running Karate E2E Tests ==="
+          mvn failsafe:integration-test failsafe:verify -B \
             -pl po-test \
             -DskipUTs=true \
             -Dkarate.env=ci \

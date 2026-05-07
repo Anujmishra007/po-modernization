@@ -166,7 +166,12 @@
     </dependencies>
 
     <build>
-        <!-- Feature files are now in src/test/resources (standard Maven location) -->
+        <!-- Explicit test resources to ensure feature files are copied -->
+        <testResources>
+            <testResource>
+                <directory>src/test/resources</directory>
+            </testResource>
+        </testResources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -199,6 +204,8 @@
                     <includes>
                         <include>**/KarateTestRunner.java</include>
                     </includes>
+                    <!-- Disable forking to avoid classpath isolation issues -->
+                    <forkCount>0</forkCount>
                     <systemPropertyVariables>
                         <karate.env>${karate.env}</karate.env>
                     </systemPropertyVariables>
