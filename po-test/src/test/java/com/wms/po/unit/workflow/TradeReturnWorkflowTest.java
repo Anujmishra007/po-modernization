@@ -9,6 +9,7 @@ import com.wms.po.workflow.TradeReturnWorkflow;
 import com.wms.po.workflow.impl.TradeReturnWorkflowImpl;
 import io.temporal.client.WorkflowClient;
 import io.temporal.client.WorkflowOptions;
+import io.temporal.failure.ApplicationFailure;
 import io.temporal.testing.TestWorkflowEnvironment;
 import io.temporal.testing.TestWorkflowExtension;
 import io.temporal.worker.Worker;
@@ -548,7 +549,8 @@ class TradeReturnWorkflowTest {
         @Override
         public List<String> createSalesOrderDetails(String orderKey, List<TradeReturnLineMapping> lines) {
             if (failAtDetails) {
-                throw new RuntimeException("Database error");
+                throw ApplicationFailure.newNonRetryableFailure(
+                    "Database error", "DATABASE_ERROR");
             }
             createDetailsCalled.set(true);
             return detailKeys;
@@ -557,7 +559,8 @@ class TradeReturnWorkflowTest {
         @Override
         public List<String> createInventoryReservations(String orderKey, List<String> detailKeys) {
             if (failAtReservation) {
-                throw new RuntimeException("Inventory system unavailable");
+                throw ApplicationFailure.newNonRetryableFailure(
+                    "Inventory system unavailable", "INVENTORY_UNAVAILABLE");
             }
             createReservationsCalled.set(true);
             return reservationIds;
@@ -636,7 +639,8 @@ class TradeReturnWorkflowTest {
         @Override
         public void sendTradeReturnComplete(String orderKey, String receiptKey) {
             if (shouldFail) {
-                throw new RuntimeException("Notification service down");
+                throw ApplicationFailure.newNonRetryableFailure(
+                    "Notification service down", "NOTIFICATION_FAILURE");
             }
             completeCalled.set(true);
             lastOrderKey.set(orderKey);
