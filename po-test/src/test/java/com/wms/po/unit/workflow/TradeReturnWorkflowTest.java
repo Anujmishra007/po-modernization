@@ -16,13 +16,14 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
 
 /**
  * Unit tests for TradeReturnWorkflow using Temporal TestWorkflowExtension.
@@ -33,6 +34,9 @@ import static org.mockito.Mockito.*;
  * - Compensation on failures
  * - Auto-release functionality
  * - Query methods
+ *
+ * Note: Uses stub activity implementations instead of Mockito mocks
+ * because Temporal SDK doesn't support Mockito proxies for activities.
  */
 class TradeReturnWorkflowTest {
 
@@ -49,10 +53,10 @@ class TradeReturnWorkflowTest {
     private static final String RECEIPT_KEY = "RCV-TR-001";
     private static final String ORDER_KEY = "SO-TR-001";
 
-    // Mock activities
-    private ValidationActivity validationActivity;
-    private TradeReturnActivity tradeReturnActivity;
-    private NotificationActivity notificationActivity;
+    // Stub activity implementations
+    private TestValidationActivity validationActivity;
+    private TestTradeReturnActivity tradeReturnActivity;
+    private TestNotificationActivity notificationActivity;
 
     private TestWorkflowEnvironment testEnv;
     private Worker worker;
@@ -64,27 +68,16 @@ class TradeReturnWorkflowTest {
         this.worker = worker;
         this.client = client;
 
-        // Create mock activities
-        validationActivity = mock(ValidationActivity.class);
-        tradeReturnActivity = mock(TradeReturnActivity.class);
-        notificationActivity = mock(NotificationActivity.class);
+        // Create stub activity implementations
+        validationActivity = new TestValidationActivity();
+        tradeReturnActivity = new TestTradeReturnActivity();
+        notificationActivity = new TestNotificationActivity();
 
         // Register activities with worker
         worker.registerActivitiesImplementations(
             validationActivity,
             tradeReturnActivity,
             notificationActivity
-        );
-
-        // Setup default context resolution
-        when(validationActivity.resolveTradeReturnContext(any())).thenReturn(
-            VariationContext.builder()
-                .version("V2")
-                .region("ASIA-KR")
-                .storerKey(STORER_KEY)
-                .facility(FACILITY)
-                .dualWriteEnabled(false)
-                .build()
         );
 
         testEnv.start();
@@ -102,8 +95,7 @@ class TradeReturnWorkflowTest {
     @Test
     @DisplayName("Happy path - successful trade return SO creation")
     void testTradeReturnSuccess() {
-        // Arrange
-        setupSuccessfulActivityMocks();
+        // Arrange - default stub behavior is success
 
         // Act
         TradeReturnWorkflow workflow = startWorkflow();
@@ -117,22 +109,19 @@ class TradeReturnWorkflowTest {
         assertThat(result.getStatus()).isEqualTo(WorkflowStatus.COMPLETED);
 
         // Verify all activities were called
-        verify(validationActivity).resolveTradeReturnContext(any());
-        verify(tradeReturnActivity).validateTradeReturn(any(), any());
-        verify(tradeReturnActivity).mapReceiptToSalesOrder(any(), any());
-        verify(tradeReturnActivity).createSalesOrderHeader(any());
-        verify(tradeReturnActivity).createSalesOrderDetails(eq(ORDER_KEY), any());
-        verify(tradeReturnActivity).createInventoryReservations(eq(ORDER_KEY), any());
-        verify(notificationActivity).sendTradeReturnComplete(eq(ORDER_KEY), eq(RECEIPT_KEY));
+        assertThat(validationActivity.resolveContextCalled.get()).isTrue();
+        assertThat(tradeReturnActivity.validateCalled.get()).isTrue();
+        assertThat(tradeReturnActivity.mapCalled.get()).isTrue();
+        assertThat(tradeReturnActivity.createHeaderCalled.get()).isTrue();
+        assertThat(tradeReturnActivity.createDetailsCalled.get()).isTrue();
+        assertThat(tradeReturnActivity.createReservationsCalled.get()).isTrue();
+        assertThat(notificationActivity.completeCalled.get()).isTrue();
     }
 
     @Test
     @DisplayName("Successful trade return with auto-release")
     void testTradeReturnWithAutoRelease() {
-        // Arrange
-        setupSuccessfulActivityMocks();
-        doNothing().when(tradeReturnActivity).autoReleaseOrder(anyString(), any());
-
+        // Arrange - enable auto-release tracking
         TradeReturnRequest request = TradeReturnRequest.builder()
             .receiptKey(RECEIPT_KEY)
             .storerKey(STORER_KEY)
@@ -148,15 +137,13 @@ class TradeReturnWorkflowTest {
 
         // Assert
         assertThat(result.isSuccess()).isTrue();
-        verify(tradeReturnActivity).autoReleaseOrder(eq(ORDER_KEY), any());
+        assertThat(tradeReturnActivity.autoReleaseCalled.get()).isTrue();
     }
 
     @Test
     @DisplayName("Successful trade return without auto-release")
     void testTradeReturnWithoutAutoRelease() {
         // Arrange
-        setupSuccessfulActivityMocks();
-
         TradeReturnRequest request = TradeReturnRequest.builder()
             .receiptKey(RECEIPT_KEY)
             .storerKey(STORER_KEY)
@@ -172,7 +159,7 @@ class TradeReturnWorkflowTest {
 
         // Assert
         assertThat(result.isSuccess()).isTrue();
-        verify(tradeReturnActivity, never()).autoReleaseOrder(anyString(), any());
+        assertThat(tradeReturnActivity.autoReleaseCalled.get()).isFalse();
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -183,9 +170,8 @@ class TradeReturnWorkflowTest {
     @DisplayName("Validation failure returns error without SO creation")
     void testValidationFailure() {
         // Arrange
-        when(tradeReturnActivity.validateTradeReturn(any(), any()))
-            .thenReturn(TradeReturnValidationResult.failure(
-                List.of("Receipt not eligible for trade return", "Receipt already processed")));
+        tradeReturnActivity.validationResult = TradeReturnValidationResult.failure(
+            List.of("Receipt not eligible for trade return", "Receipt already processed"));
 
         // Act
         TradeReturnWorkflow workflow = startWorkflow();
@@ -197,16 +183,15 @@ class TradeReturnWorkflowTest {
         assertThat(result.getErrors()).contains("Receipt not eligible for trade return");
 
         // Verify no SO creation occurred
-        verify(tradeReturnActivity, never()).createSalesOrderHeader(any());
+        assertThat(tradeReturnActivity.createHeaderCalled.get()).isFalse();
     }
 
     @Test
     @DisplayName("Invalid receipt key returns error")
     void testInvalidReceiptKey() {
         // Arrange
-        when(tradeReturnActivity.validateTradeReturn(any(), any()))
-            .thenReturn(TradeReturnValidationResult.failure(
-                List.of("Receipt RCV-INVALID not found")));
+        tradeReturnActivity.validationResult = TradeReturnValidationResult.failure(
+            List.of("Receipt RCV-INVALID not found"));
 
         TradeReturnRequest request = TradeReturnRequest.builder()
             .receiptKey("RCV-INVALID")
@@ -232,12 +217,8 @@ class TradeReturnWorkflowTest {
     @Test
     @DisplayName("Reservation failure triggers compensation")
     void testReservationFailureTriggersCompensation() {
-        // Arrange
-        setupMocksUpToDetails();
-
-        // Reservation creation fails
-        when(tradeReturnActivity.createInventoryReservations(anyString(), any()))
-            .thenThrow(new RuntimeException("Inventory system unavailable"));
+        // Arrange - fail at reservation creation
+        tradeReturnActivity.failAtReservation = true;
 
         // Act
         TradeReturnWorkflow workflow = startWorkflow();
@@ -247,25 +228,16 @@ class TradeReturnWorkflowTest {
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getStatus()).isEqualTo(WorkflowStatus.FAILED);
 
-        // Verify compensation called in reverse order
-        verify(tradeReturnActivity).deleteSalesOrderDetails(any());
-        verify(tradeReturnActivity).deleteSalesOrderHeader(ORDER_KEY);
+        // Verify compensation called
+        assertThat(tradeReturnActivity.deleteDetailsCalled.get()).isTrue();
+        assertThat(tradeReturnActivity.deleteHeaderCalled.get()).isTrue();
     }
 
     @Test
     @DisplayName("Detail creation failure triggers header compensation")
     void testDetailFailureTriggersHeaderCompensation() {
-        // Arrange
-        when(tradeReturnActivity.validateTradeReturn(any(), any()))
-            .thenReturn(TradeReturnValidationResult.success());
-        when(tradeReturnActivity.mapReceiptToSalesOrder(any(), any()))
-            .thenReturn(createTestMappingResult());
-        when(tradeReturnActivity.createSalesOrderHeader(any()))
-            .thenReturn(ORDER_KEY);
-
-        // Detail creation fails
-        when(tradeReturnActivity.createSalesOrderDetails(anyString(), any()))
-            .thenThrow(new RuntimeException("Database error"));
+        // Arrange - fail at detail creation
+        tradeReturnActivity.failAtDetails = true;
 
         // Act
         TradeReturnWorkflow workflow = startWorkflow();
@@ -275,28 +247,16 @@ class TradeReturnWorkflowTest {
         assertThat(result.isSuccess()).isFalse();
 
         // Verify header compensation called
-        verify(tradeReturnActivity).deleteSalesOrderHeader(ORDER_KEY);
+        assertThat(tradeReturnActivity.deleteHeaderCalled.get()).isTrue();
         // Details compensation not called (details never created)
-        verify(tradeReturnActivity, never()).deleteSalesOrderDetails(any());
+        assertThat(tradeReturnActivity.deleteDetailsCalled.get()).isFalse();
     }
 
     @Test
     @DisplayName("Full compensation on late failure")
     void testFullCompensationOnLateFailure() {
-        // Arrange
-        setupMocksUpToDetails();
-
-        List<String> reservationIds = List.of("RES-001", "RES-002");
-        List<String> detailKeys = List.of("DTL-001", "DTL-002");
-
-        when(tradeReturnActivity.createSalesOrderDetails(anyString(), any()))
-            .thenReturn(detailKeys);
-        when(tradeReturnActivity.createInventoryReservations(anyString(), any()))
-            .thenReturn(reservationIds);
-
-        // Update receipt status fails
-        doThrow(new RuntimeException("Receipt locked"))
-            .when(tradeReturnActivity).updateReceiptStatus(anyString(), anyString());
+        // Arrange - fail at receipt status update (best-effort, shouldn't fail workflow)
+        tradeReturnActivity.failAtReceiptStatus = true;
 
         // Act
         TradeReturnWorkflow workflow = startWorkflow();
@@ -313,9 +273,6 @@ class TradeReturnWorkflowTest {
     @Test
     @DisplayName("getStatus returns correct workflow status")
     void testGetStatus() {
-        // Arrange
-        setupSuccessfulActivityMocks();
-
         // Act
         TradeReturnWorkflow workflow = startWorkflow();
         TradeReturnResult result = workflow.populateSalesOrder(createTestRequest());
@@ -328,9 +285,6 @@ class TradeReturnWorkflowTest {
     @Test
     @DisplayName("getProgress returns completion percentage")
     void testGetProgress() {
-        // Arrange
-        setupSuccessfulActivityMocks();
-
         // Act
         TradeReturnWorkflow workflow = startWorkflow();
         workflow.populateSalesOrder(createTestRequest());
@@ -343,9 +297,6 @@ class TradeReturnWorkflowTest {
     @Test
     @DisplayName("getCurrentStep returns current step name")
     void testGetCurrentStep() {
-        // Arrange
-        setupSuccessfulActivityMocks();
-
         // Act
         TradeReturnWorkflow workflow = startWorkflow();
         workflow.populateSalesOrder(createTestRequest());
@@ -357,9 +308,6 @@ class TradeReturnWorkflowTest {
     @Test
     @DisplayName("getCompletedSteps returns list of completed steps")
     void testGetCompletedSteps() {
-        // Arrange
-        setupSuccessfulActivityMocks();
-
         // Act
         TradeReturnWorkflow workflow = startWorkflow();
         workflow.populateSalesOrder(createTestRequest());
@@ -381,24 +329,21 @@ class TradeReturnWorkflowTest {
     @Test
     @DisplayName("Success notification sent on completion")
     void testSuccessNotification() {
-        // Arrange
-        setupSuccessfulActivityMocks();
-
         // Act
         TradeReturnWorkflow workflow = startWorkflow();
         workflow.populateSalesOrder(createTestRequest());
 
         // Assert
-        verify(notificationActivity).sendTradeReturnComplete(eq(ORDER_KEY), eq(RECEIPT_KEY));
+        assertThat(notificationActivity.completeCalled.get()).isTrue();
+        assertThat(notificationActivity.lastOrderKey.get()).isEqualTo(ORDER_KEY);
+        assertThat(notificationActivity.lastReceiptKey.get()).isEqualTo(RECEIPT_KEY);
     }
 
     @Test
     @DisplayName("Notification failure does not fail workflow")
     void testNotificationFailureDoesNotFailWorkflow() {
         // Arrange
-        setupSuccessfulActivityMocks();
-        doThrow(new RuntimeException("Notification service down"))
-            .when(notificationActivity).sendTradeReturnComplete(anyString(), anyString());
+        notificationActivity.shouldFail = true;
 
         // Act
         TradeReturnWorkflow workflow = startWorkflow();
@@ -417,24 +362,13 @@ class TradeReturnWorkflowTest {
     @DisplayName("Single line trade return")
     void testSingleLineTradeReturn() {
         // Arrange
-        when(tradeReturnActivity.validateTradeReturn(any(), any()))
-            .thenReturn(TradeReturnValidationResult.success());
-
-        TradeReturnMappingResult singleLineMapping = new TradeReturnMappingResult(
+        tradeReturnActivity.mappingResult = new TradeReturnMappingResult(
             RECEIPT_KEY, STORER_KEY, "CUST001", "RT", "CARR01", "5",
             List.of(createLineMapping(1, "SKU-001", BigDecimal.TEN)),
             BigDecimal.TEN, Map.of()
         );
-
-        when(tradeReturnActivity.mapReceiptToSalesOrder(any(), any()))
-            .thenReturn(singleLineMapping);
-        when(tradeReturnActivity.createSalesOrderHeader(any()))
-            .thenReturn(ORDER_KEY);
-        when(tradeReturnActivity.createSalesOrderDetails(anyString(), any()))
-            .thenReturn(List.of("DTL-001"));
-        when(tradeReturnActivity.createInventoryReservations(anyString(), any()))
-            .thenReturn(List.of("RES-001"));
-        doNothing().when(notificationActivity).sendTradeReturnComplete(anyString(), anyString());
+        tradeReturnActivity.detailKeys = List.of("DTL-001");
+        tradeReturnActivity.reservationIds = List.of("RES-001");
 
         // Act
         TradeReturnWorkflow workflow = startWorkflow();
@@ -448,14 +382,10 @@ class TradeReturnWorkflowTest {
     @Test
     @DisplayName("Large trade return with many lines")
     void testLargeTradeReturn() {
-        // Arrange
-        when(tradeReturnActivity.validateTradeReturn(any(), any()))
-            .thenReturn(TradeReturnValidationResult.success());
-
-        // Create mapping with many lines
-        List<TradeReturnLineMapping> manyLines = new java.util.ArrayList<>();
-        List<String> manyDetailKeys = new java.util.ArrayList<>();
-        List<String> manyReservationIds = new java.util.ArrayList<>();
+        // Arrange - create mapping with many lines
+        List<TradeReturnLineMapping> manyLines = new ArrayList<>();
+        List<String> manyDetailKeys = new ArrayList<>();
+        List<String> manyReservationIds = new ArrayList<>();
         BigDecimal totalQty = BigDecimal.ZERO;
 
         for (int i = 1; i <= 100; i++) {
@@ -465,20 +395,12 @@ class TradeReturnWorkflowTest {
             totalQty = totalQty.add(BigDecimal.TEN);
         }
 
-        TradeReturnMappingResult largeMapping = new TradeReturnMappingResult(
+        tradeReturnActivity.mappingResult = new TradeReturnMappingResult(
             RECEIPT_KEY, STORER_KEY, "CUST001", "RT", "CARR01", "5",
             manyLines, totalQty, Map.of()
         );
-
-        when(tradeReturnActivity.mapReceiptToSalesOrder(any(), any()))
-            .thenReturn(largeMapping);
-        when(tradeReturnActivity.createSalesOrderHeader(any()))
-            .thenReturn(ORDER_KEY);
-        when(tradeReturnActivity.createSalesOrderDetails(anyString(), any()))
-            .thenReturn(manyDetailKeys);
-        when(tradeReturnActivity.createInventoryReservations(anyString(), any()))
-            .thenReturn(manyReservationIds);
-        doNothing().when(notificationActivity).sendTradeReturnComplete(anyString(), anyString());
+        tradeReturnActivity.detailKeys = manyDetailKeys;
+        tradeReturnActivity.reservationIds = manyReservationIds;
 
         // Act
         TradeReturnWorkflow workflow = startWorkflow();
@@ -514,53 +436,206 @@ class TradeReturnWorkflowTest {
             .build();
     }
 
-    private void setupSuccessfulActivityMocks() {
-        when(tradeReturnActivity.validateTradeReturn(any(), any()))
-            .thenReturn(TradeReturnValidationResult.success());
-        when(tradeReturnActivity.mapReceiptToSalesOrder(any(), any()))
-            .thenReturn(createTestMappingResult());
-        when(tradeReturnActivity.createSalesOrderHeader(any()))
-            .thenReturn(ORDER_KEY);
-        when(tradeReturnActivity.createSalesOrderDetails(anyString(), any()))
-            .thenReturn(List.of("DTL-001", "DTL-002"));
-        when(tradeReturnActivity.createInventoryReservations(anyString(), any()))
-            .thenReturn(List.of("RES-001", "RES-002"));
-        doNothing().when(tradeReturnActivity).updateReceiptStatus(anyString(), anyString());
-        doNothing().when(notificationActivity).sendTradeReturnComplete(anyString(), anyString());
-    }
-
-    private void setupMocksUpToDetails() {
-        when(tradeReturnActivity.validateTradeReturn(any(), any()))
-            .thenReturn(TradeReturnValidationResult.success());
-        when(tradeReturnActivity.mapReceiptToSalesOrder(any(), any()))
-            .thenReturn(createTestMappingResult());
-        when(tradeReturnActivity.createSalesOrderHeader(any()))
-            .thenReturn(ORDER_KEY);
-        when(tradeReturnActivity.createSalesOrderDetails(anyString(), any()))
-            .thenReturn(List.of("DTL-001", "DTL-002"));
-    }
-
-    private TradeReturnMappingResult createTestMappingResult() {
-        return new TradeReturnMappingResult(
-            RECEIPT_KEY,
-            STORER_KEY,
-            "CUST001",
-            "RT",
-            "CARR01",
-            "5",
-            List.of(
-                createLineMapping(1, "SKU-001", BigDecimal.valueOf(50)),
-                createLineMapping(2, "SKU-002", BigDecimal.valueOf(30))
-            ),
-            BigDecimal.valueOf(80),
-            Map.of()
-        );
-    }
-
     private TradeReturnLineMapping createLineMapping(int lineNum, String sku, BigDecimal qty) {
         return new TradeReturnLineMapping(
             lineNum, sku, qty, "EA", "STD", "LOT001", "RECV01", "LP001",
             "RET", "GOOD", Map.of()
         );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Stub Activity Implementations
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /**
+     * Test stub for ValidationActivity
+     */
+    static class TestValidationActivity implements ValidationActivity {
+        AtomicBoolean resolveContextCalled = new AtomicBoolean(false);
+
+        @Override
+        public ValidationResult validate(PopulateRequest request, VariationContext context) {
+            return ValidationResult.success();
+        }
+
+        @Override
+        public VariationContext resolveContext(PopulateRequest request) {
+            return VariationContext.builder()
+                .version("V2")
+                .region("ASIA-KR")
+                .storerKey(STORER_KEY)
+                .facility(FACILITY)
+                .dualWriteEnabled(false)
+                .build();
+        }
+
+        @Override
+        public VariationContext resolveTradeReturnContext(TradeReturnRequest request) {
+            resolveContextCalled.set(true);
+            return VariationContext.builder()
+                .version("V2")
+                .region("ASIA-KR")
+                .storerKey(request.getStorerKey())
+                .facility(request.getFacility())
+                .dualWriteEnabled(false)
+                .build();
+        }
+    }
+
+    /**
+     * Test stub for TradeReturnActivity
+     */
+    static class TestTradeReturnActivity implements TradeReturnActivity {
+        AtomicBoolean validateCalled = new AtomicBoolean(false);
+        AtomicBoolean mapCalled = new AtomicBoolean(false);
+        AtomicBoolean createHeaderCalled = new AtomicBoolean(false);
+        AtomicBoolean createDetailsCalled = new AtomicBoolean(false);
+        AtomicBoolean createReservationsCalled = new AtomicBoolean(false);
+        AtomicBoolean updateReceiptStatusCalled = new AtomicBoolean(false);
+        AtomicBoolean autoReleaseCalled = new AtomicBoolean(false);
+        AtomicBoolean deleteHeaderCalled = new AtomicBoolean(false);
+        AtomicBoolean deleteDetailsCalled = new AtomicBoolean(false);
+        AtomicBoolean releaseReservationsCalled = new AtomicBoolean(false);
+
+        // Configurable behavior
+        TradeReturnValidationResult validationResult = TradeReturnValidationResult.success();
+        TradeReturnMappingResult mappingResult = null;
+        List<String> detailKeys = List.of("DTL-001", "DTL-002");
+        List<String> reservationIds = List.of("RES-001", "RES-002");
+
+        boolean failAtDetails = false;
+        boolean failAtReservation = false;
+        boolean failAtReceiptStatus = false;
+
+        @Override
+        public TradeReturnValidationResult validateTradeReturn(TradeReturnRequest request, VariationContext context) {
+            validateCalled.set(true);
+            return validationResult;
+        }
+
+        @Override
+        public TradeReturnMappingResult mapReceiptToSalesOrder(TradeReturnRequest request, VariationContext context) {
+            mapCalled.set(true);
+            if (mappingResult != null) {
+                return mappingResult;
+            }
+            return new TradeReturnMappingResult(
+                RECEIPT_KEY, STORER_KEY, "CUST001", "RT", "CARR01", "5",
+                List.of(
+                    new TradeReturnLineMapping(1, "SKU-001", BigDecimal.valueOf(50), "EA", "STD", "LOT001", "RECV01", "LP001", "RET", "GOOD", Map.of()),
+                    new TradeReturnLineMapping(2, "SKU-002", BigDecimal.valueOf(30), "EA", "STD", "LOT002", "RECV01", "LP002", "RET", "GOOD", Map.of())
+                ),
+                BigDecimal.valueOf(80), Map.of()
+            );
+        }
+
+        @Override
+        public String createSalesOrderHeader(TradeReturnMappingResult mapping) {
+            createHeaderCalled.set(true);
+            return ORDER_KEY;
+        }
+
+        @Override
+        public List<String> createSalesOrderDetails(String orderKey, List<TradeReturnLineMapping> lines) {
+            if (failAtDetails) {
+                throw new RuntimeException("Database error");
+            }
+            createDetailsCalled.set(true);
+            return detailKeys;
+        }
+
+        @Override
+        public List<String> createInventoryReservations(String orderKey, List<String> detailKeys) {
+            if (failAtReservation) {
+                throw new RuntimeException("Inventory system unavailable");
+            }
+            createReservationsCalled.set(true);
+            return reservationIds;
+        }
+
+        @Override
+        public void releaseReservations(List<String> reservationIds) {
+            releaseReservationsCalled.set(true);
+        }
+
+        @Override
+        public void updateReceiptStatus(String receiptKey, String orderKey) {
+            if (failAtReceiptStatus) {
+                throw new RuntimeException("Receipt locked");
+            }
+            updateReceiptStatusCalled.set(true);
+        }
+
+        @Override
+        public void autoReleaseOrder(String orderKey, VariationContext context) {
+            autoReleaseCalled.set(true);
+        }
+
+        @Override
+        public void deleteSalesOrderHeader(String orderKey) {
+            deleteHeaderCalled.set(true);
+        }
+
+        @Override
+        public void deleteSalesOrderDetails(List<String> detailKeys) {
+            deleteDetailsCalled.set(true);
+        }
+    }
+
+    /**
+     * Test stub for NotificationActivity
+     */
+    static class TestNotificationActivity implements NotificationActivity {
+        AtomicBoolean completeCalled = new AtomicBoolean(false);
+        AtomicBoolean failedCalled = new AtomicBoolean(false);
+        AtomicReference<String> lastOrderKey = new AtomicReference<>();
+        AtomicReference<String> lastReceiptKey = new AtomicReference<>();
+
+        boolean shouldFail = false;
+
+        @Override
+        public void sendPopulationComplete(String receiptKey, PopulateRequest request) {
+            // Not used in trade return tests
+        }
+
+        @Override
+        public void sendPopulationFailed(String receiptKey, String errorMessage, PopulateRequest request) {
+            // Not used in trade return tests
+        }
+
+        @Override
+        public void sendPopulationCancelled(String receiptKey, PopulateRequest request) {
+            // Not used in trade return tests
+        }
+
+        @Override
+        public void sendFinalizeComplete(String receiptKey, FinalizeRequest request) {
+            // Not used in trade return tests
+        }
+
+        @Override
+        public void sendFinalizeFailed(String receiptKey, String errorMessage, FinalizeRequest request) {
+            // Not used in trade return tests
+        }
+
+        @Override
+        public void sendFinalizeCancelled(String receiptKey, FinalizeRequest request) {
+            // Not used in trade return tests
+        }
+
+        @Override
+        public void sendTradeReturnComplete(String orderKey, String receiptKey) {
+            if (shouldFail) {
+                throw new RuntimeException("Notification service down");
+            }
+            completeCalled.set(true);
+            lastOrderKey.set(orderKey);
+            lastReceiptKey.set(receiptKey);
+        }
+
+        @Override
+        public void sendTradeReturnFailed(String receiptKey, String errorMessage) {
+            failedCalled.set(true);
+        }
     }
 }
