@@ -147,7 +147,7 @@ Feature: F3 - Receipt Finalization Happy Path Tests
     * def receiptKey = 'RCV-HAPPY-005'
 
     # Get PO before finalize
-    * def beforeQty = db.getValue("SELECT qtyreceived FROM dbo.podetail WHERE pokey = 'PO-HAPPY-001' AND orderlinenumber = '00001'")
+    * def beforeQty = db.getValue("SELECT qtyreceived FROM dbo.podetail WHERE pokey = 'PO-HAPPY-001' AND polinenumber = '00001'")
 
     Given path api + '/receipts/' + receiptKey + '/finalize'
     And header Authorization = 'Bearer ' + authToken
@@ -159,7 +159,7 @@ Feature: F3 - Receipt Finalization Happy Path Tests
     * sleep(3000)
 
     # Verify PO quantities updated
-    * def afterQty = db.getValue("SELECT qtyreceived FROM dbo.podetail WHERE pokey = 'PO-HAPPY-001' AND orderlinenumber = '00001'")
+    * def afterQty = db.getValue("SELECT qtyreceived FROM dbo.podetail WHERE pokey = 'PO-HAPPY-001' AND polinenumber = '00001'")
     * match afterQty > beforeQty
 
   # ─────────────────────────────────────────────────────────────
