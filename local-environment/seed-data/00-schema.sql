@@ -186,7 +186,8 @@ CREATE TABLE IF NOT EXISTS orderdetail (
 -- Receipt Header
 CREATE TABLE IF NOT EXISTS receipt (
     receiptkey VARCHAR(50) PRIMARY KEY,
-    orderkey VARCHAR(50) REFERENCES orders(orderkey),
+    orderkey VARCHAR(50),
+    pokey VARCHAR(50),
     storerkey VARCHAR(50) NOT NULL REFERENCES storer(storerkey),
     facility VARCHAR(20) REFERENCES facility(facility),
     externreceiptkey VARCHAR(50),
@@ -208,15 +209,18 @@ CREATE TABLE IF NOT EXISTS receipt (
 -- Receipt Detail
 CREATE TABLE IF NOT EXISTS receiptdetail (
     receiptkey VARCHAR(50) NOT NULL,
-    receiptlinenumber INTEGER NOT NULL,
+    receiptlinenumber VARCHAR(10) NOT NULL,
     orderkey VARCHAR(50),
-    orderlinenumber INTEGER,
+    orderlinenumber VARCHAR(10),
+    pokey VARCHAR(50),
+    polinenumber VARCHAR(10),
     storerkey VARCHAR(50) NOT NULL,
     sku VARCHAR(50) NOT NULL,
     qtyexpected DECIMAL(18,4) DEFAULT 0,
     qtyreceived DECIMAL(18,4) DEFAULT 0,
     status VARCHAR(10) DEFAULT '0',
     toloc VARCHAR(50),
+    toid VARCHAR(50),
     lottable01 VARCHAR(50),
     lottable02 VARCHAR(50),
     lottable03 VARCHAR(50),
@@ -229,6 +233,7 @@ CREATE TABLE IF NOT EXISTS receiptdetail (
     lottable10 VARCHAR(50),
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     editdate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    addwho VARCHAR(50),
     PRIMARY KEY (receiptkey, receiptlinenumber),
     FOREIGN KEY (receiptkey) REFERENCES receipt(receiptkey),
     FOREIGN KEY (storerkey, sku) REFERENCES sku(storerkey, sku)
@@ -595,6 +600,68 @@ CREATE TABLE IF NOT EXISTS userpermission (
     addwho VARCHAR(50),
     PRIMARY KEY (userid, permissionkey),
     FOREIGN KEY (userid) REFERENCES wmsuser(userid)
+);
+
+-- ═══════════════════════════════════════════════════════════
+-- Location Capacity Table
+-- ═══════════════════════════════════════════════════════════
+
+-- Location Capacity
+CREATE TABLE IF NOT EXISTS locationcapacity (
+    loc VARCHAR(50) PRIMARY KEY,
+    facility VARCHAR(20),
+    maxcube DECIMAL(18,4) DEFAULT 0,
+    currentcube DECIMAL(18,4) DEFAULT 0,
+    maxweight DECIMAL(18,4) DEFAULT 0,
+    currentweight DECIMAL(18,4) DEFAULT 0,
+    maxqty INTEGER DEFAULT 0,
+    currentqty INTEGER DEFAULT 0,
+    status VARCHAR(10) DEFAULT '1'
+);
+
+-- ═══════════════════════════════════════════════════════════
+-- Trigger Configuration Tables
+-- ═══════════════════════════════════════════════════════════
+
+-- Trigger Configuration
+CREATE TABLE IF NOT EXISTS triggerconfig (
+    triggerkey VARCHAR(50) PRIMARY KEY,
+    triggername VARCHAR(100) NOT NULL,
+    sourcetable VARCHAR(50),
+    sourcecolumn VARCHAR(50),
+    targettable VARCHAR(50),
+    targetcolumn VARCHAR(50),
+    aggregation VARCHAR(20),
+    enabled VARCHAR(1) DEFAULT 'Y',
+    description VARCHAR(500),
+    adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    addwho VARCHAR(50)
+);
+
+-- Trigger Audit Log
+CREATE TABLE IF NOT EXISTS triggerauditlog (
+    auditkey VARCHAR(50) PRIMARY KEY,
+    triggerkey VARCHAR(50),
+    tablename VARCHAR(50),
+    recordkey VARCHAR(100),
+    oldvalue VARCHAR(500),
+    newvalue VARCHAR(500),
+    operation VARCHAR(20),
+    userid VARCHAR(50),
+    adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Cascade Rule
+CREATE TABLE IF NOT EXISTS cascaderule (
+    rulekey VARCHAR(50) PRIMARY KEY,
+    rulename VARCHAR(100),
+    sourcetable VARCHAR(50),
+    sourcecolumn VARCHAR(50),
+    targettable VARCHAR(50),
+    targetcolumn VARCHAR(50),
+    aggregation VARCHAR(20),
+    enabled VARCHAR(1) DEFAULT 'Y',
+    adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ═══════════════════════════════════════════════════════════
