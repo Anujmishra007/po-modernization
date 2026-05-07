@@ -336,7 +336,8 @@ Feature: F5 - Lottable Field Tracking Tests
   # ─────────────────────────────────────────────────────────────
   @F5-TC12 @P2 @Length @Unhappy
   Scenario: Lottable exceeding max length fails
-    * def longValue = 'A'.repeat(51)  # Exceeds 50 char limit
+    # Create a string that exceeds 50 char limit
+    * def longValue = 'A'.repeat(51)
     * def receiptRequest =
       """
       {

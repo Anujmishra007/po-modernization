@@ -53,7 +53,8 @@ Feature: F2 - ASN Population Edge Cases
     When method post
     Then status 201
     And match response.lineCount == 1000
-    And responseTime < 30000  # Should complete within 30 seconds
+    # Should complete within 30 seconds
+    And responseTime < 30000
 
   # ─────────────────────────────────────────────────────────────
   # F2-TC19: ASN with special characters in fields
@@ -268,7 +269,8 @@ Feature: F2 - ASN Population Edge Cases
     And header X-Idempotency-Key = asnRequest.idempotencyKey
     And request asnRequest
     When method post
-    Then status 200  # Returns existing, not 201
+    # Returns existing receipt (200), not new (201)
+    Then status 200
     And match response.receiptKey == firstReceiptKey
     And match response.idempotent == true
 

@@ -171,7 +171,8 @@ Feature: F1 - PO Creation Compensation Tests
     When method get
     Then status 200
     And match response.status == 'COMPLETED'
-    And match response.attemptCount > 1  # Retried at least once
+    # Should have retried at least once
+    And match response.attemptCount > 1
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC24: Idempotency check
@@ -200,7 +201,8 @@ Feature: F1 - PO Creation Compensation Tests
     And header X-Idempotency-Key = idempotencyKey
     And request request
     When method post
-    Then status 200  # Returns existing, not 201
+    # Returns existing PO (200), not new (201)
+    Then status 200
     And match response.poKey == firstPoKey
     And match response.createdAt == firstTimestamp
     And match response.idempotent == true

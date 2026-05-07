@@ -266,7 +266,8 @@ Feature: F6 - Putaway Task Flow Tests
     And param facility = 'KR01'
     When method get
     Then status 200
-    And match response.priority <= 3  # High priority
+    # High priority tasks (1-3) should be assigned first
+    And match response.priority <= 3
 
   # ─────────────────────────────────────────────────────────────
   # F6-TC11 to F6-TC20: Additional putaway scenarios

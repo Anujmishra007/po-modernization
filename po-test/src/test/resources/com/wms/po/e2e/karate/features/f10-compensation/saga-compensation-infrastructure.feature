@@ -31,7 +31,8 @@ Feature: F10 - Infrastructure Failure Compensation Tests
     Then status 500
     And match response.errorCode == 'INT_016'
     And match response.message contains 'deadlock'
-    And match response.retryAttempts >= 1  # Should have retried
+    # Should have retried at least once
+    And match response.retryAttempts >= 1
 
     # Verify state is consistent
     * def receiptStatus = db.getValue("SELECT status FROM dbo.receipt WHERE receiptkey = '" + receiptKey + "'")

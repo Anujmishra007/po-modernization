@@ -28,7 +28,8 @@ Feature: F3 - Receipt Finalization Edge Cases
     And request {}
     When method post
     Then status 200
-    And responseTime < 60000  # Should complete within 60 seconds
+    # Should complete within 60 seconds
+    And responseTime < 60000
     And match response.linesFinalized >= 1000
 
   # ─────────────────────────────────────────────────────────────
@@ -258,6 +259,7 @@ Feature: F3 - Receipt Finalization Edge Cases
     And header Authorization = 'Bearer ' + authToken
     When method get
     Then status 200
-    And match response.events.length >= 5  # At least 5 events
+    # At least 5 events in workflow history
+    And match response.events.length >= 5
     And match response.events[*].eventType contains 'ActivityTaskCompleted'
 
