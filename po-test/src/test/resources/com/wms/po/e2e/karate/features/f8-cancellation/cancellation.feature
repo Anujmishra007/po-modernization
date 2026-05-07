@@ -35,7 +35,7 @@ Feature: F8 - PO/Receipt Cancellation Flow Tests
 
     # Verify PO status in DB
     * def poStatus = db.getValue("SELECT status FROM dbo.po WHERE pokey = '" + poKey + "'")
-    * match poStatus == '5'  # Cancelled status
+    * match poStatus == '5'
 
   # ─────────────────────────────────────────────────────────────
   # F8-TC02: Cancel PO with partial receipt
@@ -66,7 +66,7 @@ Feature: F8 - PO/Receipt Cancellation Flow Tests
   # ─────────────────────────────────────────────────────────────
   @F8-TC03 @P1 @PO @Unhappy
   Scenario: Cannot cancel fully received PO
-    * def poKey = 'PO-ERR-004'  # Fully received/closed PO
+    * def poKey = 'PO-ERR-004'
 
     Given path api + '/po/' + poKey + '/cancel'
     And header Authorization = 'Bearer ' + authToken
@@ -101,7 +101,8 @@ Feature: F8 - PO/Receipt Cancellation Flow Tests
   # ─────────────────────────────────────────────────────────────
   @F8-TC05 @P1 @Receipt @Unhappy
   Scenario: Cannot cancel finalized receipt
-    * def receiptKey = 'RCV-ERR-003'  # Status 9
+    # Receipt with status 9 (finalized)
+    * def receiptKey = 'RCV-ERR-003'
 
     Given path api + '/receipts/' + receiptKey + '/cancel'
     And header Authorization = 'Bearer ' + authToken
@@ -127,7 +128,7 @@ Feature: F8 - PO/Receipt Cancellation Flow Tests
     When method post
     Then status 200
     And match response.lineStatus == 'CANCELLED'
-    And match response.poStatus == 'OPEN'  # PO still open
+    And match response.poStatus == 'OPEN'
 
   # ─────────────────────────────────────────────────────────────
   # F8-TC07: Bulk cancel multiple POs

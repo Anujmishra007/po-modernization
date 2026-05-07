@@ -47,7 +47,7 @@ Feature: F7 - Trade Return Flow Tests
     Then status 201
     And match response.returnKey == '#present'
     And match response.returnType == 'TRADE_RETURN'
-    And match response.status == '0'  # Open
+    And match response.status == '0'
 
   # ─────────────────────────────────────────────────────────────
   # F7-TC02: Receive trade return via RDT

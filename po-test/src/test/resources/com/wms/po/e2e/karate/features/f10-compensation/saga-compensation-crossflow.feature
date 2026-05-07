@@ -187,10 +187,10 @@ Feature: F10 - Cross-Flow Compensation Tests
 
     # Verify full cascade - receipt gone, PO back to original state
     * def receiptCheck = db.query("SELECT status FROM dbo.receipt WHERE receiptkey = '" + receiptKey + "'")
-    * match receiptCheck[0].status == 'X'  # Cancelled/compensated
+    * match receiptCheck[0].status == 'X'
 
     * def poStatus = db.getValue("SELECT status FROM dbo.po WHERE pokey = '" + createdPoKey + "'")
-    * match poStatus == '0'  # Back to open
+    * match poStatus == '0'
 
   # ─────────────────────────────────────────────────────────────
   # COMP-33: End-to-end saga with multiple participants

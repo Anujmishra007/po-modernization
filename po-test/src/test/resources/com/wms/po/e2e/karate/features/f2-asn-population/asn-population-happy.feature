@@ -76,9 +76,9 @@ Feature: F2 - ASN Population Happy Path Tests
 
     # Verify lottable fields populated
     * def lottableResult = db.query("SELECT lottable01, lottable02, lottable03 FROM dbo.receiptdetail WHERE receiptkey LIKE 'RCV-NIKE-%' ORDER BY adddate DESC LIMIT 1")
-    * match lottableResult[0].lottable01 == '#present'  # Style
-    * match lottableResult[0].lottable02 == '#present'  # Color
-    * match lottableResult[0].lottable03 == '#present'  # Size
+    * match lottableResult[0].lottable01 == '#present'
+    * match lottableResult[0].lottable02 == '#present'
+    * match lottableResult[0].lottable03 == '#present'
 
   # ─────────────────────────────────────────────────────────────
   # F2-TC03: H&M fast-fashion ASN (high volume)
@@ -153,7 +153,8 @@ Feature: F2 - ASN Population Happy Path Tests
 
     # Verify PO status updated
     * def poStatus = db.getValue("SELECT status FROM dbo.po WHERE pokey = '" + createdPoKey + "'")
-    * match poStatus == '1'  # Status updated to 'ASN Received'
+    # Status updated to 'ASN Received' (1)
+    * match poStatus == '1'
 
   # ─────────────────────────────────────────────────────────────
   # F2-TC05: Multi-carton ASN with hierarchical structure

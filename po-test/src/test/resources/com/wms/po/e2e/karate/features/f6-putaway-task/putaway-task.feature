@@ -34,7 +34,7 @@ Feature: F6 - Putaway Task Flow Tests
     # Verify tasks in DB
     * def tasks = db.query("SELECT * FROM dbo.task WHERE fromkey = '" + receiptKey + "' AND tasktype = 'PUTAWAY'")
     * match tasks.length >= 1
-    * match tasks[0].status == '0'  # Open
+    * match tasks[0].status == '0'
 
   # ─────────────────────────────────────────────────────────────
   # F6-TC02: Manual putaway task creation
@@ -87,7 +87,7 @@ Feature: F6 - Putaway Task Flow Tests
     # Verify assignment in DB
     * def task = db.query("SELECT assignedto, status FROM dbo.task WHERE taskkey = '" + taskKey + "'")
     * match task[0].assignedto == userId
-    * match task[0].status == '1'  # Assigned
+    * match task[0].status == '1'
 
   # ─────────────────────────────────────────────────────────────
   # F6-TC04: Complete putaway task via RDT

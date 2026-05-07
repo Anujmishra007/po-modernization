@@ -92,7 +92,8 @@ Feature: F9 - PO Archival Flow Tests
   # ─────────────────────────────────────────────────────────────
   @F9-TC04 @P1 @Unhappy
   Scenario: Cannot archive open PO
-    * def poKey = 'PO-HAPPY-001'  # Status 0
+    # PO with status 0 (open)
+    * def poKey = 'PO-HAPPY-001'
 
     Given path api + '/po/' + poKey + '/archive'
     And header Authorization = 'Bearer ' + authToken

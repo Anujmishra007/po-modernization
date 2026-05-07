@@ -73,7 +73,7 @@ Feature: F4 - Cross-Dock Allocation Unhappy Path Tests
   @F4-TC11 @P1 @ORD_002
   Scenario: Cross-dock fails for shipped order
     * def receiptKey = 'RCV-XDOCK-001'
-    * def orderKey = 'SO-ERR-ALLOC'  # Already shipped
+    * def orderKey = 'SO-ERR-ALLOC'
 
     Given path api + '/xdock/allocate'
     And header Authorization = 'Bearer ' + authToken
@@ -98,8 +98,8 @@ Feature: F4 - Cross-Dock Allocation Unhappy Path Tests
   # ─────────────────────────────────────────────────────────────
   @F4-TC12 @P1 @XDOCK_002
   Scenario: Cross-dock fails for SKU not on order
-    * def receiptKey = 'RCV-XDOCK-001'  # Has Nike SKUs
-    * def orderKey = 'SO-HM-001'        # Has H&M SKUs
+    * def receiptKey = 'RCV-XDOCK-001'
+    * def orderKey = 'SO-HM-001'
 
     Given path api + '/xdock/allocate'
     And header Authorization = 'Bearer ' + authToken
@@ -124,8 +124,8 @@ Feature: F4 - Cross-Dock Allocation Unhappy Path Tests
   # ─────────────────────────────────────────────────────────────
   @F4-TC13 @P1 @XDOCK_003
   Scenario: Cross-dock fails for different storer
-    * def receiptKey = 'RCV-HAPPY-NIKE-001'  # Nike storer
-    * def orderKey = 'SO-HM-001'              # H&M storer
+    * def receiptKey = 'RCV-HAPPY-NIKE-001'
+    * def orderKey = 'SO-HM-001'
 
     Given path api + '/xdock/allocate'
     And header Authorization = 'Bearer ' + authToken
@@ -151,7 +151,8 @@ Feature: F4 - Cross-Dock Allocation Unhappy Path Tests
   # ─────────────────────────────────────────────────────────────
   @F4-TC14 @P1 @XDOCK_004
   Scenario: Cross-dock fails for non-finalized receipt
-    * def receiptKey = 'RCV-HAPPY-001'  # Status 0, not finalized
+    # Status 0, not finalized
+    * def receiptKey = 'RCV-HAPPY-001'
     * def orderKey = 'SO-NIKE-001'
 
     Given path api + '/xdock/allocate'

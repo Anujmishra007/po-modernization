@@ -38,8 +38,7 @@ Feature: F3 - Receipt Finalization Unhappy Path Tests
   # ─────────────────────────────────────────────────────────────
   @F3-TC12 @P1 @RCV_005
   Scenario: Finalize already finalized receipt fails
-    * def receiptKey = 'RCV-ERR-003'  # Already status 9
-
+    * def receiptKey = 'RCV-ERR-003'
     Given path api + '/receipts/' + receiptKey + '/finalize'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
@@ -56,8 +55,7 @@ Feature: F3 - Receipt Finalization Unhappy Path Tests
   # ─────────────────────────────────────────────────────────────
   @F3-TC13 @P1 @RCV_006
   Scenario: Finalize cancelled receipt fails
-    * def receiptKey = 'RCV-ERR-004'  # Cancelled receipt
-
+    * def receiptKey = 'RCV-ERR-004'
     Given path api + '/receipts/' + receiptKey + '/finalize'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
@@ -109,8 +107,7 @@ Feature: F3 - Receipt Finalization Unhappy Path Tests
   # ─────────────────────────────────────────────────────────────
   @F3-TC16 @P1 @RCV_007 @Nike
   Scenario: Finalize Nike receipt missing required lottables fails
-    * def receiptKey = 'RCV-ERR-005'  # Nike receipt missing lottables
-
+    * def receiptKey = 'RCV-ERR-005'
     Given path api + '/receipts/' + receiptKey + '/finalize'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
@@ -127,8 +124,7 @@ Feature: F3 - Receipt Finalization Unhappy Path Tests
   # ─────────────────────────────────────────────────────────────
   @F3-TC17 @P1 @PO_007
   Scenario: Finalize receipt with held PO fails
-    * def receiptKey = 'RCV-ERR-006'  # Receipt linked to held PO
-
+    * def receiptKey = 'RCV-ERR-006'
     Given path api + '/receipts/' + receiptKey + '/finalize'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
@@ -145,8 +141,7 @@ Feature: F3 - Receipt Finalization Unhappy Path Tests
   # ─────────────────────────────────────────────────────────────
   @F3-TC18 @P2 @RCV_008
   Scenario: Finalize receipt with zero quantity fails
-    * def receiptKey = 'RCV-ERR-007'  # Receipt with qty=0 lines
-
+    * def receiptKey = 'RCV-ERR-007'
     Given path api + '/receipts/' + receiptKey + '/finalize'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
@@ -195,5 +190,4 @@ Feature: F3 - Receipt Finalization Unhappy Path Tests
 
     # Verify receipt not changed
     * def receiptStatus = db.getValue("SELECT status FROM dbo.receipt WHERE receiptkey = '" + receiptKey + "'")
-    * match receiptStatus != '9'  # Should NOT be finalized
-
+    * match receiptStatus != '9'

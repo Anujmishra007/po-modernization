@@ -39,7 +39,7 @@ Feature: F3 - Receipt Finalization Happy Path Tests
 
     # Verify receipt status in DB
     * def receiptStatus = db.getValue("SELECT status FROM dbo.receipt WHERE receiptkey = '" + receiptKey + "'")
-    * match receiptStatus == '9'  # Finalized status
+    * match receiptStatus == '9'
 
     # Verify inventory posted to LOTxLOCxID
     * def invResult = db.query("SELECT * FROM dbo.lotxlocxid WHERE receiptkey = '" + receiptKey + "'")
@@ -115,7 +115,7 @@ Feature: F3 - Receipt Finalization Happy Path Tests
     # Verify putaway tasks in DB
     * def tasks = db.query("SELECT * FROM dbo.task WHERE fromkey = '" + receiptKey + "' AND tasktype = 'PUTAWAY'")
     * match tasks.length >= 1
-    * match tasks[0].status == '0'  # Open status
+    * match tasks[0].status == '0'
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC05: Finalize receipt with lottable tracking
@@ -135,9 +135,9 @@ Feature: F3 - Receipt Finalization Happy Path Tests
 
     # Verify lottables in inventory
     * def invResult = db.query("SELECT lottable01, lottable02, lottable03 FROM dbo.lotxlocxid WHERE receiptkey = '" + receiptKey + "'")
-    * match invResult[0].lottable01 == '#present'  # Style
-    * match invResult[0].lottable02 == '#present'  # Color
-    * match invResult[0].lottable03 == '#present'  # Size
+    * match invResult[0].lottable01 == '#present'
+    * match invResult[0].lottable02 == '#present'
+    * match invResult[0].lottable03 == '#present'
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC06: Finalize updates PO received quantities
@@ -225,7 +225,7 @@ Feature: F3 - Receipt Finalization Happy Path Tests
 
     # Verify PO status
     * def poStatus = db.getValue("SELECT status FROM dbo.po WHERE pokey = '" + poKey + "'")
-    * match poStatus == '9'  # Closed
+    * match poStatus == '9'
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC10: Finalize with quality hold

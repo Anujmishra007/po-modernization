@@ -35,7 +35,7 @@ Feature: F10 - Infrastructure Failure Compensation Tests
 
     # Verify state is consistent
     * def receiptStatus = db.getValue("SELECT status FROM dbo.receipt WHERE receiptkey = '" + receiptKey + "'")
-    * match receiptStatus != '9'  # Not finalized
+    * match receiptStatus != '9'
 
   # ─────────────────────────────────────────────────────────────
   # COMP-17: Kafka unavailable during event publish

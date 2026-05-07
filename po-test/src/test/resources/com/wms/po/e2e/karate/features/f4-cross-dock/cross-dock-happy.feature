@@ -174,7 +174,7 @@ Feature: F4 - Cross-Dock Allocation Happy Path Tests
 
     # Verify xdocklinkage updated
     * def link = db.query("SELECT status FROM dbo.xdocklinkage WHERE pokey = '" + poKey + "'")
-    * match link[0].status == '1'  # Processed
+    * match link[0].status == '1'
 
   # ─────────────────────────────────────────────────────────────
   # F4-TC07: Cross-dock creates pick task

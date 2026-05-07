@@ -20,7 +20,7 @@ Feature: F10 - Compensation Flow Tests (Saga Pattern)
   @COMP-01 @P1 @Populate
   Scenario: Compensation on detail creation failure
     # Create a PO that will fail during detail population
-    * def poKey = 'PO-TEST-001'  # Use existing test PO
+    * def poKey = 'PO-TEST-001'
 
     # Trigger populate with invalid detail data
     * def populateRequest =
@@ -83,7 +83,7 @@ Feature: F10 - Compensation Flow Tests (Saga Pattern)
 
     # Verify receipt status was reverted
     * def receiptStatus = db.getValue("SELECT status FROM dbo.receipt WHERE receiptkey = '" + receiptKey + "'")
-    * match receiptStatus == '5'  # Should remain in 'In Progress' status
+    * match receiptStatus == '5'
 
     # Verify no inventory was created
     * def invCount = db.getValue("SELECT COUNT(*) FROM dbo.lotxlocxid WHERE loc = 'TEST-LOC-FULL'")
@@ -113,7 +113,7 @@ Feature: F10 - Compensation Flow Tests (Saga Pattern)
 
     # Verify state was rolled back
     * def receiptStatus = db.getValue("SELECT status FROM dbo.receipt WHERE receiptkey = '" + receiptKey + "'")
-    * match receiptStatus != '9'  # Should NOT be finalized
+    * match receiptStatus != '9'
 
   # ─────────────────────────────────────────────────────────────
   # COMP-15: Concurrent populate same PO
