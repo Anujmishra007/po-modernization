@@ -140,6 +140,14 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
+      - name: Create Temporal Database
+        env:
+          PGPASSWORD: wms123
+        run: |
+          psql -h localhost -p 5433 -U wms -d postgres -c "CREATE DATABASE temporal;"
+          psql -h localhost -p 5433 -U wms -d postgres -c "CREATE DATABASE temporal_visibility;"
+          echo "Temporal databases created"
+
       - name: Start Temporal
         run: |
           docker run -d --name temporal \
@@ -149,17 +157,45 @@ jobs:
             -e POSTGRES_USER=wms \
             -e POSTGRES_PWD=wms123 \
             -e POSTGRES_SEEDS=localhost \
+            -e DBNAME=temporal \
+            -e VISIBILITY_DBNAME=temporal_visibility \
             temporalio/auto-setup:1.22.3
 
-          # Wait for Temporal to be ready
-          for i in {1..30}; do
+          echo "Waiting for Temporal to start and become healthy..."
+
+          # Wait for port to be open first
+          for i in {1..60}; do
             if nc -z localhost 7233 2>/dev/null; then
-              echo "Temporal is ready"
+              echo "Temporal gRPC port (7233) is open"
               break
             fi
-            echo "Waiting for Temporal... ($i/30)"
+            if [ $i -eq 60 ]; then
+              echo "Temporal port never became available. Logs:"
+              docker logs temporal
+              exit 1
+            fi
+            echo "Waiting for Temporal port... ($i/60)"
             sleep 2
           done
+
+          # Wait for Temporal to be fully operational (check with tctl)
+          echo "Verifying Temporal is fully operational..."
+          for i in {1..30}; do
+            if docker exec temporal tctl --address localhost:7233 cluster health 2>&1 | grep -q "SERVING"; then
+              echo "Temporal cluster is healthy and serving!"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "Temporal not fully operational. Continuing anyway (app has retry logic)..."
+              docker logs temporal | tail -50
+            fi
+            echo "Waiting for Temporal to be healthy... ($i/30)"
+            sleep 2
+          done
+
+          # Final verification
+          docker ps | grep temporal || { echo "Temporal container not running!"; docker logs temporal; exit 1; }
+          echo "Temporal startup complete"
 
       - name: Load Test Data
         env:
@@ -192,16 +228,26 @@ jobs:
             --spring.datasource.url=jdbc:postgresql://localhost:5433/po_test \
             --spring.datasource.username=wms \
             --spring.datasource.password=wms123 \
-            --temporal.service-address=localhost:7233 \
+            --spring.jpa.hibernate.ddl-auto=none \
+            --spring.flyway.enabled=false \
+            --temporal.server.host=localhost \
+            --temporal.server.port=7233 \
+            --temporal.startup.retry-attempts=15 \
+            --temporal.startup.retry-delay-seconds=5 \
+            --temporal.startup.fail-on-error=true \
             --server.port=8080 &
 
           # Wait for application to start
-          for i in {1..60}; do
+          for i in {1..90}; do
             if curl -s http://localhost:8080/actuator/health | grep -q "UP"; then
               echo "Application is ready"
               break
             fi
-            echo "Waiting for application... ($i/60)"
+            if [ $i -eq 90 ]; then
+              echo "Application failed to start within timeout"
+              exit 1
+            fi
+            echo "Waiting for application... ($i/90)"
             sleep 2
           done
 

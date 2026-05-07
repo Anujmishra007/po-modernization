@@ -36,11 +36,16 @@ server:
 temporal:
   enabled: true
   server:
-    address: localhost:7233
+    host: localhost
+    port: 7233
   namespace: default
   task-queue: po-population-queue
   workflow:
     timeout-minutes: 30
+  startup:
+    retry-attempts: 10
+    retry-delay-seconds: 3
+    fail-on-error: false
 
 # PO configuration
 po:
