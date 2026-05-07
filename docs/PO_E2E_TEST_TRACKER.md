@@ -1,7 +1,7 @@
 # PO Modernization - E2E Test Tracker
 
-> **Last Updated:** 2026-05-07 (14:15 UTC)
-> **Version:** 1.7
+> **Last Updated:** 2026-05-07 (15:00 UTC)
+> **Version:** 1.8
 > **Total Test Cases:** 260
 > **Overall Progress:** 278/260 (107% - exceeds target)
 > **CI/CD Status:** ✅ Fully Operational - All Tests Passing
@@ -688,27 +688,118 @@ po-test/src/test/resources/test-data/
 
 ## CI/CD Pipeline Status
 
-### GitHub Actions Workflows ✅ OPERATIONAL
+### Overview - All Pipelines Green ✅
 
-| Workflow | File | Status | Triggers |
-|----------|------|--------|----------|
-| **CI Pipeline** | `.github/workflows/ci.yml` | ✅ Passing | Push to main/develop, PRs |
-| **E2E Tests** | `.github/workflows/e2e-tests.yml` | ✅ Ready | Push, Nightly schedule |
-| **PR Checks** | `.github/workflows/pr-checks.yml` | ✅ Ready | Pull Requests |
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  CI/CD PIPELINE STATUS - ALL GREEN ✅                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Workflows:                                                                  │
+│  ├── CI                 ████████████████████  Active ✅  Latest: Success    │
+│  ├── E2E Tests          ████████████████████  Active ✅  Latest: Success    │
+│  └── PR Checks          ████████████████████  Active ✅  Ready              │
+│                                                                              │
+│  Last Updated: 2026-05-07                                                   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-### CI Pipeline Jobs
+### GitHub Actions Workflows
+
+| Workflow | File | Status | Triggers | Latest Run |
+|----------|------|--------|----------|------------|
+| **CI Pipeline** | `.github/workflows/ci.yml` | ✅ Active | Push, PRs | [#25477681236](https://github.com/Anujmishra007/po-modernization/actions/runs/25477681236) |
+| **E2E Tests** | `.github/workflows/e2e-tests.yml` | ✅ Active | Push to main/develop, Schedule, Manual | [#25475537600](https://github.com/Anujmishra007/po-modernization/actions/runs/25475537600) |
+| **PR Checks** | `.github/workflows/pr-checks.yml` | ✅ Active | Pull Requests | Ready |
+
+### Latest CI Run (#25477681236)
+
+**Triggered:** 2026-05-07 - `docs: Update tracker with E2E test execution results (v1.7)`
 
 | Job | Duration | Status | Description |
 |-----|----------|--------|-------------|
-| **Build** | ~30s | ✅ Pass | Compile all modules |
-| **Unit Tests** | ~46s | ✅ Pass | po-service module tests |
-| **Workflow Tests** | ~47s | ✅ Pass | Temporal workflow tests |
-| **Integration Tests** | ~59s | ✅ Pass | po-test integration tests |
-| **Test Summary** | ~12s | ✅ Pass | Aggregate results |
+| **Build** | 34s | ✅ Pass | Compile all modules |
+| **Unit Tests** | 45s | ✅ Pass | po-service module tests |
+| **Workflow Tests** | 50s | ✅ Pass | Temporal workflow tests |
+| **Integration Tests** | 45s | ✅ Pass | po-test integration tests |
+| **Test Summary** | 15s | ✅ Pass | Aggregate results |
 
-**Total Pipeline Time:** ~3 minutes
+**Total CI Pipeline Time:** 2m 44s
 
-### CI Issues Resolved
+**Artifacts Generated:**
+- `unit-test-results`
+- `integration-test-results`
+
+### Latest E2E Run (#25475537600)
+
+**Triggered:** 2026-05-07 - Manual (workflow_dispatch)
+
+| Job | Duration | Status | Description |
+|-----|----------|--------|-------------|
+| **Pre-E2E Tests** | 1m 3s | ✅ Pass | Layer 2 & 3 validation |
+| **Critical Flows (F1-F3)** | 4m 24s | ✅ Pass | PO Creation, ASN, Receipt |
+| **Extended Flows (F4-F6)** | 4m 19s | ✅ Pass | XDock, Lottable, Putaway |
+| **Lifecycle Flows (F7-F9)** | 2m 26s | ✅ Pass | Trade Return, Cancel, Archive |
+| **Compensation (F10)** | 4m 19s | ✅ Pass | Saga rollback scenarios |
+| **Generate Reports** | 25s | ✅ Pass | Allure report generation |
+| **Performance Tests** | - | ⏭️ Skip | Nightly only |
+
+**Total E2E Pipeline Time:** 6m 10s
+
+**Artifacts Generated:**
+- `karate-results-Critical Flows (F1-F3)`
+- `karate-results-Extended Flows (F4-F6)`
+- `karate-results-Lifecycle Flows (F7-F9)`
+- `karate-results-Compensation (F10)`
+
+### Pipeline Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           CI PIPELINE (on push)                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌─────────┐     ┌────────────┐     ┌─────────────────┐     ┌───────────┐ │
+│   │  Build  │────▶│ Unit Tests │────▶│ Workflow Tests  │────▶│  Summary  │ │
+│   │  (34s)  │     │   (45s)    │     │     (50s)       │     │   (15s)   │ │
+│   └─────────┘     └────────────┘     └─────────────────┘     └───────────┘ │
+│                          │                                                   │
+│                          ▼                                                   │
+│                   ┌─────────────────┐                                       │
+│                   │Integration Tests│                                       │
+│                   │     (45s)       │                                       │
+│                   └─────────────────┘                                       │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      E2E PIPELINE (manual/nightly)                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌───────────────┐                                                         │
+│   │ Pre-E2E Tests │                                                         │
+│   │  Layer 2 & 3  │                                                         │
+│   │    (1m 3s)    │                                                         │
+│   └───────┬───────┘                                                         │
+│           │                                                                  │
+│           ▼         (Parallel Execution - 4 Flow Groups)                    │
+│   ┌───────────────┬───────────────┬───────────────┬───────────────┐        │
+│   │ F1-F3 Critical│ F4-F6 Extended│ F7-F9 Lifecyc │F10 Compensation│        │
+│   │    (4m 24s)   │    (4m 19s)   │    (2m 26s)   │    (4m 19s)   │        │
+│   └───────┬───────┴───────┬───────┴───────┬───────┴───────┬───────┘        │
+│           └───────────────┴───────────────┴───────────────┘                 │
+│                                   │                                          │
+│                                   ▼                                          │
+│                          ┌───────────────┐                                  │
+│                          │Generate Reports│                                  │
+│                          │     (25s)      │                                  │
+│                          └───────────────┘                                  │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### CI Issues Resolved (Historical)
 
 | Issue | Root Cause | Fix Applied | Commit |
 |-------|------------|-------------|--------|
@@ -717,6 +808,10 @@ po-test/src/test/resources/test-data/
 | Missing test files | Modules without tests | Target only modules with tests | `9a7cd9d` |
 | Dependency resolution | Artifacts not installed | Separate build/test phases | `60c2389` |
 | Drools hang | KieBase init slow in CI | Skip po-rules, separate phases | `60c2389` |
+| Mockito/Temporal conflict | Activity mocks fail with Temporal | Use stub implementations | `76ea4e0` |
+| Jackson deserialization | Missing default constructor | Added @NoArgsConstructor | `0788dde` |
+| isValid() serialized | Method serialized as property | Added @JsonIgnore | `656d29a` |
+| Maven deps not found | Package vs install | Changed to `mvn install` | `0c11622` |
 
 ### CI Configuration Details
 
@@ -743,6 +838,12 @@ mvn test -B -pl po-service
 | Workflow Tests | 15 min | Temporal SDK mocking |
 | Integration Tests | 20 min | External dependencies |
 | E2E Tests | 30 min | Full stack testing |
+
+### Quick Links
+
+- **CI Runs:** https://github.com/Anujmishra007/po-modernization/actions/workflows/ci.yml
+- **E2E Runs:** https://github.com/Anujmishra007/po-modernization/actions/workflows/e2e-tests.yml
+- **PR Checks:** https://github.com/Anujmishra007/po-modernization/actions/workflows/pr-checks.yml
 
 ---
 
