@@ -206,21 +206,63 @@ jobs:
 
       - name: Run Karate E2E Tests - ${{ matrix.flow-group.name }}
         run: |
-          # Ensure test resources are processed (feature files copied to test-classes)
-          mvn process-test-resources -pl po-test -B
+          echo "=== Step 1: Run test-compile to process resources ==="
+          mvn test-compile -pl po-test -B -X 2>&1 | grep -E "(Copying|resources|feature)" || true
 
-          # Verify feature files exist
-          echo "=== Feature files in test-classes ==="
-          find po-test/target/test-classes -name "*.feature" | head -20
-          FEATURE_COUNT=$(find po-test/target/test-classes -name "*.feature" | wc -l)
-          echo "Found $FEATURE_COUNT feature files"
+          echo ""
+          echo "=== Step 2: Check target/test-classes structure ==="
+          echo "Contents of po-test/target/test-classes:"
+          ls -la po-test/target/test-classes/ 2>/dev/null || echo "Directory does not exist"
 
+          echo ""
+          echo "Looking for karate directory:"
+          ls -la po-test/target/test-classes/com/wms/po/e2e/karate/ 2>/dev/null || echo "Karate directory does not exist"
+
+          echo ""
+          echo "=== Step 3: Find all .feature files in target ==="
+          find po-test/target -name "*.feature" 2>/dev/null || echo "No feature files found in target"
+
+          echo ""
+          echo "=== Step 4: Feature files in source ==="
+          find po-test/src/test/java -name "*.feature" | head -10
+
+          FEATURE_COUNT=$(find po-test/target/test-classes -name "*.feature" 2>/dev/null | wc -l)
+          echo ""
+          echo "Feature files in test-classes: $FEATURE_COUNT"
+
+          # If no feature files found, manually copy them
           if [ "$FEATURE_COUNT" -eq 0 ]; then
-            echo "ERROR: No feature files found in test-classes!"
+            echo ""
+            echo "=== Step 5: Manually copying feature files ==="
+            mkdir -p po-test/target/test-classes/com/wms/po/e2e/karate/features
+
+            # Copy root-level feature files
+            cp po-test/src/test/java/com/wms/po/e2e/karate/*.feature \
+               po-test/target/test-classes/com/wms/po/e2e/karate/ 2>/dev/null || true
+
+            # Copy features subdirectory recursively
+            cp -r po-test/src/test/java/com/wms/po/e2e/karate/features/* \
+               po-test/target/test-classes/com/wms/po/e2e/karate/features/ 2>/dev/null || true
+
+            # Copy JSON files too
+            find po-test/src/test/java/com/wms/po/e2e/karate -name "*.json" -exec cp {} po-test/target/test-classes/com/wms/po/e2e/karate/ \; 2>/dev/null || true
+
+            echo "After manual copy:"
+            find po-test/target/test-classes -name "*.feature" | wc -l
+          fi
+
+          echo ""
+          echo "=== Step 6: Final verification ==="
+          FINAL_COUNT=$(find po-test/target/test-classes -name "*.feature" 2>/dev/null | wc -l)
+          echo "Final feature file count: $FINAL_COUNT"
+
+          if [ "$FINAL_COUNT" -eq 0 ]; then
+            echo "ERROR: Still no feature files found!"
             exit 1
           fi
 
-          # Run tests via failsafe (integration-test phase) as configured in pom.xml
+          echo ""
+          echo "=== Step 7: Run Karate tests via failsafe ==="
           mvn verify -B \
             -pl po-test \
             -DskipUTs=true \
