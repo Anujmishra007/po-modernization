@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS loc (
 CREATE TABLE IF NOT EXISTS putawayzone (
     putawayzone VARCHAR(20) PRIMARY KEY,
     facility VARCHAR(20),
+    descr VARCHAR(100),
     description VARCHAR(100),
     status VARCHAR(10) DEFAULT '1',
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -94,8 +95,10 @@ CREATE TABLE IF NOT EXISTS orders (
     status VARCHAR(10) DEFAULT '0',
     orderdate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     expecteddate TIMESTAMP,
+    closeddate TIMESTAMP,
     supplierkey VARCHAR(50),
     suppliername VARCHAR(100),
+    buyerref VARCHAR(100),
     notes VARCHAR(500),
     susr1 VARCHAR(50),
     susr2 VARCHAR(50),
@@ -146,6 +149,11 @@ CREATE TABLE IF NOT EXISTS receipt (
     status VARCHAR(10) DEFAULT '0',
     receiptdate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     finalizationdate TIMESTAMP,
+    susr1 VARCHAR(50),
+    susr2 VARCHAR(50),
+    susr3 VARCHAR(50),
+    susr4 VARCHAR(50),
+    susr5 VARCHAR(50),
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     editdate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     addwho VARCHAR(50),
@@ -256,6 +264,7 @@ CREATE TABLE IF NOT EXISTS pack (
     packuom3 VARCHAR(10),
     casecnt INTEGER DEFAULT 1,
     pallet INTEGER DEFAULT 1,
+    innerpack INTEGER DEFAULT 1,
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (storerkey, packkey)
 );
