@@ -8,6 +8,29 @@ CREATE SCHEMA IF NOT EXISTS dbo;
 SET search_path TO dbo, public;
 
 -- ═══════════════════════════════════════════════════════════
+-- System Tables
+-- ═══════════════════════════════════════════════════════════
+
+-- Key Counter Table (for atomic key generation)
+CREATE TABLE IF NOT EXISTS ncounter (
+    countername VARCHAR(50) PRIMARY KEY,
+    countervalue BIGINT DEFAULT 1,
+    prefix VARCHAR(20) DEFAULT '',
+    tablename VARCHAR(50),
+    storerkey VARCHAR(50),
+    lastused TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Insert initial counters
+INSERT INTO ncounter (countername, countervalue, prefix) VALUES
+    ('PO', 1000000, 'PO-'),
+    ('RECEIPT', 1000000, 'RCV-'),
+    ('TASK', 1000000, 'TASK-'),
+    ('ASN', 1000000, 'ASN-')
+ON CONFLICT (countername) DO NOTHING;
+
+-- ═══════════════════════════════════════════════════════════
 -- Core Tables
 -- ═══════════════════════════════════════════════════════════
 

@@ -44,7 +44,7 @@ public class ReceiptService {
                 SELECT RECEIPTKEY, STORERKEY, FACILITY, EXTERNRECEIPTKEY,
                        STATUS, TYPE, CARRIERKEY, TRAILERNUMBER,
                        RECEIPTDATE, ADDDATE, ADDWHO
-                FROM receipt WHERE RECEIPTKEY = ?
+                FROM dbo.receipt WHERE RECEIPTKEY = ?
                 """;
 
             List<ReceiptResponse> results = jdbcTemplate.query(sql, (rs, rowNum) ->
@@ -112,7 +112,7 @@ public class ReceiptService {
                 SELECT RECEIPTKEY, STORERKEY, FACILITY, EXTERNRECEIPTKEY,
                        STATUS, TYPE, CARRIERKEY, TRAILERNUMBER,
                        RECEIPTDATE, ADDDATE, ADDWHO
-                FROM receipt WHERE STORERKEY = ? AND FACILITY = ?
+                FROM dbo.receipt WHERE STORERKEY = ? AND FACILITY = ?
                 ORDER BY ADDDATE DESC
                 """;
 
@@ -169,8 +169,8 @@ public class ReceiptService {
                 SELECT r.RECEIPTKEY, r.STORERKEY, r.FACILITY, r.EXTERNRECEIPTKEY,
                        r.STATUS, r.TYPE, r.CARRIERKEY, r.TRAILERNUMBER,
                        r.RECEIPTDATE, r.ADDDATE, r.ADDWHO
-                FROM receipt r
-                INNER JOIN receiptpo rp ON r.RECEIPTKEY = rp.RECEIPTKEY
+                FROM dbo.receipt r
+                INNER JOIN dbo.receiptpo rp ON r.RECEIPTKEY = rp.RECEIPTKEY
                 WHERE rp.POKEY = ?
                 ORDER BY r.ADDDATE DESC
                 """;
@@ -218,7 +218,7 @@ public class ReceiptService {
             log.info("Creating receipt {} for {} POs", receiptKey, poKeys.size());
 
             String sql = """
-                INSERT INTO receipt (RECEIPTKEY, STORERKEY, FACILITY, STATUS, TYPE,
+                INSERT INTO dbo.receipt (RECEIPTKEY, STORERKEY, FACILITY, STATUS, TYPE,
                     ADDDATE, ADDWHO, EDITDATE, EDITWHO)
                 VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP, ?)
                 """;
@@ -281,7 +281,7 @@ public class ReceiptService {
 
         try {
             String sql = """
-                UPDATE receipt SET STATUS = ?, EDITDATE = CURRENT_TIMESTAMP, EDITWHO = ?
+                UPDATE dbo.receipt SET STATUS = ?, EDITDATE = CURRENT_TIMESTAMP, EDITWHO = ?
                 WHERE RECEIPTKEY = ?
                 """;
 
@@ -327,15 +327,15 @@ public class ReceiptService {
 
         try {
             // Delete receipt details first
-            int detailsDeleted = jdbcTemplate.update("DELETE FROM receiptdetail WHERE RECEIPTKEY = ?", receiptKey);
+            int detailsDeleted = jdbcTemplate.update("DELETE FROM dbo.receiptdetail WHERE RECEIPTKEY = ?", receiptKey);
             log.debug("Deleted {} detail records for receipt: {}", detailsDeleted, receiptKey);
 
             // Delete PO links
-            int linksDeleted = jdbcTemplate.update("DELETE FROM receiptpo WHERE RECEIPTKEY = ?", receiptKey);
+            int linksDeleted = jdbcTemplate.update("DELETE FROM dbo.receiptpo WHERE RECEIPTKEY = ?", receiptKey);
             log.debug("Deleted {} PO links for receipt: {}", linksDeleted, receiptKey);
 
             // Delete receipt
-            int receiptDeleted = jdbcTemplate.update("DELETE FROM receipt WHERE RECEIPTKEY = ?", receiptKey);
+            int receiptDeleted = jdbcTemplate.update("DELETE FROM dbo.receipt WHERE RECEIPTKEY = ?", receiptKey);
             if (receiptDeleted == 0) {
                 log.error("Receipt not found during delete: {} (legacy error 68900)", receiptKey);
                 throw BusinessException.receiptNotFound(receiptKey);
@@ -384,7 +384,7 @@ public class ReceiptService {
 
         try {
             String sql = """
-                INSERT INTO receiptPO (RECEIPTKEY, POKEY, ADDDATE, ADDWHO)
+                INSERT INTO dbo.receiptPO (RECEIPTKEY, POKEY, ADDDATE, ADDWHO)
                 VALUES (?, ?, CURRENT_TIMESTAMP, ?)
                 """;
 

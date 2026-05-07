@@ -44,7 +44,7 @@ public class POPersistenceService {
             log.info("Creating PO with key: {}", poKey);
 
             String sql = """
-                INSERT INTO po (pokey, storerkey, facility, status, adddate, addwho, editdate, editwho)
+                INSERT INTO dbo.po (pokey, storerkey, facility, status, adddate, addwho, editdate, editwho)
                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP, ?)
                 """;
 
@@ -89,7 +89,7 @@ public class POPersistenceService {
         try {
             String sql = """
                 SELECT pokey, storerkey, facility, status, adddate, editdate
-                FROM po WHERE pokey = ?
+                FROM dbo.po WHERE pokey = ?
                 """;
 
             List<PopulateResult> results = jdbcTemplate.query(sql,
@@ -122,7 +122,7 @@ public class POPersistenceService {
 
         try {
             String sql = """
-                UPDATE po SET storerkey = ?, facility = ?, editdate = CURRENT_TIMESTAMP, editwho = ?
+                UPDATE dbo.po SET storerkey = ?, facility = ?, editdate = CURRENT_TIMESTAMP, editwho = ?
                 WHERE pokey = ?
                 """;
 
@@ -159,7 +159,7 @@ public class POPersistenceService {
         log.info("Deleting PO: {}", poKey);
 
         try {
-            String sql = "DELETE FROM po WHERE pokey = ?";
+            String sql = "DELETE FROM dbo.po WHERE pokey = ?";
             int deleted = jdbcTemplate.update(sql, poKey);
 
             if (deleted == 0) {
@@ -199,7 +199,7 @@ public class POPersistenceService {
         try {
             StringBuilder sql = new StringBuilder("""
                 SELECT pokey, storerkey, facility, status, adddate, editdate
-                FROM po WHERE 1=1
+                FROM dbo.po WHERE 1=1
                 """);
 
             if (criteria.getStorerKey() != null) {
@@ -249,7 +249,7 @@ public class POPersistenceService {
 
         try {
             String sql = """
-                SELECT pokey, storerkey, facility, status FROM po WHERE storerkey = ?
+                SELECT pokey, storerkey, facility, status FROM dbo.po WHERE storerkey = ?
                 """;
 
             return jdbcTemplate.query(sql,
