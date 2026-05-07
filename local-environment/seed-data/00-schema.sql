@@ -125,7 +125,8 @@ CREATE TABLE IF NOT EXISTS putawaystrategy (
     priority INTEGER DEFAULT 1,
     description VARCHAR(200),
     status VARCHAR(10) DEFAULT '1',
-    adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    addwho VARCHAR(50)
 );
 
 -- Orders Header (Sales Orders and Purchase Orders)
@@ -383,6 +384,7 @@ CREATE TABLE IF NOT EXISTS taskassignment (
     assigneddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     assignedtime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     starttime TIMESTAMP,
+    completetime TIMESTAMP,
     completeddate TIMESTAMP,
     status VARCHAR(10) DEFAULT '0',
     adddate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -424,6 +426,7 @@ CREATE TABLE IF NOT EXISTS licenseplate (
     id VARCHAR(50),
     parentid VARCHAR(50),
     parentlpkey VARCHAR(50),
+    childflag VARCHAR(1) DEFAULT 'N',
     storerkey VARCHAR(50),
     sku VARCHAR(50),
     lot VARCHAR(50),
@@ -446,6 +449,7 @@ CREATE TABLE IF NOT EXISTS statushistory (
     tostatus VARCHAR(10),
     changedby VARCHAR(50),
     changedate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    transitiontime TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     reason VARCHAR(500)
 );
 
@@ -722,6 +726,7 @@ CREATE TABLE IF NOT EXISTS triggerconfig (
     triggertype VARCHAR(20),
     operation VARCHAR(20),
     aggregation VARCHAR(20),
+    cascadeaction VARCHAR(20),
     auditlog VARCHAR(1) DEFAULT 'Y',
     enabled VARCHAR(1) DEFAULT 'Y',
     description VARCHAR(500),
