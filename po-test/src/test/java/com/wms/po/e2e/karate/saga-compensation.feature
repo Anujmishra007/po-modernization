@@ -155,5 +155,5 @@ Feature: Saga Compensation Tests
     }
     """
     When method POST
-    Then status 400 || status 200
+    Then assert responseStatus == 400 || responseStatus == 200
     # Either fails because already populated, or returns existing receipt

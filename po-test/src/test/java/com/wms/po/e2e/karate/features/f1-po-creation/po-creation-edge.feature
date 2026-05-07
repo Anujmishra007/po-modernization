@@ -53,7 +53,7 @@ Feature: F1 - PO Creation Edge Cases
     And request request
     When method post
     # Either succeeds with 501 lines or returns max lines error
-    Then status '#? _ == 201 || _ == 400'
+    Then assert responseStatus == 201 || responseStatus == 400
     * if (responseStatus == 201) karate.match(response.lineCount, 501)
     * if (responseStatus == 400) karate.match(response.errorCode, 'VAL_010')
 
@@ -213,7 +213,7 @@ Feature: F1 - PO Creation Edge Cases
     And request request
     When method post
     # Either truncates to integer or rejects based on SKU config
-    Then status '#? _ == 201 || _ == 400'
+    Then assert responseStatus == 201 || responseStatus == 400
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC27: Very long external PO key
@@ -265,5 +265,5 @@ Feature: F1 - PO Creation Edge Cases
     And request request
     When method post
     # Either accepts or rejects based on validation rules
-    Then status '#? _ == 201 || _ == 400'
+    Then assert responseStatus == 201 || responseStatus == 400
 

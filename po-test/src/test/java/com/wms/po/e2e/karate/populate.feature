@@ -103,7 +103,7 @@ Feature: PO Population to ASN/Receipt
     Given path '/po/populate', workflowId, 'status'
     When method GET
     Then status 200
-    And match response.status == 'CANCELLED' || response.status == 'COMPENSATING'
+    And match response.status == '#? _ == "CANCELLED" || _ == "COMPENSATING"'
 
   @multi-po
   Scenario: Populate multiple POs to single receipt
