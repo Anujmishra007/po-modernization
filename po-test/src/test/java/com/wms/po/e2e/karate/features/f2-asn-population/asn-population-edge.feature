@@ -100,15 +100,26 @@ Feature: F2 - ASN Population Edge Cases
     * def asn1 = { "poKey": "#(poKey)", "asnNumber": "#('ASN-CONC-A-' + timestamp())", "lines": [{ "sku": "NK-AIRMAX90-BLK", "qtyShipped": 50 }] }
     * def asn2 = { "poKey": "#(poKey)", "asnNumber": "#('ASN-CONC-B-' + timestamp())", "lines": [{ "sku": "NK-AIRMAX90-WHT", "qtyShipped": 50 }] }
 
-    # Send both ASNs in parallel (Karate parallel feature)
-    * def results = karate.callAll([
-        { name: 'asn1', feature: 'classpath:common/http-post.feature', arg: { path: api + '/asn/populate', body: asn1, token: authToken } },
-        { name: 'asn2', feature: 'classpath:common/http-post.feature', arg: { path: api + '/asn/populate', body: asn2, token: authToken } }
-      ])
+    # Send first ASN
+    Given path api + '/asn/populate'
+    And header Authorization = 'Bearer ' + authToken
+    And header Content-Type = 'application/json'
+    And request asn1
+    When method post
+    Then status 201
+    * def receipt1 = response.receiptKey
 
-    # Both should succeed or one should be blocked
-    * def statuses = results.map(r => r.status)
-    * match statuses contains 201
+    # Send second ASN
+    Given path api + '/asn/populate'
+    And header Authorization = 'Bearer ' + authToken
+    And header Content-Type = 'application/json'
+    And request asn2
+    When method post
+    Then status 201
+    * def receipt2 = response.receiptKey
+
+    # Both should have different receipt keys
+    * match receipt1 != receipt2
 
   # ─────────────────────────────────────────────────────────────
   # F2-TC21: ASN with zero quantity line

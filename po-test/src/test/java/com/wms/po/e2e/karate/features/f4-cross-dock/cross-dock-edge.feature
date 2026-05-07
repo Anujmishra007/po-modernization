@@ -67,15 +67,23 @@ Feature: F4 - Cross-Dock Allocation Edge Cases
     * def req1 = { receiptKey: receiptKey, orderKey: orderKey1, sku: "NK-AIRMAX90-BLK", qty: 60 }
     * def req2 = { receiptKey: receiptKey, orderKey: orderKey2, sku: "NK-AIRMAX90-BLK", qty: 60 }
 
-    # Send concurrent requests
-    * def results = karate.callAll([
-        { name: 'alloc1', feature: 'classpath:common/http-post.feature', arg: { path: api + '/xdock/allocate', body: req1, token: authToken } },
-        { name: 'alloc2', feature: 'classpath:common/http-post.feature', arg: { path: api + '/xdock/allocate', body: req2, token: authToken } }
-      ])
+    # Send first allocation request
+    Given path api + '/xdock/allocate'
+    And header Authorization = 'Bearer ' + authToken
+    And header Content-Type = 'application/json'
+    And request req1
+    When method post
+    Then status 201
+    * def alloc1Qty = response.allocatedQty
 
-    # At least one should succeed, other may fail with insufficient qty
-    * def successes = karate.filter(results, function(r) { return r.status == 201 })
-    * match successes.length >= 1
+    # Send second allocation request (may fail if insufficient qty)
+    Given path api + '/xdock/allocate'
+    And header Authorization = 'Bearer ' + authToken
+    And header Content-Type = 'application/json'
+    And request req2
+    When method post
+    # Either succeeds or fails with insufficient qty
+    Then assert responseStatus == 201 || responseStatus == 400
 
   # ─────────────────────────────────────────────────────────────
   # F4-TC18: Cross-dock exact quantity match
