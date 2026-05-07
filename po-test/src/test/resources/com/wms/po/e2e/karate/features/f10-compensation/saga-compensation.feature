@@ -207,15 +207,15 @@ Feature: F10 - Compensation Flow Tests (Saga Pattern)
   @COMP-26 @P1 @FullReplay
   Scenario: Full saga replay with compensation
     # Create fresh PO for full saga test
-    * def request = testData.validPORequest()
+    * def poRequest = testData.validPORequest()
     * def poKey = generatePoKey()
-    * request.externalOrderKey = poKey
+    * poRequest.externalOrderKey = poKey
 
     # Step 1: Create PO
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 201
     * def createdPoKey = response.poKey

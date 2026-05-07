@@ -20,14 +20,14 @@ Feature: F1 - PO Creation Happy Path Tests
   Scenario: Create single-line PO successfully
     # Generate unique PO key
     * def poKey = generatePoKey()
-    * def request = testData.validPORequest()
-    * request.externalOrderKey = poKey
+    * def poRequest = testData.validPORequest()
+    * poRequest.externalOrderKey = poKey
 
     # Create PO via API
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 201
     And match response.poKey == '#present'
@@ -50,14 +50,14 @@ Feature: F1 - PO Creation Happy Path Tests
   # ─────────────────────────────────────────────────────────────
   @F1-TC02 @P1
   Scenario: Create multi-line PO successfully
-    * def request = testData.multiLinePORequest(50)
+    * def poRequest = testData.multiLinePORequest(50)
     * def poKey = generatePoKey()
-    * request.externalOrderKey = poKey
+    * poRequest.externalOrderKey = poKey
 
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 201
     And match response.poKey == '#present'

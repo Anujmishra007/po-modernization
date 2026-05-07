@@ -21,15 +21,15 @@ Feature: F1 - PO Creation Trigger Tests
   # ─────────────────────────────────────────────────────────────
   @F1-TC18 @P1 @InsertTrigger
   Scenario: PO insert trigger fires and creates audit
-    * def request = testData.validPORequest()
+    * def poRequest = testData.validPORequest()
     * def externalKey = 'PO-TRG-INS-' + timestamp()
-    * request.externalOrderKey = externalKey
+    * poRequest.externalOrderKey = externalKey
 
     # Create PO via API
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 201
     * def poKey = response.poKey
@@ -56,13 +56,13 @@ Feature: F1 - PO Creation Trigger Tests
   Scenario: Trigger detects and prevents duplicate
     # First, create a PO
     * def externalKey = 'PO-TRG-DUP-' + timestamp()
-    * def request1 = testData.validPORequest()
-    * request1.externalOrderKey = externalKey
+    * def poRequest1 = testData.validPORequest()
+    * poRequest1.externalOrderKey = externalKey
 
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request1
+    And request poRequest1
     When method post
     Then status 201
     * def firstPoKey = response.poKey
@@ -77,15 +77,15 @@ Feature: F1 - PO Creation Trigger Tests
   # ─────────────────────────────────────────────────────────────
   @F1-TC36 @P2 @CascadeTrigger
   Scenario: PO detail trigger fires on line insert
-    * def request = testData.validPORequest()
-    * request.externalOrderKey = 'PO-TRG-CASC-' + timestamp()
+    * def poRequest = testData.validPORequest()
+    * poRequest.externalOrderKey = 'PO-TRG-CASC-' + timestamp()
     * def lines = [{sku: 'NK-AIRMAX90-BLK', qtyOrdered: 100}, {sku: 'NK-AF1-BLK', qtyOrdered: 50}]
-    * request.lines = lines
+    * poRequest.lines = lines
 
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 201
     * def poKey = response.poKey
@@ -101,15 +101,15 @@ Feature: F1 - PO Creation Trigger Tests
   # ─────────────────────────────────────────────────────────────
   @F1-TC37 @P2 @SummaryTrigger
   Scenario: Trigger calculates and updates summary fields
-    * def request = testData.validPORequest()
-    * request.externalOrderKey = 'PO-TRG-SUM-' + timestamp()
+    * def poRequest = testData.validPORequest()
+    * poRequest.externalOrderKey = 'PO-TRG-SUM-' + timestamp()
     * def lines = [{sku: 'NK-AIRMAX90-BLK', qtyOrdered: 100, unitPrice: 89.99}, {sku: 'NK-AF1-BLK', qtyOrdered: 50, unitPrice: 109.99}]
-    * request.lines = lines
+    * poRequest.lines = lines
 
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 201
     * def poKey = response.poKey
@@ -127,12 +127,12 @@ Feature: F1 - PO Creation Trigger Tests
   Scenario: Trigger constraint violation handled gracefully
     # Attempt to create PO with FK violation
     * def extKey = 'PO-TRG-FK-' + timestamp()
-    * def request = {storerKey: 'NON_EXISTENT_STORER', facility: 'KR01', externalOrderKey: '#(extKey)', lines: [{sku: 'NK-AIRMAX90-BLK', qtyOrdered: 100}]}
+    * def poRequest = {storerKey: 'NON_EXISTENT_STORER', facility: 'KR01', externalOrderKey: '#(extKey)', lines: [{sku: 'NK-AIRMAX90-BLK', qtyOrdered: 100}]}
 
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 422
     And match response.errorCode == 'VAL_002'
@@ -146,12 +146,12 @@ Feature: F1 - PO Creation Trigger Tests
     * def generateLines = function(count){ var lines = []; for(var i = 0; i < count; i++){ lines.push({sku: 'HM-BASIC-TEE-M', qtyOrdered: 10, unitPrice: 4.99}); } return lines; }
     * def extKey = 'PO-TRG-PERF-' + timestamp()
     * def generatedLines = generateLines(200)
-    * def request = {storerKey: 'HM_KR', facility: 'KR02', externalOrderKey: '#(extKey)', lines: '#(generatedLines)'}
+    * def poRequest = {storerKey: 'HM_KR', facility: 'KR02', externalOrderKey: '#(extKey)', lines: '#(generatedLines)'}
 
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 201
     And responseTime < 10000

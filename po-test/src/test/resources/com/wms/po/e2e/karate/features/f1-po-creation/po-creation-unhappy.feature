@@ -20,14 +20,14 @@ Feature: F1 - PO Creation Unhappy Path Tests
   @F1-TC05 @P1 @VAL_003
   Scenario: Duplicate PO key returns error
     # First create a PO
-    * def request = testData.validPORequest()
+    * def poRequest = testData.validPORequest()
     * def poKey = generatePoKey()
-    * request.externalOrderKey = poKey
+    * poRequest.externalOrderKey = poKey
 
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 201
     * def createdPoKey = response.externalOrderKey
@@ -36,7 +36,7 @@ Feature: F1 - PO Creation Unhappy Path Tests
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 409
     And match response.errorCode == 'VAL_003'
@@ -48,7 +48,7 @@ Feature: F1 - PO Creation Unhappy Path Tests
   # ─────────────────────────────────────────────────────────────
   @F1-TC06 @P1 @VAL_001
   Scenario: Missing storerKey returns validation error
-    * def request =
+    * def poRequest =
       """
       {
         "facility": "TEST01",
@@ -62,7 +62,7 @@ Feature: F1 - PO Creation Unhappy Path Tests
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 400
     And match response.errorCode == 'VAL_001'
@@ -75,13 +75,13 @@ Feature: F1 - PO Creation Unhappy Path Tests
   # ─────────────────────────────────────────────────────────────
   @F1-TC07 @P1 @PO_013
   Scenario: Invalid SKU returns error
-    * def request = testData.validPORequest()
-    * request.lines[0].sku = 'INVALID-SKU-999'
+    * def poRequest = testData.validPORequest()
+    * poRequest.lines[0].sku = 'INVALID-SKU-999'
 
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 422
     And match response.errorCode == 'PO_013'
@@ -94,13 +94,13 @@ Feature: F1 - PO Creation Unhappy Path Tests
   # ─────────────────────────────────────────────────────────────
   @F1-TC08 @P2 @PO_012
   Scenario: Invalid supplier returns error
-    * def request = testData.validPORequest()
-    * request.supplierKey = 'INVALID-SUPPLIER-999'
+    * def poRequest = testData.validPORequest()
+    * poRequest.supplierKey = 'INVALID-SUPPLIER-999'
 
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 422
     And match response.errorCode == 'PO_012'
@@ -112,12 +112,12 @@ Feature: F1 - PO Creation Unhappy Path Tests
   # ─────────────────────────────────────────────────────────────
   @F1-TC19 @P2 @VAL_002
   Scenario: Inactive storer returns error
-    * def request = testData.validPORequest('TEST_STORER_ERR')
+    * def poRequest = testData.validPORequest('TEST_STORER_ERR')
 
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 422
     And match response.errorCode == 'VAL_002'

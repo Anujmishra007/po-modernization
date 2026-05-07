@@ -24,7 +24,7 @@ Feature: F1 - PO Creation via RDT
     * def userId = 'RDT-OPR-001'
     * def externalKey = 'PO-RDT-' + timestamp()
 
-    * def request =
+    * def poRequest =
       """
       {
         "storerKey": "NIKE_KR",
@@ -41,7 +41,7 @@ Feature: F1 - PO Creation via RDT
     And header X-RDT-Device-Id = deviceId
     And header X-RDT-User-Id = userId
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 201
     And match response.poKey == '#present'
@@ -61,7 +61,7 @@ Feature: F1 - PO Creation via RDT
     * def deviceId = 'RDT-KR01-002'
     * def userId = 'RDT-OPR-002'
 
-    * def request =
+    * def poRequest =
       """
       {
         "storerKey": "NIKE_KR",
@@ -79,7 +79,7 @@ Feature: F1 - PO Creation via RDT
     And header X-RDT-Device-Id = deviceId
     And header X-RDT-User-Id = userId
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 201
     And match response.poKey == '#present'
@@ -90,15 +90,15 @@ Feature: F1 - PO Creation via RDT
   # ─────────────────────────────────────────────────────────────
   @F1-TC43 @P2 @RDTInvalidDevice
   Scenario: RDT request with invalid device rejected
-    * def request = testData.validPORequest()
-    * request.externalOrderKey = 'PO-RDT-INV-' + timestamp()
+    * def poRequest = testData.validPORequest()
+    * poRequest.externalOrderKey = 'PO-RDT-INV-' + timestamp()
 
     Given path api + '/rdt/po'
     And header Authorization = 'Bearer ' + authToken
     And header X-RDT-Device-Id = 'INVALID-DEVICE-XXX'
     And header X-RDT-User-Id = 'RDT-OPR-001'
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 401
     And match response.errorCode == 'RDT_001'
@@ -109,15 +109,15 @@ Feature: F1 - PO Creation via RDT
   # ─────────────────────────────────────────────────────────────
   @F1-TC44 @P2 @RDTInvalidUser
   Scenario: RDT request with invalid operator rejected
-    * def request = testData.validPORequest()
-    * request.externalOrderKey = 'PO-RDT-INV-USR-' + timestamp()
+    * def poRequest = testData.validPORequest()
+    * poRequest.externalOrderKey = 'PO-RDT-INV-USR-' + timestamp()
 
     Given path api + '/rdt/po'
     And header Authorization = 'Bearer ' + authToken
     And header X-RDT-Device-Id = 'RDT-KR01-001'
     And header X-RDT-User-Id = 'INVALID-USER-XXX'
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 401
     And match response.errorCode == 'RDT_002'
@@ -128,7 +128,7 @@ Feature: F1 - PO Creation via RDT
   # ─────────────────────────────────────────────────────────────
   @F1-TC45 @P2 @RDTFacilityAuth
   Scenario: RDT operator not authorized for facility
-    * def request =
+    * def poRequest =
       """
       {
         "storerKey": "ADIDAS_IN",
@@ -146,7 +146,7 @@ Feature: F1 - PO Creation via RDT
     And header X-RDT-Device-Id = 'RDT-KR01-001'
     And header X-RDT-User-Id = 'RDT-OPR-001'
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 403
     And match response.errorCode == 'RDT_003'
@@ -157,7 +157,7 @@ Feature: F1 - PO Creation via RDT
   # ─────────────────────────────────────────────────────────────
   @F1-TC46 @P3 @RDTOffline
   Scenario: RDT offline request queued for processing
-    * def request =
+    * def poRequest =
       """
       {
         "storerKey": "NIKE_KR",
@@ -175,7 +175,7 @@ Feature: F1 - PO Creation via RDT
     And header X-RDT-Device-Id = 'RDT-KR01-001'
     And header X-RDT-User-Id = 'RDT-OPR-001'
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 202
     And match response.queuedForProcessing == true
@@ -186,8 +186,8 @@ Feature: F1 - PO Creation via RDT
   # ─────────────────────────────────────────────────────────────
   @F1-TC47 @P2 @RDTSession
   Scenario: RDT request validates active session
-    * def request = testData.validPORequest()
-    * request.externalOrderKey = 'PO-RDT-SESS-' + timestamp()
+    * def poRequest = testData.validPORequest()
+    * poRequest.externalOrderKey = 'PO-RDT-SESS-' + timestamp()
 
     Given path api + '/rdt/po'
     And header Authorization = 'Bearer ' + authToken
@@ -195,7 +195,7 @@ Feature: F1 - PO Creation via RDT
     And header X-RDT-User-Id = 'RDT-OPR-001'
     And header X-RDT-Session-Id = 'EXPIRED-SESSION-XXX'
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 401
     And match response.errorCode == 'RDT_004'

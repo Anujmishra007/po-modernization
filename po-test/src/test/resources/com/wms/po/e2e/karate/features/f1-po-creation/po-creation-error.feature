@@ -21,14 +21,14 @@ Feature: F1 - PO Creation Error Handling
   # ─────────────────────────────────────────────────────────────
   @F1-TC14 @P2 @DBTimeout
   Scenario: Database timeout returns graceful error
-    * def request = testData.validPORequest()
-    * request.externalOrderKey = 'PO-TIMEOUT-' + timestamp()
+    * def poRequest = testData.validPORequest()
+    * poRequest.externalOrderKey = 'PO-TIMEOUT-' + timestamp()
 
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
     And header X-Test-Simulate-DB-Timeout = 'true'
-    And request request
+    And request poRequest
     When method post
     Then status 503
     And match response.errorCode == 'INT_022'
@@ -36,7 +36,7 @@ Feature: F1 - PO Creation Error Handling
     And match response.retryable == true
 
     # Verify no partial data created
-    * def partialCheck = db.query("SELECT COUNT(*) as cnt FROM dbo.po WHERE externpokey = '" + request.externalOrderKey + "'")
+    * def partialCheck = db.query("SELECT COUNT(*) as cnt FROM dbo.po WHERE externpokey = '" + poRequest.externalOrderKey + "'")
     * match partialCheck[0].cnt == 0
 
   # ─────────────────────────────────────────────────────────────
@@ -45,16 +45,16 @@ Feature: F1 - PO Creation Error Handling
   @F1-TC15 @P2 @ConcurrentRace
   Scenario: Concurrent PO creation with same key
     * def sharedKey = 'PO-RACE-' + timestamp()
-    * def request1 = testData.validPORequest()
-    * request1.externalOrderKey = sharedKey
-    * def request2 = testData.validPORequest()
-    * request2.externalOrderKey = sharedKey
+    * def poRequest1 = testData.validPORequest()
+    * poRequest1.externalOrderKey = sharedKey
+    * def poRequest2 = testData.validPORequest()
+    * poRequest2.externalOrderKey = sharedKey
 
     # Simulate concurrent requests (sequential for test, but same key)
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request1
+    And request poRequest1
     When method post
     Then status 201
     * def firstPoKey = response.poKey
@@ -63,7 +63,7 @@ Feature: F1 - PO Creation Error Handling
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request2
+    And request poRequest2
     When method post
     Then status 409
     And match response.errorCode == 'VAL_003'
@@ -115,14 +115,14 @@ Feature: F1 - PO Creation Error Handling
   # ─────────────────────────────────────────────────────────────
   @F1-TC29 @P2 @CircuitBreaker
   Scenario: Service unavailable triggers circuit breaker
-    * def request = testData.validPORequest()
-    * request.externalOrderKey = 'PO-CIRCUIT-' + timestamp()
+    * def poRequest = testData.validPORequest()
+    * poRequest.externalOrderKey = 'PO-CIRCUIT-' + timestamp()
 
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
     And header X-Test-Simulate-Service-Down = 'true'
-    And request request
+    And request poRequest
     When method post
     Then status 503
     And match response.errorCode == 'INT_023'
@@ -148,11 +148,11 @@ Feature: F1 - PO Creation Error Handling
   # ─────────────────────────────────────────────────────────────
   @F1-TC31 @P3 @MissingContentType
   Scenario: Missing Content-Type returns error
-    * def request = testData.validPORequest()
+    * def poRequest = testData.validPORequest()
 
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
-    And request request
+    And request poRequest
     When method post
     Then status 415
     And match response.message contains 'Content-Type'
@@ -162,12 +162,12 @@ Feature: F1 - PO Creation Error Handling
   # ─────────────────────────────────────────────────────────────
   @F1-TC32 @P1 @AuthFailure
   Scenario: Invalid token returns 401
-    * def request = testData.validPORequest()
+    * def poRequest = testData.validPORequest()
 
     Given path api + '/po'
     And header Authorization = 'Bearer invalid-token-12345'
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 401
     And match response.errorCode == 'AUTH_001'
@@ -177,13 +177,13 @@ Feature: F1 - PO Creation Error Handling
   # ─────────────────────────────────────────────────────────────
   @F1-TC33 @P1 @AuthzFailure
   Scenario: Insufficient privileges returns 403
-    * def request = testData.validPORequest()
+    * def poRequest = testData.validPORequest()
     * def readOnlyToken = karate.callSingle('classpath:karate-auth-readonly.js').token
 
     Given path api + '/po'
     And header Authorization = 'Bearer ' + readOnlyToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 403
     And match response.errorCode == 'AUTH_002'
@@ -194,7 +194,7 @@ Feature: F1 - PO Creation Error Handling
   # ─────────────────────────────────────────────────────────────
   @F1-TC34 @P3 @RateLimit
   Scenario: Excessive requests trigger rate limiting
-    * def request = testData.validPORequest()
+    * def poRequest = testData.validPORequest()
 
     # Send multiple rapid requests
     * def sendRequest =
@@ -202,7 +202,7 @@ Feature: F1 - PO Creation Error Handling
       function() {
         var results = [];
         for (var i = 0; i < 50; i++) {
-          var req = JSON.parse(JSON.stringify(request));
+          var req = JSON.parse(JSON.stringify(poRequest));
           req.externalOrderKey = 'PO-RATE-' + Date.now() + '-' + i;
           results.push(karate.call('classpath:common/http-post.feature', { path: api + '/po', body: req, token: authToken }));
         }
@@ -218,14 +218,14 @@ Feature: F1 - PO Creation Error Handling
   # ─────────────────────────────────────────────────────────────
   @F1-TC35 @P2 @RequestTimeout
   Scenario: Long-running request times out gracefully
-    * def request = testData.validPORequest()
-    * request.externalOrderKey = 'PO-TIMEOUT-REQ-' + timestamp()
+    * def poRequest = testData.validPORequest()
+    * poRequest.externalOrderKey = 'PO-TIMEOUT-REQ-' + timestamp()
 
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
     And header X-Test-Simulate-Slow-Processing = 'true'
-    And request request
+    And request poRequest
     When method post
     Then status 504
     And match response.errorCode == 'INT_003'

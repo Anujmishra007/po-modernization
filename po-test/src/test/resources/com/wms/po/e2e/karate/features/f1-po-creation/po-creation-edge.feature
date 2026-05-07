@@ -37,7 +37,7 @@ Feature: F1 - PO Creation Edge Cases
       """
     * def largeLines = generateLines(501)
 
-    * def request =
+    * def poRequest =
       """
       {
         "storerKey": "HM_KR",
@@ -50,7 +50,7 @@ Feature: F1 - PO Creation Edge Cases
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     # Either succeeds with 501 lines or returns max lines error
     Then assert responseStatus == 201 || responseStatus == 400
@@ -62,7 +62,7 @@ Feature: F1 - PO Creation Edge Cases
   # ─────────────────────────────────────────────────────────────
   @F1-TC10 @P2 @Unicode
   Scenario: Create PO with Korean/Chinese/Japanese unicode in address
-    * def request =
+    * def poRequest =
       """
       {
         "storerKey": "NIKE_KR",
@@ -88,7 +88,7 @@ Feature: F1 - PO Creation Edge Cases
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 201
     And match response.poKey == '#present'
@@ -109,7 +109,7 @@ Feature: F1 - PO Creation Edge Cases
   # ─────────────────────────────────────────────────────────────
   @F1-TC11 @P2 @ZeroQty
   Scenario: Zero quantity line rejected
-    * def request =
+    * def poRequest =
       """
       {
         "storerKey": "NIKE_KR",
@@ -124,7 +124,7 @@ Feature: F1 - PO Creation Edge Cases
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 400
     And match response.errorCode == 'VAL_008'
@@ -138,7 +138,7 @@ Feature: F1 - PO Creation Edge Cases
   # ─────────────────────────────────────────────────────────────
   @F1-TC12 @P2 @NegativeQty
   Scenario: Negative quantity rejected
-    * def request =
+    * def poRequest =
       """
       {
         "storerKey": "NIKE_KR",
@@ -153,7 +153,7 @@ Feature: F1 - PO Creation Edge Cases
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 400
     And match response.errorCode == 'VAL_009'
@@ -167,7 +167,7 @@ Feature: F1 - PO Creation Edge Cases
   @F1-TC13 @P3 @PastDate
   Scenario: Past expected date rejected
     * def yesterday = java.time.LocalDate.now().minusDays(1).toString()
-    * def request =
+    * def poRequest =
       """
       {
         "storerKey": "NIKE_KR",
@@ -183,7 +183,7 @@ Feature: F1 - PO Creation Edge Cases
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 400
     And match response.errorCode == 'VAL_006'
@@ -195,7 +195,7 @@ Feature: F1 - PO Creation Edge Cases
   # ─────────────────────────────────────────────────────────────
   @F1-TC26 @P3 @DecimalQty
   Scenario: Decimal quantity handled correctly
-    * def request =
+    * def poRequest =
       """
       {
         "storerKey": "NIKE_KR",
@@ -210,7 +210,7 @@ Feature: F1 - PO Creation Edge Cases
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     # Either truncates to integer or rejects based on SKU config
     Then assert responseStatus == 201 || responseStatus == 400
@@ -221,7 +221,7 @@ Feature: F1 - PO Creation Edge Cases
   @F1-TC27 @P3 @LongKey
   Scenario: Very long external PO key handled
     * def longKey = 'PO-' + 'X'.repeat(100)
-    * def request =
+    * def poRequest =
       """
       {
         "storerKey": "NIKE_KR",
@@ -236,7 +236,7 @@ Feature: F1 - PO Creation Edge Cases
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 400
     And match response.errorCode == 'VAL_011'
@@ -247,7 +247,7 @@ Feature: F1 - PO Creation Edge Cases
   # ─────────────────────────────────────────────────────────────
   @F1-TC28 @P3 @SpecialChars
   Scenario: Special characters in PO key handled
-    * def request =
+    * def poRequest =
       """
       {
         "storerKey": "NIKE_KR",
@@ -262,7 +262,7 @@ Feature: F1 - PO Creation Edge Cases
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     # Either accepts or rejects based on validation rules
     Then assert responseStatus == 201 || responseStatus == 400

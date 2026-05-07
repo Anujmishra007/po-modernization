@@ -42,7 +42,7 @@ Feature: F1 - PO Creation Compensation Tests
       """
 
     * def externalKey = 'PO-COMP-LINE-' + timestamp()
-    * def request =
+    * def poRequest =
       """
       {
         "storerKey": "HM_KR",
@@ -55,7 +55,7 @@ Feature: F1 - PO Creation Compensation Tests
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 422
     And match response.errorCode == 'PO_013'
@@ -75,7 +75,7 @@ Feature: F1 - PO Creation Compensation Tests
   @F1-TC21 @P1 @HeaderDetailRollback
   Scenario: Header rolls back when detail insertion fails
     * def externalKey = 'PO-COMP-HDR-' + timestamp()
-    * def request =
+    * def poRequest =
       """
       {
         "storerKey": "NIKE_KR",
@@ -91,7 +91,7 @@ Feature: F1 - PO Creation Compensation Tests
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 422
 
@@ -105,7 +105,7 @@ Feature: F1 - PO Creation Compensation Tests
   @F1-TC22 @P1 @PartialRollbackVerify
   Scenario: Verify database state is clean after failed PO
     * def externalKey = 'PO-COMP-CLEAN-' + timestamp()
-    * def request =
+    * def poRequest =
       """
       {
         "storerKey": "NIKE_KR",
@@ -122,7 +122,7 @@ Feature: F1 - PO Creation Compensation Tests
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
     And header X-Test-Fail-At-Step = '3'
-    And request request
+    And request poRequest
     When method post
     Then status 500
 
@@ -180,15 +180,15 @@ Feature: F1 - PO Creation Compensation Tests
   @F1-TC24 @P1 @Idempotency
   Scenario: Same request with idempotency key returns existing PO
     * def idempotencyKey = 'IDEMP-' + timestamp()
-    * def request = testData.validPORequest()
-    * request.externalOrderKey = 'PO-IDEMP-' + timestamp()
+    * def poRequest = testData.validPORequest()
+    * poRequest.externalOrderKey = 'PO-IDEMP-' + timestamp()
 
     # First request
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
     And header X-Idempotency-Key = idempotencyKey
-    And request request
+    And request poRequest
     When method post
     Then status 201
     * def firstPoKey = response.poKey
@@ -199,7 +199,7 @@ Feature: F1 - PO Creation Compensation Tests
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
     And header X-Idempotency-Key = idempotencyKey
-    And request request
+    And request poRequest
     When method post
     # Returns existing PO (200), not new (201)
     Then status 200
@@ -208,7 +208,7 @@ Feature: F1 - PO Creation Compensation Tests
     And match response.idempotent == true
 
     # Verify only one PO exists
-    * def poCount = db.query("SELECT COUNT(*) as cnt FROM dbo.po WHERE externpokey = '" + request.externalOrderKey + "'")
+    * def poCount = db.query("SELECT COUNT(*) as cnt FROM dbo.po WHERE externpokey = '" + poRequest.externalOrderKey + "'")
     * match poCount[0].cnt == 1
 
   # ─────────────────────────────────────────────────────────────
@@ -217,7 +217,7 @@ Feature: F1 - PO Creation Compensation Tests
   @F1-TC40 @P2 @CompensationAudit
   Scenario: Failed PO creation logs compensation audit
     * def externalKey = 'PO-COMP-AUDIT-' + timestamp()
-    * def request =
+    * def poRequest =
       """
       {
         "storerKey": "NIKE_KR",
@@ -232,7 +232,7 @@ Feature: F1 - PO Creation Compensation Tests
     Given path api + '/po'
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
-    And request request
+    And request poRequest
     When method post
     Then status 422
 
@@ -247,7 +247,7 @@ Feature: F1 - PO Creation Compensation Tests
   @F1-TC41 @P2 @NestedRollback
   Scenario: Nested transaction failure rolls back parent
     * def externalKey = 'PO-NESTED-' + timestamp()
-    * def request =
+    * def poRequest =
       """
       {
         "storerKey": "NIKE_KR",
@@ -264,7 +264,7 @@ Feature: F1 - PO Creation Compensation Tests
     And header Authorization = 'Bearer ' + authToken
     And header Content-Type = 'application/json'
     And header X-Test-Fail-Nested-Operation = 'true'
-    And request request
+    And request poRequest
     When method post
     Then status 500
 
