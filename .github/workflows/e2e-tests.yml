@@ -184,18 +184,6 @@ jobs:
       - name: Build Application
         run: mvn clean install -DskipTests -B
 
-      - name: Copy Feature Files to Test Classes
-        run: |
-          # Ensure feature files are in test-classes (workaround for Maven resource processing issues)
-          echo "=== Copying feature files to test-classes ==="
-          mkdir -p po-test/target/test-classes/com/wms/po/e2e/karate
-          cp -r po-test/src/test/java/com/wms/po/e2e/karate/*.feature po-test/target/test-classes/com/wms/po/e2e/karate/ 2>/dev/null || true
-          cp -r po-test/src/test/java/com/wms/po/e2e/karate/features po-test/target/test-classes/com/wms/po/e2e/karate/ 2>/dev/null || true
-
-          echo "=== Verifying feature files ==="
-          find po-test/target/test-classes -name "*.feature" | wc -l
-          echo "feature files copied to test-classes"
-
       - name: Start Application
         run: |
           java -jar po-api/target/po-api-*-exec.jar \
@@ -218,9 +206,24 @@ jobs:
 
       - name: Run Karate E2E Tests - ${{ matrix.flow-group.name }}
         run: |
-          mvn test -B \
+          # Ensure test resources are processed (feature files copied to test-classes)
+          mvn process-test-resources -pl po-test -B
+
+          # Verify feature files exist
+          echo "=== Feature files in test-classes ==="
+          find po-test/target/test-classes -name "*.feature" | head -20
+          FEATURE_COUNT=$(find po-test/target/test-classes -name "*.feature" | wc -l)
+          echo "Found $FEATURE_COUNT feature files"
+
+          if [ "$FEATURE_COUNT" -eq 0 ]; then
+            echo "ERROR: No feature files found in test-classes!"
+            exit 1
+          fi
+
+          # Run tests via failsafe (integration-test phase) as configured in pom.xml
+          mvn verify -B \
             -pl po-test \
-            -Dtest=KarateTestRunner \
+            -DskipUTs=true \
             -Dkarate.env=docker \
             -Dkarate.threads=${{ env.KARATE_THREADS }} \
             -Dkarate.options="--tags '${{ matrix.flow-group.tags }}'" \
@@ -233,6 +236,7 @@ jobs:
           name: karate-results-${{ matrix.flow-group.name }}
           path: |
             po-test/target/karate-reports/
+            po-test/target/failsafe-reports/
             po-test/target/surefire-reports/
           retention-days: 14
 
@@ -358,9 +362,13 @@ jobs:
 
       - name: Run Performance Tests
         run: |
-          mvn test -B \
+          # Ensure test resources are processed
+          mvn process-test-resources -pl po-test -B
+
+          # Run performance tests via failsafe
+          mvn verify -B \
             -pl po-test \
-            -Dtest=KarateTestRunner \
+            -DskipUTs=true \
             -Dkarate.env=docker \
             -Dkarate.threads=10 \
             -Dkarate.options="--tags @performance" \

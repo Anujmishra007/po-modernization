@@ -18,6 +18,8 @@
         <testcontainers.version>1.19.3</testcontainers.version>
         <gatling.version>3.10.3</gatling.version>
         <gatling-maven-plugin.version>4.7.0</gatling-maven-plugin.version>
+        <!-- Skip unit tests when running E2E only (use -DskipUTs=true) -->
+        <skipUTs>false</skipUTs>
     </properties>
 
     <dependencies>
@@ -184,6 +186,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.2</version>
                 <configuration>
+                    <skipTests>${skipUTs}</skipTests>
                     <includes>
                         <include>**/*Test.java</include>
                         <include>**/*Tests.java</include>
