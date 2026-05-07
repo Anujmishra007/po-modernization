@@ -204,8 +204,7 @@
                     <includes>
                         <include>**/KarateTestRunner.java</include>
                     </includes>
-                    <!-- Disable forking to avoid classpath isolation issues -->
-                    <forkCount>0</forkCount>
+                    <!-- Use forking for better test accuracy -->
                     <systemPropertyVariables>
                         <karate.env>${karate.env}</karate.env>
                     </systemPropertyVariables>
