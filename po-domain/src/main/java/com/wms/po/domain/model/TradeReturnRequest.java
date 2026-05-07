@@ -1,5 +1,7 @@
 package com.wms.po.domain.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -17,6 +19,7 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class TradeReturnRequest {
 
     /**
@@ -114,6 +117,7 @@ public class TradeReturnRequest {
     /**
      * Check if request has minimum required fields
      */
+    @JsonIgnore
     public boolean isValid() {
         return receiptKey != null && !receiptKey.isEmpty() &&
                storerKey != null && !storerKey.isEmpty() &&
