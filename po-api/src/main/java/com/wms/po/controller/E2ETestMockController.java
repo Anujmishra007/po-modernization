@@ -615,11 +615,74 @@ public class E2ETestMockController {
         ));
     }
 
+    // Track idempotency keys for retry tests
+    private final Map<String, Map<String, Object>> idempotencyResponses = new ConcurrentHashMap<>();
+
     @PostMapping("/po/{poKey}/populate")
     public ResponseEntity<Map<String, Object>> populatePO(
             @PathVariable String poKey,
-            @RequestBody(required = false) Map<String, Object> request) {
-        log.info("[E2E Mock] Populate PO: {}", poKey);
+            @RequestBody(required = false) Map<String, Object> request,
+            @RequestHeader(value = "X-Test-Fail-At-Step", required = false) String failAtStep,
+            @RequestHeader(value = "X-Test-Simulate-Timeout", required = false) String simulateTimeout,
+            @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyKey) {
+        log.info("[E2E Mock] Populate PO: {}, failAtStep={}, simulateTimeout={}, idempKey={}",
+                poKey, failAtStep, simulateTimeout, idempotencyKey);
+
+        // Check for idempotent retry (COMP-07)
+        if (idempotencyKey != null && idempotencyResponses.containsKey(idempotencyKey)) {
+            Map<String, Object> cachedResponse = new LinkedHashMap<>(idempotencyResponses.get(idempotencyKey));
+            cachedResponse.put("idempotent", true);
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(cachedResponse);
+        }
+
+        // 504 - Timeout simulation via header (COMP-05)
+        if ("true".equalsIgnoreCase(simulateTimeout)) {
+            return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(Map.of(
+                "errorCode", "INT_003",
+                "message", "Workflow timeout during population",
+                "poKey", poKey
+            ));
+        }
+
+        // Handle X-Test-Fail-At-Step for compensation tests (COMP-02, COMP-03, COMP-04)
+        if (failAtStep != null && !failAtStep.isBlank()) {
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("errorCode", "COMP_001");
+            response.put("compensated", true);
+
+            // Map step number to step name and compensated steps
+            switch (failAtStep) {
+                case "3":
+                    response.put("failedStep", "RECEIPT_DETAIL");
+                    response.put("compensatedSteps", List.of("RECEIPT_HEADER"));
+                    break;
+                case "4":
+                    response.put("failedStep", "RESERVATION");
+                    response.put("compensatedSteps", List.of("RECEIPT_DETAIL", "RECEIPT_HEADER"));
+                    break;
+                case "5":
+                    response.put("failedStep", "ALLOCATION");
+                    response.put("compensatedSteps", List.of("RESERVATION", "RECEIPT_DETAIL", "RECEIPT_HEADER"));
+                    break;
+                case "6":
+                    response.put("failedStep", "LEGACY_SYNC");
+                    response.put("compensatedSteps", List.of("ALLOCATION", "RESERVATION", "RECEIPT_DETAIL"));
+                    response.put("legacySyncFailed", true);
+                    break;
+                default:
+                    response.put("failedStep", "STEP_" + failAtStep);
+                    response.put("compensatedSteps", List.of("PREVIOUS_STEPS"));
+            }
+            response.put("message", "Population failed at step " + response.get("failedStep") + ", rolled back");
+            response.put("poKey", poKey);
+
+            // Cache for idempotency
+            if (idempotencyKey != null) {
+                idempotencyResponses.put(idempotencyKey, response);
+            }
+
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(response);
+        }
 
         // 404 - Not Found
         if (poKey.contains("NOTFOUND") || poKey.contains("NOT-EXIST")) {
@@ -629,8 +692,40 @@ public class E2ETestMockController {
             ));
         }
 
-        // 422 - Generic compensation patterns (any PO-COMP-* or PO-TEST-* for compensation tests)
-        // Also handle timestamp-based PO keys (e.g., PO-1778241676535) which are generated during test flows
+        // 422 - Specific compensation patterns with proper response format
+        if (poKey.startsWith("PO-COMP-RES-") || poKey.startsWith("PO-COMP-ALLOC-") ||
+            poKey.startsWith("PO-COMP-LEGACY-") || poKey.startsWith("PO-COMP-IDEMP-")) {
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("errorCode", "COMP_001");
+            response.put("poKey", poKey);
+            response.put("compensated", true);
+
+            if (poKey.contains("-RES-")) {
+                response.put("failedStep", "RESERVATION");
+                response.put("compensatedSteps", List.of("RECEIPT_DETAIL", "RECEIPT_HEADER"));
+            } else if (poKey.contains("-ALLOC-")) {
+                response.put("failedStep", "ALLOCATION");
+                response.put("compensatedSteps", List.of("RESERVATION", "RECEIPT_DETAIL", "RECEIPT_HEADER"));
+            } else if (poKey.contains("-LEGACY-")) {
+                response.put("failedStep", "LEGACY_SYNC");
+                response.put("compensatedSteps", List.of("ALLOCATION", "RESERVATION", "RECEIPT_DETAIL"));
+                response.put("legacySyncFailed", true);
+            } else if (poKey.contains("-IDEMP-")) {
+                response.put("failedStep", "RECEIPT_DETAIL");
+                response.put("compensatedSteps", List.of("RECEIPT_HEADER"));
+            }
+
+            response.put("message", "Population failed at step " + response.get("failedStep") + ", rolled back");
+
+            // Cache for idempotency
+            if (idempotencyKey != null) {
+                idempotencyResponses.put(idempotencyKey, response);
+            }
+
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(response);
+        }
+
+        // 422 - Generic compensation patterns (any other PO-COMP-* that simulates failure)
         if (poKey.startsWith("PO-COMP-") || poKey.startsWith("PO-TEST-") ||
             (poKey.startsWith("PO-") && poKey.matches("PO-\\d{10,}")) ||
             poKey.startsWith("PO-ERR-") || poKey.contains("-ERR-")) {
@@ -643,9 +738,9 @@ public class E2ETestMockController {
             } else {
                 return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
                     "errorCode", "PO_010",
-                    "legacyCode", 68010,
                     "message", "PO cannot be populated: compensation test failure for " + poKey,
                     "poKey", poKey,
+                    "compensated", true,
                     "retryable", false
                 ));
             }
@@ -654,17 +749,17 @@ public class E2ETestMockController {
         // 504 - Timeout
         if (poKey.startsWith("PO-COMP-TIMEOUT-") || poKey.contains("TIMEOUT")) {
             return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(Map.of(
-                "errorCode", "PO_020",
-                "legacyCode", 68020,
-                "message", "Population timed out for PO: " + poKey,
+                "errorCode", "INT_003",
+                "message", "Workflow timeout during population: " + poKey,
                 "poKey", poKey,
                 "retryable", true
             ));
         }
 
-        // 202 - Async/Cancelled (PO-COMP-CANCEL-*)
+        // 202 - Async/Cancelled (PO-COMP-CANCEL-*) for COMP-06
         if (poKey.startsWith("PO-COMP-CANCEL-") || poKey.startsWith("PO-ASYNC-") ||
-            poKey.startsWith("PO-TEMPORAL-")) {
+            poKey.startsWith("PO-TEMPORAL-") ||
+            (request != null && Boolean.TRUE.equals(request.get("async")))) {
             String workflowId = "WF-" + System.currentTimeMillis();
             return ResponseEntity.accepted().body(Map.of(
                 "poKey", poKey,
@@ -897,37 +992,160 @@ public class E2ETestMockController {
             @PathVariable String receiptKey,
             @RequestBody(required = false) Map<String, Object> request,
             @RequestHeader(value = "Authorization", required = false) String authHeader,
-            @RequestHeader(value = "X-User-Id", required = false) String userId) {
-        log.info("[E2E Mock] Finalize receipt: {}", receiptKey);
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-Test-Fail-At-Step", required = false) String failAtStep,
+            @RequestHeader(value = "X-Test-Simulate-Timeout", required = false) String simulateTimeout,
+            @RequestHeader(value = "X-Test-Simulate-DB-Error", required = false) String simulateDbError) {
+        log.info("[E2E Mock] Finalize receipt: {}, failAtStep={}", receiptKey, failAtStep);
 
-        // 404 - Not Found scenarios
+        // 504 - Timeout simulation via header (F3-TC19)
+        if ("true".equalsIgnoreCase(simulateTimeout)) {
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("errorCode", "INT_003");
+            response.put("message", "Workflow timeout during finalization");
+            response.put("compensated", true);
+            return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(response);
+        }
+
+        // 500 - Database error simulation via header (F3-TC20)
+        if ("true".equalsIgnoreCase(simulateDbError)) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "errorCode", "INT_001",
+                "message", "Database error during finalization"
+            ));
+        }
+
+        // Handle X-Test-Fail-At-Step for compensation tests (COMP-08, COMP-10, COMP-11, COMP-12, COMP-28, COMP-29)
+        if (failAtStep != null && !failAtStep.isBlank()) {
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("errorCode", "COMP_001");
+            response.put("compensated", true);
+
+            // Map step number to step name and compensated steps
+            switch (failAtStep) {
+                case "3":
+                    response.put("failedStep", "STATUS_UPDATE");
+                    response.put("compensatedSteps", List.of("RECEIPT_HEADER"));
+                    break;
+                case "5":
+                    response.put("failedStep", "HOLD_APPLICATION");
+                    response.put("compensatedSteps", List.of("INVENTORY_POSTING", "STATUS_UPDATE"));
+                    break;
+                case "6":
+                    response.put("failedStep", "PO_QTY_UPDATE");
+                    response.put("compensatedSteps", List.of("HOLD_APPLICATION", "INVENTORY_POSTING", "STATUS_UPDATE"));
+                    // For COMP-28: compensation order verification
+                    if (request != null && (Boolean.TRUE.equals(request.get("createPutawayTasks")) ||
+                        Boolean.TRUE.equals(request.get("applyQualityHold")))) {
+                        response.put("compensatedSteps", List.of("PUTAWAY_RELEASE", "HOLD_APPLICATION", "INVENTORY_POSTING", "STATUS_UPDATE"));
+                    }
+                    break;
+                case "7":
+                    response.put("failedStep", "PUTAWAY_RELEASE");
+                    response.put("compensatedSteps", List.of("INVENTORY_POSTING", "STATUS_UPDATE"));
+                    break;
+                default:
+                    response.put("failedStep", "STEP_" + failAtStep);
+                    response.put("compensatedSteps", List.of("PREVIOUS_STEPS"));
+            }
+            response.put("message", "Finalization failed at step " + response.get("failedStep") + ", rolled back");
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(response);
+        }
+
+        // 404 - Not Found scenarios (F3-TC11)
         if (NOTFOUND_RECEIPTS.contains(receiptKey) || receiptKey.startsWith("NOTFOUND-") ||
             receiptKey.contains("DOES-NOT-EXIST") || receiptKey.contains("NOT-EXIST")) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
                 "errorCode", "RCV_001",
-                "legacyCode", 69001,
-                "message", "Receipt not found: " + receiptKey
+                "message", "Receipt not found: " + receiptKey,
+                "receiptKey", receiptKey
+            ));
+        }
+
+        // 422 - Already finalized (F3-TC12) - RCV-ERR-003
+        if (receiptKey.equals("RCV-ERR-003")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "RCV_005",
+                "message", "Receipt already finalized: " + receiptKey,
+                "currentStatus", "9"
+            ));
+        }
+
+        // 422 - Cancelled receipt (F3-TC13) - RCV-ERR-004
+        if (receiptKey.equals("RCV-ERR-004")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "RCV_006",
+                "message", "Receipt is cancelled: " + receiptKey
+            ));
+        }
+
+        // 422 - Missing required lottables (F3-TC16) - RCV-ERR-005
+        if (receiptKey.equals("RCV-ERR-005")) {
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("errorCode", "RCV_007");
+            response.put("message", "Missing required lottable for Nike receipt");
+            response.put("missingLottables", List.of("lottable01"));
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(response);
+        }
+
+        // 422 - PO on hold (F3-TC17) - RCV-ERR-006
+        if (receiptKey.equals("RCV-ERR-006")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "PO_007",
+                "message", "PO is on hold for receipt: " + receiptKey,
+                "holdCode", "QC_HOLD"
+            ));
+        }
+
+        // 422 - Zero quantity (F3-TC18) - RCV-ERR-007
+        if (receiptKey.equals("RCV-ERR-007")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "RCV_008",
+                "message", "Receipt has zero quantity lines"
+            ));
+        }
+
+        // 422 - Invalid target location (F3-TC14)
+        String targetLocation = request != null ? (String) request.get("targetLocation") : null;
+        if (targetLocation != null && targetLocation.equals("INVALID-LOC-999")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "LOC_001",
+                "message", "Location not found: " + targetLocation,
+                "location", targetLocation
+            ));
+        }
+
+        // 422 - Location full (F3-TC15)
+        if (targetLocation != null && targetLocation.equals("TEST-LOC-FULL")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "INV_011",
+                "message", "Location full: " + targetLocation,
+                "availableCapacity", 0
             ));
         }
 
         // 422 - Generic compensation patterns (any RCV-COMP-* that simulates failure for compensation tests)
-        // These are tests that validate compensation/rollback behavior
         // Note: RCV-HAPPY-* patterns should succeed (200), not error (422)
         if (receiptKey.startsWith("RCV-COMP-") || receiptKey.startsWith("RCV-TEST-COMP-")) {
-            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
-                "errorCode", "RCV_010",
-                "legacyCode", 69010,
-                "message", "Receipt cannot be finalized: compensation test failure for " + receiptKey,
-                "receiptKey", receiptKey,
-                "retryable", false
-            ));
+            // Skip async patterns that need 202
+            if (receiptKey.startsWith("RCV-COMP-FCANCEL-") || receiptKey.startsWith("RCV-COMP-CANCEL-") ||
+                receiptKey.startsWith("RCV-COMP-NETWORK-")) {
+                // Fall through to async handling
+            } else {
+                Map<String, Object> response = new LinkedHashMap<>();
+                response.put("errorCode", "RCV_010");
+                response.put("message", "Receipt cannot be finalized: compensation test failure for " + receiptKey);
+                response.put("receiptKey", receiptKey);
+                response.put("compensated", true);
+                response.put("retryable", false);
+                return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(response);
+            }
         }
 
-        // 422 - Validation/Business rule errors
+        // 422 - Other validation/Business rule errors (generic RCV-ERR-* patterns)
         if (receiptKey.startsWith("RCV-ERR-") || receiptKey.contains("-ERR-")) {
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
                 "errorCode", "RCV_010",
-                "legacyCode", 69010,
                 "message", "Receipt cannot be finalized: validation failed for " + receiptKey,
                 "receiptKey", receiptKey,
                 "retryable", false
@@ -936,20 +1154,19 @@ public class E2ETestMockController {
 
         // 504 - Timeout scenarios
         if (receiptKey.startsWith("RCV-TIMEOUT-") || receiptKey.contains("TIMEOUT")) {
-            return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(Map.of(
-                "errorCode", "RCV_020",
-                "legacyCode", 69020,
-                "message", "Finalization timed out for receipt: " + receiptKey,
-                "receiptKey", receiptKey,
-                "retryable", true
-            ));
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("errorCode", "INT_003");
+            response.put("message", "Workflow timeout during finalization: " + receiptKey);
+            response.put("receiptKey", receiptKey);
+            response.put("compensated", true);
+            response.put("retryable", true);
+            return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(response);
         }
 
         // 500 - Database error scenarios
         if (receiptKey.startsWith("RCV-DBERR-") || receiptKey.contains("DBERR")) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "errorCode", "RCV_030",
-                "legacyCode", 69030,
+                "errorCode", "INT_001",
                 "message", "Database error during finalization: " + receiptKey,
                 "receiptKey", receiptKey,
                 "retryable", true
@@ -960,7 +1177,6 @@ public class E2ETestMockController {
         if (receiptKey.contains("OOM")) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
                 "errorCode", "RCV_050",
-                "legacyCode", 69050,
                 "message", "Service unavailable for receipt: " + receiptKey,
                 "receiptKey", receiptKey,
                 "retryable", true
@@ -968,22 +1184,21 @@ public class E2ETestMockController {
         }
 
         // 409 - Concurrent modification conflict (only for explicit CONFLICT or COMP-CONC patterns)
-        // Note: RCV-CONC-* by itself should succeed for first finalization
         if (receiptKey.contains("CONFLICT") || receiptKey.startsWith("RCV-COMP-CONC-") ||
             receiptKey.contains("-LOCKED-")) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
                 "errorCode", "RCV_040",
-                "legacyCode", 69040,
                 "message", "Concurrent modification detected for receipt: " + receiptKey,
                 "receiptKey", receiptKey,
                 "retryable", true
             ));
         }
 
-        // 202 - Async/Temporal workflow processing (including compensation patterns)
+        // 202 - Async/Temporal workflow processing (including compensation patterns for COMP-14)
         if (receiptKey.startsWith("RCV-TEMPORAL-") || receiptKey.startsWith("RCV-ASYNC-") ||
             receiptKey.contains("TEMPORAL") || receiptKey.startsWith("RCV-COMP-NETWORK-") ||
-            receiptKey.startsWith("RCV-COMP-FCANCEL-") || receiptKey.startsWith("RCV-COMP-CANCEL-")) {
+            receiptKey.startsWith("RCV-COMP-FCANCEL-") || receiptKey.startsWith("RCV-COMP-CANCEL-") ||
+            (request != null && Boolean.TRUE.equals(request.get("async")))) {
             String workflowId = "WF-" + System.currentTimeMillis();
             return ResponseEntity.accepted().body(Map.of(
                 "receiptKey", receiptKey,
@@ -998,7 +1213,6 @@ public class E2ETestMockController {
         boolean createPutawayTasks = request != null && Boolean.TRUE.equals(request.get("createPutawayTasks"));
         boolean closePoIfComplete = request != null && Boolean.TRUE.equals(request.get("closePoIfComplete"));
         boolean qualityHold = request != null && Boolean.TRUE.equals(request.get("qualityHold"));
-        String targetLocation = request != null ? (String) request.get("targetLocation") : null;
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("receiptKey", receiptKey);
@@ -1100,12 +1314,37 @@ public class E2ETestMockController {
     }
 
     @GetMapping("/receipts/{receiptKey}/details")
-    public ResponseEntity<List<Map<String, Object>>> getReceiptDetails(@PathVariable String receiptKey) {
+    public ResponseEntity<Map<String, Object>> getReceiptDetails(@PathVariable String receiptKey) {
         log.info("[E2E Mock] Get receipt details: {}", receiptKey);
-        return ResponseEntity.ok(List.of(
-            Map.of("lineNumber", "00001", "sku", "SKU-001", "qtyExpected", 100, "qtyReceived", 100),
-            Map.of("lineNumber", "00002", "sku", "SKU-002", "qtyExpected", 50, "qtyReceived", 50)
-        ));
+
+        // Build lines with appropriate lottable fields
+        List<Map<String, Object>> lines = new ArrayList<>();
+
+        Map<String, Object> line1 = new LinkedHashMap<>();
+        line1.put("lineNumber", "00001");
+        line1.put("sku", "NK-AIRMAX90-BLK");
+        line1.put("qtyExpected", 100);
+        line1.put("qtyReceived", 100);
+        line1.put("lottable01", "AM90-2024");
+        line1.put("lottable02", "BLACK");
+        line1.put("lottable03", "US10");
+        line1.put("lottable04", "SEASON-S24");
+        line1.put("lottableRequired", false);  // For H&M tests
+        lines.add(line1);
+
+        Map<String, Object> line2 = new LinkedHashMap<>();
+        line2.put("lineNumber", "00002");
+        line2.put("sku", "SKU-002");
+        line2.put("qtyExpected", 50);
+        line2.put("qtyReceived", 50);
+        line2.put("lottableRequired", false);
+        lines.add(line2);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("receiptKey", receiptKey);
+        response.put("lines", lines);
+
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/receipts/{receiptKey}/available")
@@ -1643,11 +1882,30 @@ public class E2ETestMockController {
             @PathVariable String receiptKey, @PathVariable String lineNumber,
             @RequestBody Map<String, Object> request) {
         log.info("[E2E Mock] RDT Update lottables: {}/{}", receiptKey, lineNumber);
-        return ResponseEntity.ok(Map.of(
-            "receiptKey", receiptKey,
-            "lineNumber", lineNumber,
-            "updated", true
-        ));
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("receiptKey", receiptKey);
+        response.put("lineNumber", lineNumber);
+        response.put("updated", true);
+        response.put("lottablesUpdated", true);
+
+        // Copy lottable values from request to response
+        if (request != null) {
+            if (request.containsKey("lottable01")) {
+                response.put("lottable01", request.get("lottable01"));
+            }
+            if (request.containsKey("lottable02")) {
+                response.put("lottable02", request.get("lottable02"));
+            }
+            if (request.containsKey("lottable03")) {
+                response.put("lottable03", request.get("lottable03"));
+            }
+            if (request.containsKey("scannedValue")) {
+                response.put("scannedValue", request.get("scannedValue"));
+            }
+        }
+
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/rdt/trade-returns/{returnKey}/receive")
@@ -1849,14 +2107,27 @@ public class E2ETestMockController {
 
     // ==================== Workflows ====================
 
+    // Track cancelled workflows for status checks
+    private final Set<String> cancelledWorkflows = ConcurrentHashMap.newKeySet();
+
     @GetMapping("/workflows/{workflowId}/status")
     public ResponseEntity<Map<String, Object>> getWorkflowStatus(@PathVariable String workflowId) {
         log.info("[E2E Mock] Get workflow status: {}", workflowId);
-        return ResponseEntity.ok(Map.of(
-            "workflowId", workflowId,
-            "status", "COMPLETED",
-            "completedAt", LocalDateTime.now().toString()
-        ));
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("workflowId", workflowId);
+
+        // Check if workflow was cancelled (for COMP-06)
+        if (cancelledWorkflows.contains(workflowId)) {
+            response.put("status", "CANCELLED");
+            response.put("compensated", true);
+            response.put("cancelledAt", LocalDateTime.now().toString());
+        } else {
+            response.put("status", "COMPLETED");
+            response.put("completedAt", LocalDateTime.now().toString());
+        }
+
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/workflows/{workflowId}/history")
@@ -1870,11 +2141,19 @@ public class E2ETestMockController {
     }
 
     @PostMapping("/workflows/{workflowId}/cancel")
-    public ResponseEntity<Map<String, Object>> cancelWorkflow(@PathVariable String workflowId) {
+    public ResponseEntity<Map<String, Object>> cancelWorkflow(
+            @PathVariable String workflowId,
+            @RequestBody(required = false) Map<String, Object> request) {
         log.info("[E2E Mock] Cancel workflow: {}", workflowId);
+
+        // Track cancelled workflow
+        cancelledWorkflows.add(workflowId);
+
         return ResponseEntity.ok(Map.of(
             "workflowId", workflowId,
-            "cancelled", true
+            "cancelled", true,
+            "compensated", true,
+            "cancelledAt", LocalDateTime.now().toString()
         ));
     }
 
@@ -1944,14 +2223,35 @@ public class E2ETestMockController {
     // ==================== Inventory ====================
 
     @GetMapping("/inventory/search")
-    public ResponseEntity<List<Map<String, Object>>> searchInventory(
+    public ResponseEntity<Map<String, Object>> searchInventory(
             @RequestParam(required = false) String sku,
-            @RequestParam(required = false) String location) {
-        log.info("[E2E Mock] Search inventory: sku={}, location={}", sku, location);
-        return ResponseEntity.ok(List.of(
-            Map.of("sku", sku != null ? sku : "SKU-001", "location", "A-01-01", "qty", 100),
-            Map.of("sku", sku != null ? sku : "SKU-001", "location", "A-01-02", "qty", 50)
-        ));
+            @RequestParam(required = false) String location,
+            @RequestParam(required = false) String storerKey,
+            @RequestParam(required = false) String lottable01,
+            @RequestParam(required = false) String lottable02) {
+        log.info("[E2E Mock] Search inventory: sku={}, location={}, storerKey={}, lottable01={}, lottable02={}",
+                sku, location, storerKey, lottable01, lottable02);
+
+        // Build result items with lottable values if provided
+        List<Map<String, Object>> results = new ArrayList<>();
+
+        Map<String, Object> item1 = new LinkedHashMap<>();
+        item1.put("sku", sku != null ? sku : "SKU-001");
+        item1.put("location", "A-01-01");
+        item1.put("qty", 100);
+        if (lottable01 != null) item1.put("lottable01", lottable01);
+        if (lottable02 != null) item1.put("lottable02", lottable02);
+        results.add(item1);
+
+        Map<String, Object> item2 = new LinkedHashMap<>();
+        item2.put("sku", sku != null ? sku : "SKU-001");
+        item2.put("location", "A-01-02");
+        item2.put("qty", 50);
+        if (lottable01 != null) item2.put("lottable01", lottable01);
+        if (lottable02 != null) item2.put("lottable02", lottable02);
+        results.add(item2);
+
+        return ResponseEntity.ok(Map.of("results", results));
     }
 
     @PostMapping("/inventory/split")
@@ -2023,12 +2323,18 @@ public class E2ETestMockController {
     }
 
     @GetMapping("/reports/lottable-summary")
-    public ResponseEntity<Map<String, Object>> getLottableSummaryReport() {
-        log.info("[E2E Mock] Get lottable summary report");
-        return ResponseEntity.ok(Map.of(
-            "totalRecords", 1000,
-            "withLottables", 800
-        ));
+    public ResponseEntity<Map<String, Object>> getLottableSummaryReport(
+            @RequestParam(required = false) String storerKey,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo) {
+        log.info("[E2E Mock] Get lottable summary report: storerKey={}, dateFrom={}, dateTo={}",
+                storerKey, dateFrom, dateTo);
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("totalRecords", 1000);
+        summary.put("withLottables", 800);
+
+        return ResponseEntity.ok(Map.of("summary", summary));
     }
 
     // ==================== EDI ====================
@@ -2038,7 +2344,7 @@ public class E2ETestMockController {
             @RequestBody String ediContent,
             @RequestHeader(value = "Content-Type", required = false) String contentType,
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
-        log.info("[E2E Mock] Process EDI inbound: {} chars", ediContent != null ? ediContent.length() : 0);
+        log.info("[E2E Mock] Process EDI inbound: {} chars, contentType={}", ediContent != null ? ediContent.length() : 0, contentType);
 
         if (authHeader == null || authHeader.isBlank()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
@@ -2047,44 +2353,64 @@ public class E2ETestMockController {
             ));
         }
 
-        // Check for malformed EDI content (400)
+        // Check for null/empty EDI content (400)
         if (ediContent == null || ediContent.isBlank()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
                 "errorCode", "EDI_001",
-                "legacyCode", 70001,
                 "message", "EDI content is required"
             ));
         }
 
-        // Check for various error patterns in EDI content
-        if (ediContent.contains("MALFORMED") || ediContent.contains("INVALID-EDI") ||
-            ediContent.contains("BAD_FORMAT") || ediContent.contains("ERROR") ||
-            ediContent.contains("PARSE_FAIL") || ediContent.contains("<xml>") ||
-            !ediContent.contains("ISA") || ediContent.length() < 10) {
+        // 400 - Missing mandatory segment (F2-TC09)
+        // Check for EDI-ERR-001 pattern (error test file with missing REF*DP segment)
+        // Also check MISSING-SEGMENT pattern
+        if (ediContent.contains("EDI-ERR-001") || ediContent.contains("MISSING-SEGMENT") ||
+            ediContent.contains("MISSING_SEGMENT") || ediContent.contains("ERROR-MISSING") ||
+            (ediContent.contains("ERRSENDER") && !ediContent.contains("REF*DP"))) {
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("errorCode", "EDI_001");
+            response.put("message", "Missing mandatory segment in EDI content");
+            response.put("missingSegments", List.of("REF*DP"));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
+
+        // 400 - Malformed EDI content (F2-TC10)
+        // Check for EDI-MALFORMED pattern and various invalid data markers
+        if (ediContent.contains("EDI-MALFORMED") || ediContent.contains("MALFORMED") ||
+            ediContent.contains("ERROR-MALFORMED") || ediContent.contains("INVALID-EDI") ||
+            ediContent.contains("BAD_FORMAT") || ediContent.contains("PARSE_FAIL") ||
+            ediContent.contains("<xml>") || ediContent.contains("BADSENDER") ||
+            ediContent.contains("INVALID-DATE") || ediContent.contains("INVALID-QTY") ||
+            ediContent.contains("INVALID-PRICE")) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
                 "errorCode", "EDI_002",
-                "legacyCode", 70002,
-                "message", "Malformed EDI content: invalid format or structure",
-                "retryable", false
+                "message", "Parse error: malformed EDI content"
+            ));
+        }
+
+        // Check for basic EDI structure (should have ISA segment for valid X12)
+        // Only do this check if it looks like it's supposed to be valid EDI
+        if (!ediContent.contains("ISA") && ediContent.length() < 50) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "errorCode", "EDI_002",
+                "message", "Parse error: invalid EDI structure - missing ISA segment"
             ));
         }
 
         // Check for validation errors in EDI content
-        if (ediContent.contains("INVALID_STORER") || ediContent.contains("INVALID_FACILITY") ||
-            ediContent.contains("MISSING_SEGMENT")) {
+        if (ediContent.contains("INVALID_STORER") || ediContent.contains("INVALID_FACILITY")) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
                 "errorCode", "EDI_003",
-                "legacyCode", 70003,
-                "message", "EDI validation failed: missing required segments or invalid values",
-                "retryable", false
+                "message", "EDI validation failed: invalid storer or facility"
             ));
         }
 
-        // Determine transaction type from content (simplified)
+        // Determine transaction type from content
         String transactionType = "850"; // Default to PO
-        if (ediContent.contains("856")) {
+        if (ediContent.contains("856") || ediContent.contains("ASN")) {
             transactionType = "856"; // ASN
         }
+
         // EDI inbound returns 202 Accepted for async processing
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
             "messageId", "EDI-" + System.currentTimeMillis(),
@@ -2106,11 +2432,18 @@ public class E2ETestMockController {
             ));
         }
 
-        return ResponseEntity.ok(Map.of(
-            "messageId", messageId,
-            "type", "850",
-            "parsed", true
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("messageId", messageId);
+        response.put("type", "856"); // ASN
+        response.put("parsed", true);
+        // Include lottables from parsed REF segments (F5-TC06)
+        response.put("lottables", Map.of(
+            "lottable01", "STYLE-FROM-EDI",
+            "lottable02", "COLOR-FROM-EDI",
+            "lottable03", "SIZE-FROM-EDI"
         ));
+
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/edi/messages/{messageId}/status")
@@ -2136,15 +2469,22 @@ public class E2ETestMockController {
     // ==================== Audit ====================
 
     @GetMapping("/audit/lottable-changes")
-    public ResponseEntity<List<Map<String, Object>>> getLottableChangesAudit() {
-        log.info("[E2E Mock] Get lottable changes audit");
-        return ResponseEntity.ok(List.of(
+    public ResponseEntity<Map<String, Object>> getLottableChangesAudit(
+            @RequestParam(required = false) String entityKey) {
+        log.info("[E2E Mock] Get lottable changes audit: entityKey={}", entityKey);
+
+        List<Map<String, Object>> changes = List.of(
             Map.of("changeId", "CHG-001", "field", "lottable01", "oldValue", "OLD", "newValue", "NEW"),
             Map.of("changeId", "CHG-002", "field", "lottable02", "oldValue", "A", "newValue", "B")
-        ));
+        );
+
+        return ResponseEntity.ok(Map.of("changes", changes));
     }
 
     // ==================== Cross-Dock Allocation ====================
+
+    // Track allocations for duplicate detection
+    private final Set<String> existingAllocations = ConcurrentHashMap.newKeySet();
 
     @PostMapping("/xdock/allocate")
     public ResponseEntity<Map<String, Object>> xdockAllocate(
@@ -2259,9 +2599,21 @@ public class E2ETestMockController {
             ));
         }
 
-        // 409 - Conflict / Duplicate scenarios
+        // 409 - Conflict / Duplicate scenarios (F4-TC15)
+        // Create allocation key for duplicate detection
+        String allocationKey = receiptKey + ":" + orderKey + ":" + sku;
+        if (receiptKey != null && orderKey != null) {
+            if (existingAllocations.contains(allocationKey)) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "errorCode", "XDOCK_005",
+                    "message", "Duplicate allocation: receipt already allocated for cross-dock"
+                ));
+            }
+        }
+
+        // Also check for explicit conflict patterns
         if (receiptKey != null && (receiptKey.contains("CONCURRENT") || receiptKey.contains("CONFLICT") ||
-            receiptKey.contains("LOCKED") || receiptKey.contains("XDOCK"))) {
+            receiptKey.contains("LOCKED"))) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
                 "errorCode", "XDOCK_005",
                 "message", "Duplicate allocation: receipt already allocated for cross-dock"
@@ -2285,6 +2637,12 @@ public class E2ETestMockController {
         response.put("status", "ALLOCATED");
         response.put("allocType", "XDOCK");
         response.put("allocatedAt", LocalDateTime.now().toString());
+
+        // Track allocation for duplicate detection (F4-TC15)
+        if (receiptKey != null && orderKey != null) {
+            String trackingKey = receiptKey + ":" + orderKey + ":" + (sku != null ? sku : "SKU-001");
+            existingAllocations.add(trackingKey);
+        }
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
@@ -2374,6 +2732,9 @@ public class E2ETestMockController {
 
     // ==================== ASN Population ====================
 
+    // Track created ASN numbers for duplicate detection
+    private final Set<String> createdAsnNumbers = ConcurrentHashMap.newKeySet();
+
     @PostMapping("/asn/populate")
     public ResponseEntity<Map<String, Object>> populateAsn(
             @RequestBody Map<String, Object> request,
@@ -2381,31 +2742,177 @@ public class E2ETestMockController {
         log.info("[E2E Mock] Populate ASN: {}", request);
 
         String poKey = (String) request.get("poKey");
-        String asnKey = (String) request.get("asnKey");
+        String asnNumber = (String) request.get("asnNumber");
+        Boolean validateSkuOnPO = (Boolean) request.get("validateSkuOnPO");
+        Boolean allowOverReceipt = (Boolean) request.get("allowOverReceipt");
+        Object overReceiptToleranceObj = request.get("overReceiptTolerance");
+        int overReceiptTolerance = overReceiptToleranceObj instanceof Number ? ((Number) overReceiptToleranceObj).intValue() : 10;
 
-        if (poKey != null && poKey.contains("NOTFOUND")) {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> lines = (List<Map<String, Object>>) request.get("lines");
+
+        // 404 - PO not found (F2-TC11)
+        if (poKey != null && (poKey.contains("DOES-NOT-EXIST") || poKey.contains("NOT-EXIST") ||
+            poKey.contains("NOTFOUND") || poKey.startsWith("PO-NOTFOUND"))) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                "errorCode", "ASN_001",
-                "message", "PO not found: " + poKey
+                "errorCode", "PO_001",
+                "message", "PO not found: " + poKey,
+                "poKey", poKey
             ));
         }
-        if (poKey != null && poKey.contains("ERR")) {
+
+        // 422 - PO is closed (F2-TC12) - PO-ERR-004 pattern
+        if (poKey != null && poKey.equals("PO-ERR-004")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "PO_008",
+                "message", "PO is closed: " + poKey,
+                "currentStatus", "9"
+            ));
+        }
+
+        // 422 - PO is cancelled (F2-TC13) - PO-ERR-005 pattern
+        if (poKey != null && poKey.equals("PO-ERR-005")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "PO_006",
+                "message", "PO is cancelled: " + poKey
+            ));
+        }
+
+        // Check for invalid SKU in lines (F2-TC14)
+        if (lines != null) {
+            for (Map<String, Object> line : lines) {
+                String sku = (String) line.get("sku");
+                if (sku != null && (sku.contains("INVALID-SKU") || sku.equals("INVALID-SKU-NOT-IN-DB"))) {
+                    return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                        "errorCode", "PO_013",
+                        "message", "SKU not found: " + sku,
+                        "invalidSku", sku
+                    ));
+                }
+            }
+        }
+
+        // 422 - Over-receipt exceeds tolerance (F2-TC15)
+        if (Boolean.TRUE.equals(allowOverReceipt) && lines != null) {
+            for (Map<String, Object> line : lines) {
+                Object qtyOrderedObj = line.get("qtyOrdered");
+                Object qtyShippedObj = line.get("qtyShipped");
+                if (qtyOrderedObj instanceof Number && qtyShippedObj instanceof Number) {
+                    int qtyOrdered = ((Number) qtyOrderedObj).intValue();
+                    int qtyShipped = ((Number) qtyShippedObj).intValue();
+                    int overage = qtyShipped - qtyOrdered;
+                    int toleranceQty = (qtyOrdered * overReceiptTolerance) / 100;
+                    if (overage > toleranceQty) {
+                        Map<String, Object> response = new LinkedHashMap<>();
+                        response.put("errorCode", "RCV_003");
+                        response.put("message", "Over-receipt exceeds tolerance: " + overage + " over " + toleranceQty + " allowed");
+                        response.put("tolerance", overReceiptTolerance);
+                        response.put("actualOverage", overage);
+                        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(response);
+                    }
+                }
+            }
+        }
+
+        // 409 - Duplicate ASN number (F2-TC16)
+        if (asnNumber != null) {
+            if (createdAsnNumbers.contains(asnNumber)) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "errorCode", "ASN_001",
+                    "message", "Duplicate ASN number: " + asnNumber,
+                    "asnNumber", asnNumber
+                ));
+            }
+        }
+
+        // 422 - SKU not on PO (F2-TC17)
+        if (Boolean.TRUE.equals(validateSkuOnPO) && poKey != null && poKey.equals("PO-HAPPY-001") && lines != null) {
+            for (Map<String, Object> line : lines) {
+                String sku = (String) line.get("sku");
+                // PO-HAPPY-001 is Nike, so H&M SKUs should fail
+                if (sku != null && (sku.startsWith("HM-") || sku.contains("-HM-"))) {
+                    return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                        "errorCode", "RCV_004",
+                        "message", "SKU not found on PO: " + sku
+                    ));
+                }
+            }
+        }
+
+        // 422 - Generic error patterns
+        if (poKey != null && (poKey.contains("-ERR-") || poKey.startsWith("ERR-") || poKey.endsWith("-ERR"))) {
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
                 "errorCode", "ASN_002",
-                "message", "PO not eligible for ASN population"
+                "message", "PO not eligible for ASN population: " + poKey
             ));
+        }
+
+        // Track ASN for duplicate detection
+        if (asnNumber != null) {
+            createdAsnNumbers.add(asnNumber);
         }
 
         String receiptKey = "RCV-" + System.currentTimeMillis();
+        String linkedPoKey = poKey;
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
-            "poKey", poKey,
-            "asnKey", asnKey != null ? asnKey : "ASN-" + System.currentTimeMillis(),
-            "receiptKey", receiptKey,
-            "status", "POPULATED",
-            "linesPopulated", 3,
-            "populatedAt", LocalDateTime.now().toString()
-        ));
+        // Build success response with additional fields for happy path tests
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("poKey", poKey);
+        response.put("asnNumber", asnNumber != null ? asnNumber : "ASN-" + System.currentTimeMillis());
+        response.put("receiptKey", receiptKey);
+        response.put("status", "POPULATED");
+        response.put("linesPopulated", lines != null ? lines.size() : 1);
+        response.put("populatedAt", LocalDateTime.now().toString());
+
+        // Add linkedPoKey for F2-TC04
+        if (linkedPoKey != null) {
+            response.put("linkedPoKey", linkedPoKey);
+        }
+
+        // Add carton info for F2-TC05
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> cartons = (List<Map<String, Object>>) request.get("cartons");
+        if (cartons != null && !cartons.isEmpty()) {
+            response.put("cartonCount", cartons.size());
+            int totalQty = 0;
+            for (Map<String, Object> carton : cartons) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> cartonLines = (List<Map<String, Object>>) carton.get("lines");
+                if (cartonLines != null) {
+                    for (Map<String, Object> line : cartonLines) {
+                        Object qty = line.get("qtyShipped");
+                        if (qty instanceof Number) {
+                            totalQty += ((Number) qty).intValue();
+                        }
+                    }
+                }
+            }
+            response.put("totalQty", totalQty);
+        }
+
+        // Add partial shipment info for F2-TC06
+        if (Boolean.TRUE.equals(request.get("isPartialShipment"))) {
+            response.put("partialShipment", true);
+        }
+
+        // Add over-receipt warning for F2-TC08
+        if (Boolean.TRUE.equals(allowOverReceipt) && lines != null) {
+            for (Map<String, Object> line : lines) {
+                Object qtyOrderedObj = line.get("qtyOrdered");
+                Object qtyShippedObj = line.get("qtyShipped");
+                if (qtyOrderedObj instanceof Number && qtyShippedObj instanceof Number) {
+                    int qtyOrdered = ((Number) qtyOrderedObj).intValue();
+                    int qtyShipped = ((Number) qtyShippedObj).intValue();
+                    if (qtyShipped > qtyOrdered) {
+                        response.put("overReceiptWarning", true);
+                        response.put("overReceiptQty", qtyShipped - qtyOrdered);
+                        break;
+                    }
+                }
+            }
+        }
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     // ==================== Receipts (Create) ====================
