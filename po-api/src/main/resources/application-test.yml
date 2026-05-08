@@ -1,0 +1,64 @@
+# Test profile configuration for E2E testing
+spring:
+  profiles:
+    active: test
+
+  datasource:
+    url: jdbc:postgresql://localhost:5433/po_test
+    username: wms
+    password: wms123
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 2
+      idle-timeout: 300000
+      connection-timeout: 20000
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: true
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    properties:
+      hibernate:
+        format_sql: true
+        default_schema: dbo
+
+  flyway:
+    enabled: false
+
+server:
+  port: 8080
+
+# Temporal disabled for E2E tests
+temporal:
+  enabled: false
+
+# PO configuration
+po:
+  dualwrite:
+    enabled: false
+  default:
+    version: V2
+
+# Configuration path
+config:
+  base-path: classpath:config/
+
+# Logging - more verbose for test debugging
+logging:
+  level:
+    root: INFO
+    com.wms.po: DEBUG
+    com.wms.po.controller: DEBUG
+    org.springframework.web: DEBUG
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always

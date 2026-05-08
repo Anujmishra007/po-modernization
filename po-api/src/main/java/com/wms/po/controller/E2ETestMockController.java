@@ -1,0 +1,776 @@
+package com.wms.po.controller;
+
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Profile;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDateTime;
+import java.util.*;
+
+/**
+ * Mock controller for E2E testing - provides stub endpoints for all features
+ * that are tested but not yet implemented in the actual service.
+ *
+ * This controller is only active when the 'e2e-test' profile is enabled.
+ */
+@RestController
+@RequestMapping("/api/v1")
+@Profile({"test", "e2e-test"})
+@Slf4j
+public class E2ETestMockController {
+
+    // ==================== PO Extended Operations ====================
+
+    @PostMapping("/po/{poKey}/cancel")
+    public ResponseEntity<Map<String, Object>> cancelPO(@PathVariable String poKey) {
+        log.info("[E2E Mock] Cancel PO: {}", poKey);
+        return ResponseEntity.ok(Map.of(
+            "poKey", poKey,
+            "status", "X",
+            "cancelledAt", LocalDateTime.now().toString(),
+            "message", "PO cancelled successfully"
+        ));
+    }
+
+    @PostMapping("/po/{poKey}/archive")
+    public ResponseEntity<Map<String, Object>> archivePO(@PathVariable String poKey) {
+        log.info("[E2E Mock] Archive PO: {}", poKey);
+        return ResponseEntity.ok(Map.of(
+            "poKey", poKey,
+            "archived", true,
+            "archivedAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    @PostMapping("/po/{poKey}/revert-cancel")
+    public ResponseEntity<Map<String, Object>> revertCancelPO(@PathVariable String poKey) {
+        log.info("[E2E Mock] Revert cancel PO: {}", poKey);
+        return ResponseEntity.ok(Map.of(
+            "poKey", poKey,
+            "status", "0",
+            "revertedAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    @PostMapping("/po/{poKey}/compensate")
+    public ResponseEntity<Map<String, Object>> compensatePO(@PathVariable String poKey) {
+        log.info("[E2E Mock] Compensate PO: {}", poKey);
+        return ResponseEntity.ok(Map.of(
+            "poKey", poKey,
+            "compensated", true,
+            "compensatedAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    @PostMapping("/po/{poKey}/populate")
+    public ResponseEntity<Map<String, Object>> populatePO(@PathVariable String poKey) {
+        log.info("[E2E Mock] Populate PO: {}", poKey);
+        String receiptKey = "RCV-" + System.currentTimeMillis();
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+            "poKey", poKey,
+            "receiptKey", receiptKey,
+            "status", "populated",
+            "populatedAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    @PostMapping("/po/{poKey}/lines/{lineNumber}/cancel")
+    public ResponseEntity<Map<String, Object>> cancelPOLine(
+            @PathVariable String poKey, @PathVariable String lineNumber) {
+        log.info("[E2E Mock] Cancel PO line: {}/{}", poKey, lineNumber);
+        return ResponseEntity.ok(Map.of(
+            "poKey", poKey,
+            "lineNumber", lineNumber,
+            "status", "X",
+            "cancelledAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    @PostMapping("/po/bulk-cancel")
+    public ResponseEntity<Map<String, Object>> bulkCancelPO(@RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] Bulk cancel POs: {}", request);
+        return ResponseEntity.ok(Map.of(
+            "cancelled", request.getOrDefault("poKeys", List.of()),
+            "cancelledAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    // ==================== PO History ====================
+
+    @GetMapping("/po-history/{poKey}")
+    public ResponseEntity<Map<String, Object>> getPOHistory(@PathVariable String poKey) {
+        log.info("[E2E Mock] Get PO history: {}", poKey);
+        return ResponseEntity.ok(Map.of(
+            "poKey", poKey,
+            "archived", true,
+            "archivedAt", LocalDateTime.now().minusDays(30).toString(),
+            "history", List.of(
+                Map.of("action", "CREATED", "timestamp", LocalDateTime.now().minusDays(60).toString()),
+                Map.of("action", "RECEIVED", "timestamp", LocalDateTime.now().minusDays(45).toString()),
+                Map.of("action", "ARCHIVED", "timestamp", LocalDateTime.now().minusDays(30).toString())
+            )
+        ));
+    }
+
+    @GetMapping("/po-history/search")
+    public ResponseEntity<List<Map<String, Object>>> searchPOHistory(
+            @RequestParam(required = false) String storerKey,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo) {
+        log.info("[E2E Mock] Search PO history: storerKey={}, dateFrom={}, dateTo={}", storerKey, dateFrom, dateTo);
+        return ResponseEntity.ok(List.of(
+            Map.of("poKey", "PO-HIST-001", "storerKey", storerKey != null ? storerKey : "TEST", "archivedAt", LocalDateTime.now().minusDays(30).toString()),
+            Map.of("poKey", "PO-HIST-002", "storerKey", storerKey != null ? storerKey : "TEST", "archivedAt", LocalDateTime.now().minusDays(60).toString())
+        ));
+    }
+
+    @PostMapping("/po-history/{poKey}/unarchive")
+    public ResponseEntity<Map<String, Object>> unarchivePO(@PathVariable String poKey) {
+        log.info("[E2E Mock] Unarchive PO: {}", poKey);
+        return ResponseEntity.ok(Map.of(
+            "poKey", poKey,
+            "unarchived", true,
+            "unarchivedAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    // ==================== Receipts (plural) ====================
+
+    @GetMapping("/receipts")
+    public ResponseEntity<List<Map<String, Object>>> getReceipts(
+            @RequestParam(required = false) String storerKey,
+            @RequestParam(required = false) String facility) {
+        log.info("[E2E Mock] Get receipts: storerKey={}, facility={}", storerKey, facility);
+        return ResponseEntity.ok(List.of(
+            Map.of("receiptKey", "RCV-001", "storerKey", storerKey != null ? storerKey : "TEST", "status", "0"),
+            Map.of("receiptKey", "RCV-002", "storerKey", storerKey != null ? storerKey : "TEST", "status", "5")
+        ));
+    }
+
+    @GetMapping("/receipts/{receiptKey}")
+    public ResponseEntity<Map<String, Object>> getReceiptPlural(@PathVariable String receiptKey) {
+        log.info("[E2E Mock] Get receipt (plural path): {}", receiptKey);
+        return ResponseEntity.ok(Map.of(
+            "receiptKey", receiptKey,
+            "storerKey", "TEST_STORER_001",
+            "facility", "TEST01",
+            "status", "5"
+        ));
+    }
+
+    @GetMapping("/receipts/{receiptKey}/details")
+    public ResponseEntity<List<Map<String, Object>>> getReceiptDetails(@PathVariable String receiptKey) {
+        log.info("[E2E Mock] Get receipt details: {}", receiptKey);
+        return ResponseEntity.ok(List.of(
+            Map.of("lineNumber", "00001", "sku", "SKU-001", "qtyExpected", 100, "qtyReceived", 100),
+            Map.of("lineNumber", "00002", "sku", "SKU-002", "qtyExpected", 50, "qtyReceived", 50)
+        ));
+    }
+
+    @GetMapping("/receipts/{receiptKey}/available")
+    public ResponseEntity<Map<String, Object>> getReceiptAvailable(@PathVariable String receiptKey) {
+        log.info("[E2E Mock] Get receipt available: {}", receiptKey);
+        return ResponseEntity.ok(Map.of(
+            "receiptKey", receiptKey,
+            "available", true
+        ));
+    }
+
+    @PostMapping("/receipts/{receiptKey}/finalize")
+    public ResponseEntity<Map<String, Object>> finalizeReceipt(@PathVariable String receiptKey) {
+        log.info("[E2E Mock] Finalize receipt: {}", receiptKey);
+        return ResponseEntity.ok(Map.of(
+            "receiptKey", receiptKey,
+            "status", "9",
+            "finalizedAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    @PostMapping("/receipts/{receiptKey}/cancel")
+    public ResponseEntity<Map<String, Object>> cancelReceipt(@PathVariable String receiptKey) {
+        log.info("[E2E Mock] Cancel receipt: {}", receiptKey);
+        return ResponseEntity.ok(Map.of(
+            "receiptKey", receiptKey,
+            "status", "X",
+            "cancelledAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    @PostMapping("/receipts/bulk-lottable-update")
+    public ResponseEntity<Map<String, Object>> bulkLottableUpdate(@RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] Bulk lottable update: {}", request);
+        return ResponseEntity.ok(Map.of(
+            "updated", true,
+            "updatedAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    // ==================== Trade Returns ====================
+
+    @PostMapping("/trade-returns")
+    public ResponseEntity<Map<String, Object>> createTradeReturn(@RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] Create trade return: {}", request);
+        String returnKey = "TR-" + System.currentTimeMillis();
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+            "returnKey", returnKey,
+            "status", "0",
+            "createdAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    @GetMapping("/trade-returns")
+    public ResponseEntity<List<Map<String, Object>>> getTradeReturns(
+            @RequestParam(required = false) String storerKey) {
+        log.info("[E2E Mock] Get trade returns: storerKey={}", storerKey);
+        return ResponseEntity.ok(List.of(
+            Map.of("returnKey", "TR-001", "storerKey", storerKey != null ? storerKey : "TEST", "status", "0"),
+            Map.of("returnKey", "TR-002", "storerKey", storerKey != null ? storerKey : "TEST", "status", "5")
+        ));
+    }
+
+    @PostMapping("/trade-returns/{returnKey}/inspect")
+    public ResponseEntity<Map<String, Object>> inspectTradeReturn(@PathVariable String returnKey) {
+        log.info("[E2E Mock] Inspect trade return: {}", returnKey);
+        return ResponseEntity.ok(Map.of(
+            "returnKey", returnKey,
+            "inspected", true,
+            "inspectedAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    @PostMapping("/trade-returns/{returnKey}/inspect-batch")
+    public ResponseEntity<Map<String, Object>> inspectBatchTradeReturn(@PathVariable String returnKey) {
+        log.info("[E2E Mock] Inspect batch trade return: {}", returnKey);
+        return ResponseEntity.ok(Map.of(
+            "returnKey", returnKey,
+            "inspected", true,
+            "batchProcessed", true
+        ));
+    }
+
+    @PostMapping("/trade-returns/{returnKey}/finalize")
+    public ResponseEntity<Map<String, Object>> finalizeTradeReturn(@PathVariable String returnKey) {
+        log.info("[E2E Mock] Finalize trade return: {}", returnKey);
+        return ResponseEntity.ok(Map.of(
+            "returnKey", returnKey,
+            "status", "9",
+            "finalizedAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    @PostMapping("/trade-returns/{returnKey}/hold")
+    public ResponseEntity<Map<String, Object>> holdTradeReturn(@PathVariable String returnKey) {
+        log.info("[E2E Mock] Hold trade return: {}", returnKey);
+        return ResponseEntity.ok(Map.of(
+            "returnKey", returnKey,
+            "status", "H",
+            "heldAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    @PostMapping("/trade-returns/{returnKey}/cancel")
+    public ResponseEntity<Map<String, Object>> cancelTradeReturn(@PathVariable String returnKey) {
+        log.info("[E2E Mock] Cancel trade return: {}", returnKey);
+        return ResponseEntity.ok(Map.of(
+            "returnKey", returnKey,
+            "status", "X",
+            "cancelledAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    @PostMapping("/trade-returns/{returnKey}/photos")
+    public ResponseEntity<Map<String, Object>> uploadTradeReturnPhotos(
+            @PathVariable String returnKey, @RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] Upload trade return photos: {}", returnKey);
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+            "returnKey", returnKey,
+            "photosUploaded", true,
+            "uploadedAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    @GetMapping("/trade-returns/report")
+    public ResponseEntity<Map<String, Object>> getTradeReturnReport(
+            @RequestParam(required = false) String storerKey,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo) {
+        log.info("[E2E Mock] Get trade return report");
+        return ResponseEntity.ok(Map.of(
+            "totalReturns", 25,
+            "inspected", 20,
+            "finalized", 15,
+            "cancelled", 5
+        ));
+    }
+
+    // ==================== RDT Operations ====================
+
+    @PostMapping("/rdt/po")
+    public ResponseEntity<Map<String, Object>> rdtCreatePO(@RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] RDT Create PO: {}", request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+            "poKey", "PO-RDT-" + System.currentTimeMillis(),
+            "status", "0"
+        ));
+    }
+
+    @PostMapping("/rdt/po/from-scan")
+    public ResponseEntity<Map<String, Object>> rdtCreatePOFromScan(@RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] RDT Create PO from scan: {}", request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+            "poKey", "PO-SCAN-" + System.currentTimeMillis(),
+            "status", "0"
+        ));
+    }
+
+    @PostMapping("/rdt/po/offline-sync")
+    public ResponseEntity<Map<String, Object>> rdtOfflineSync(@RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] RDT Offline sync: {}", request);
+        return ResponseEntity.ok(Map.of(
+            "synced", true,
+            "syncedAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    @PostMapping("/rdt/receipts/{receiptKey}/finalize")
+    public ResponseEntity<Map<String, Object>> rdtFinalizeReceipt(@PathVariable String receiptKey) {
+        log.info("[E2E Mock] RDT Finalize receipt: {}", receiptKey);
+        return ResponseEntity.ok(Map.of(
+            "receiptKey", receiptKey,
+            "status", "9",
+            "finalizedAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    @PostMapping("/rdt/receipts/{receiptKey}/finalize-with-scan")
+    public ResponseEntity<Map<String, Object>> rdtFinalizeReceiptWithScan(@PathVariable String receiptKey) {
+        log.info("[E2E Mock] RDT Finalize receipt with scan: {}", receiptKey);
+        return ResponseEntity.ok(Map.of(
+            "receiptKey", receiptKey,
+            "status", "9",
+            "scanned", true
+        ));
+    }
+
+    @PutMapping("/rdt/receipts/{receiptKey}/lines/{lineNumber}/lottables")
+    public ResponseEntity<Map<String, Object>> rdtUpdateLottables(
+            @PathVariable String receiptKey, @PathVariable String lineNumber,
+            @RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] RDT Update lottables: {}/{}", receiptKey, lineNumber);
+        return ResponseEntity.ok(Map.of(
+            "receiptKey", receiptKey,
+            "lineNumber", lineNumber,
+            "updated", true
+        ));
+    }
+
+    @PostMapping("/rdt/trade-returns/{returnKey}/receive")
+    public ResponseEntity<Map<String, Object>> rdtReceiveTradeReturn(@PathVariable String returnKey) {
+        log.info("[E2E Mock] RDT Receive trade return: {}", returnKey);
+        return ResponseEntity.ok(Map.of(
+            "returnKey", returnKey,
+            "received", true,
+            "receivedAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    @PostMapping("/rdt/tasks/next")
+    public ResponseEntity<Map<String, Object>> rdtGetNextTask() {
+        log.info("[E2E Mock] RDT Get next task");
+        return ResponseEntity.ok(Map.of(
+            "taskKey", "TASK-" + System.currentTimeMillis(),
+            "taskType", "PUTAWAY",
+            "fromLocation", "RECV-01",
+            "toLocation", "A-01-01"
+        ));
+    }
+
+    @GetMapping("/rdt/tasks/queue")
+    public ResponseEntity<List<Map<String, Object>>> rdtGetTaskQueue() {
+        log.info("[E2E Mock] RDT Get task queue");
+        return ResponseEntity.ok(List.of(
+            Map.of("taskKey", "TASK-001", "taskType", "PUTAWAY", "priority", 1),
+            Map.of("taskKey", "TASK-002", "taskType", "PICK", "priority", 2)
+        ));
+    }
+
+    @PostMapping("/rdt/tasks/{taskKey}/assign")
+    public ResponseEntity<Map<String, Object>> rdtAssignTask(@PathVariable String taskKey) {
+        log.info("[E2E Mock] RDT Assign task: {}", taskKey);
+        return ResponseEntity.ok(Map.of(
+            "taskKey", taskKey,
+            "assigned", true
+        ));
+    }
+
+    @PostMapping("/rdt/tasks/{taskKey}/complete")
+    public ResponseEntity<Map<String, Object>> rdtCompleteTask(@PathVariable String taskKey) {
+        log.info("[E2E Mock] RDT Complete task: {}", taskKey);
+        return ResponseEntity.ok(Map.of(
+            "taskKey", taskKey,
+            "completed", true,
+            "completedAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    // ==================== Tasks ====================
+
+    @GetMapping("/tasks")
+    public ResponseEntity<List<Map<String, Object>>> getTasks() {
+        log.info("[E2E Mock] Get tasks");
+        return ResponseEntity.ok(List.of(
+            Map.of("taskKey", "TASK-001", "status", "PENDING"),
+            Map.of("taskKey", "TASK-002", "status", "IN_PROGRESS")
+        ));
+    }
+
+    @PostMapping("/tasks/{taskKey}/cancel")
+    public ResponseEntity<Map<String, Object>> cancelTask(@PathVariable String taskKey) {
+        log.info("[E2E Mock] Cancel task: {}", taskKey);
+        return ResponseEntity.ok(Map.of(
+            "taskKey", taskKey,
+            "status", "CANCELLED"
+        ));
+    }
+
+    @PostMapping("/tasks/{taskKey}/reassign")
+    public ResponseEntity<Map<String, Object>> reassignTask(@PathVariable String taskKey) {
+        log.info("[E2E Mock] Reassign task: {}", taskKey);
+        return ResponseEntity.ok(Map.of(
+            "taskKey", taskKey,
+            "reassigned", true
+        ));
+    }
+
+    @PostMapping("/tasks/{taskKey}/timeout")
+    public ResponseEntity<Map<String, Object>> timeoutTask(@PathVariable String taskKey) {
+        log.info("[E2E Mock] Timeout task: {}", taskKey);
+        return ResponseEntity.ok(Map.of(
+            "taskKey", taskKey,
+            "timedOut", true
+        ));
+    }
+
+    @GetMapping("/tasks/{taskKey}/audit")
+    public ResponseEntity<List<Map<String, Object>>> getTaskAudit(@PathVariable String taskKey) {
+        log.info("[E2E Mock] Get task audit: {}", taskKey);
+        return ResponseEntity.ok(List.of(
+            Map.of("action", "CREATED", "timestamp", LocalDateTime.now().minusHours(2).toString()),
+            Map.of("action", "ASSIGNED", "timestamp", LocalDateTime.now().minusHours(1).toString())
+        ));
+    }
+
+    @PostMapping("/tasks/batch-complete")
+    public ResponseEntity<Map<String, Object>> batchCompleteTasks(@RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] Batch complete tasks: {}", request);
+        return ResponseEntity.ok(Map.of(
+            "completed", true,
+            "count", 5
+        ));
+    }
+
+    @PostMapping("/tasks/consolidate")
+    public ResponseEntity<Map<String, Object>> consolidateTasks(@RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] Consolidate tasks: {}", request);
+        return ResponseEntity.ok(Map.of(
+            "consolidated", true
+        ));
+    }
+
+    @PostMapping("/tasks/interleaved-assignment")
+    public ResponseEntity<Map<String, Object>> interleavedAssignment(@RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] Interleaved assignment: {}", request);
+        return ResponseEntity.ok(Map.of(
+            "assigned", true
+        ));
+    }
+
+    @GetMapping("/tasks/metrics")
+    public ResponseEntity<Map<String, Object>> getTaskMetrics() {
+        log.info("[E2E Mock] Get task metrics");
+        return ResponseEntity.ok(Map.of(
+            "totalTasks", 100,
+            "completed", 80,
+            "pending", 15,
+            "inProgress", 5
+        ));
+    }
+
+    // ==================== Cross-Dock ====================
+
+    @PostMapping("/xdock/allocate")
+    public ResponseEntity<Map<String, Object>> xdockAllocate(@RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] X-Dock allocate: {}", request);
+        return ResponseEntity.ok(Map.of(
+            "allocated", true,
+            "allocationKey", "XDOCK-" + System.currentTimeMillis()
+        ));
+    }
+
+    @PostMapping("/xdock/allocate-batch")
+    public ResponseEntity<Map<String, Object>> xdockAllocateBatch(@RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] X-Dock allocate batch: {}", request);
+        return ResponseEntity.ok(Map.of(
+            "allocated", true,
+            "batchId", "BATCH-" + System.currentTimeMillis()
+        ));
+    }
+
+    @PostMapping("/xdock/allocate-full")
+    public ResponseEntity<Map<String, Object>> xdockAllocateFull(@RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] X-Dock allocate full: {}", request);
+        return ResponseEntity.ok(Map.of(
+            "allocated", true,
+            "fullAllocation", true
+        ));
+    }
+
+    @PostMapping("/xdock/allocate-multi")
+    public ResponseEntity<Map<String, Object>> xdockAllocateMulti(@RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] X-Dock allocate multi: {}", request);
+        return ResponseEntity.ok(Map.of(
+            "allocated", true,
+            "multiAllocation", true
+        ));
+    }
+
+    @PostMapping("/xdock/auto-allocate")
+    public ResponseEntity<Map<String, Object>> xdockAutoAllocate(@RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] X-Dock auto allocate: {}", request);
+        return ResponseEntity.ok(Map.of(
+            "allocated", true,
+            "autoAllocation", true
+        ));
+    }
+
+    @PostMapping("/xdock/process-linkage")
+    public ResponseEntity<Map<String, Object>> xdockProcessLinkage(@RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] X-Dock process linkage: {}", request);
+        return ResponseEntity.ok(Map.of(
+            "processed", true
+        ));
+    }
+
+    // ==================== Workflows ====================
+
+    @GetMapping("/workflows/{workflowId}/status")
+    public ResponseEntity<Map<String, Object>> getWorkflowStatus(@PathVariable String workflowId) {
+        log.info("[E2E Mock] Get workflow status: {}", workflowId);
+        return ResponseEntity.ok(Map.of(
+            "workflowId", workflowId,
+            "status", "COMPLETED",
+            "completedAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    @GetMapping("/workflows/{workflowId}/history")
+    public ResponseEntity<List<Map<String, Object>>> getWorkflowHistory(@PathVariable String workflowId) {
+        log.info("[E2E Mock] Get workflow history: {}", workflowId);
+        return ResponseEntity.ok(List.of(
+            Map.of("event", "STARTED", "timestamp", LocalDateTime.now().minusMinutes(10).toString()),
+            Map.of("event", "ACTIVITY_COMPLETED", "timestamp", LocalDateTime.now().minusMinutes(5).toString()),
+            Map.of("event", "COMPLETED", "timestamp", LocalDateTime.now().toString())
+        ));
+    }
+
+    @PostMapping("/workflows/{workflowId}/cancel")
+    public ResponseEntity<Map<String, Object>> cancelWorkflow(@PathVariable String workflowId) {
+        log.info("[E2E Mock] Cancel workflow: {}", workflowId);
+        return ResponseEntity.ok(Map.of(
+            "workflowId", workflowId,
+            "cancelled", true
+        ));
+    }
+
+    // ==================== Jobs ====================
+
+    @PostMapping("/jobs/generic-inbound-po/trigger")
+    public ResponseEntity<Map<String, Object>> triggerGenericInboundJob() {
+        log.info("[E2E Mock] Trigger generic inbound PO job");
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
+            "jobExecutionId", "JOB-" + System.currentTimeMillis(),
+            "status", "RUNNING"
+        ));
+    }
+
+    @PostMapping("/jobs/auto-finalize/trigger")
+    public ResponseEntity<Map<String, Object>> triggerAutoFinalizeJob() {
+        log.info("[E2E Mock] Trigger auto finalize job");
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
+            "jobExecutionId", "JOB-" + System.currentTimeMillis(),
+            "status", "RUNNING"
+        ));
+    }
+
+    @PostMapping("/jobs/po-archive/trigger")
+    public ResponseEntity<Map<String, Object>> triggerArchiveJob() {
+        log.info("[E2E Mock] Trigger PO archive job");
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
+            "jobExecutionId", "JOB-" + System.currentTimeMillis(),
+            "status", "RUNNING"
+        ));
+    }
+
+    @PostMapping("/jobs/po-expire-cancel/trigger")
+    public ResponseEntity<Map<String, Object>> triggerExpireCancelJob() {
+        log.info("[E2E Mock] Trigger PO expire cancel job");
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
+            "jobExecutionId", "JOB-" + System.currentTimeMillis(),
+            "status", "RUNNING"
+        ));
+    }
+
+    @PostMapping("/jobs/po-purge/trigger")
+    public ResponseEntity<Map<String, Object>> triggerPurgeJob() {
+        log.info("[E2E Mock] Trigger PO purge job");
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
+            "jobExecutionId", "JOB-" + System.currentTimeMillis(),
+            "status", "RUNNING"
+        ));
+    }
+
+    @GetMapping("/jobs/executions/{jobId}")
+    public ResponseEntity<Map<String, Object>> getJobExecution(@PathVariable String jobId) {
+        log.info("[E2E Mock] Get job execution: {}", jobId);
+        return ResponseEntity.ok(Map.of(
+            "jobExecutionId", jobId,
+            "status", "COMPLETED",
+            "completedAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    // ==================== Inventory ====================
+
+    @GetMapping("/inventory/search")
+    public ResponseEntity<List<Map<String, Object>>> searchInventory(
+            @RequestParam(required = false) String sku,
+            @RequestParam(required = false) String location) {
+        log.info("[E2E Mock] Search inventory: sku={}, location={}", sku, location);
+        return ResponseEntity.ok(List.of(
+            Map.of("sku", sku != null ? sku : "SKU-001", "location", "A-01-01", "qty", 100),
+            Map.of("sku", sku != null ? sku : "SKU-001", "location", "A-01-02", "qty", 50)
+        ));
+    }
+
+    @PostMapping("/inventory/split")
+    public ResponseEntity<Map<String, Object>> splitInventory(@RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] Split inventory: {}", request);
+        return ResponseEntity.ok(Map.of(
+            "split", true,
+            "newLpn", "LPN-" + System.currentTimeMillis()
+        ));
+    }
+
+    @PostMapping("/inventory/consolidate")
+    public ResponseEntity<Map<String, Object>> consolidateInventory(@RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] Consolidate inventory: {}", request);
+        return ResponseEntity.ok(Map.of(
+            "consolidated", true
+        ));
+    }
+
+    // ==================== ASN ====================
+
+    @PostMapping("/asn/populate")
+    public ResponseEntity<Map<String, Object>> populateASN(@RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] Populate ASN: {}", request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+            "asnKey", "ASN-" + System.currentTimeMillis(),
+            "status", "POPULATED"
+        ));
+    }
+
+    // ==================== Saga ====================
+
+    @PostMapping("/saga/po-to-inventory")
+    public ResponseEntity<Map<String, Object>> sagaPOToInventory(@RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] Saga PO to inventory: {}", request);
+        return ResponseEntity.ok(Map.of(
+            "sagaId", "SAGA-" + System.currentTimeMillis(),
+            "status", "COMPLETED"
+        ));
+    }
+
+    // ==================== Putaway ====================
+
+    @PostMapping("/putaway/suggest-location")
+    public ResponseEntity<Map<String, Object>> suggestPutawayLocation(@RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] Suggest putaway location: {}", request);
+        return ResponseEntity.ok(Map.of(
+            "suggestedLocation", "A-01-01",
+            "alternateLocations", List.of("A-01-02", "A-01-03")
+        ));
+    }
+
+    // ==================== Reports ====================
+
+    @GetMapping("/reports/archival")
+    public ResponseEntity<Map<String, Object>> getArchivalReport() {
+        log.info("[E2E Mock] Get archival report");
+        return ResponseEntity.ok(Map.of(
+            "totalArchived", 150,
+            "thisMonth", 25
+        ));
+    }
+
+    @GetMapping("/reports/cancellations")
+    public ResponseEntity<Map<String, Object>> getCancellationsReport() {
+        log.info("[E2E Mock] Get cancellations report");
+        return ResponseEntity.ok(Map.of(
+            "totalCancelled", 50,
+            "thisMonth", 10
+        ));
+    }
+
+    @GetMapping("/reports/lottable-summary")
+    public ResponseEntity<Map<String, Object>> getLottableSummaryReport() {
+        log.info("[E2E Mock] Get lottable summary report");
+        return ResponseEntity.ok(Map.of(
+            "totalRecords", 1000,
+            "withLottables", 800
+        ));
+    }
+
+    // ==================== EDI ====================
+
+    @PostMapping("/edi/inbound")
+    public ResponseEntity<Map<String, Object>> processEDIInbound(@RequestBody Map<String, Object> request) {
+        log.info("[E2E Mock] Process EDI inbound: {}", request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+            "messageId", "EDI-" + System.currentTimeMillis(),
+            "status", "PROCESSED"
+        ));
+    }
+
+    @GetMapping("/edi/messages/{messageId}/parsed")
+    public ResponseEntity<Map<String, Object>> getEDIParsedMessage(@PathVariable String messageId) {
+        log.info("[E2E Mock] Get EDI parsed message: {}", messageId);
+        return ResponseEntity.ok(Map.of(
+            "messageId", messageId,
+            "type", "850",
+            "parsed", true
+        ));
+    }
+
+    @GetMapping("/edi/messages/{messageId}/status")
+    public ResponseEntity<Map<String, Object>> getEDIMessageStatus(@PathVariable String messageId) {
+        log.info("[E2E Mock] Get EDI message status: {}", messageId);
+        return ResponseEntity.ok(Map.of(
+            "messageId", messageId,
+            "status", "PROCESSED"
+        ));
+    }
+
+    // ==================== Audit ====================
+
+    @GetMapping("/audit/lottable-changes")
+    public ResponseEntity<List<Map<String, Object>>> getLottableChangesAudit() {
+        log.info("[E2E Mock] Get lottable changes audit");
+        return ResponseEntity.ok(List.of(
+            Map.of("changeId", "CHG-001", "field", "lottable01", "oldValue", "OLD", "newValue", "NEW"),
+            Map.of("changeId", "CHG-002", "field", "lottable02", "oldValue", "A", "newValue", "B")
+        ));
+    }
+}
