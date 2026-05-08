@@ -166,7 +166,7 @@ jobs:
         run: chmod +x ./mvnw || true
 
       - name: Build Application
-        run: mvn clean install -DskipTests -B
+        run: mvn clean install -DskipTests -DskipUTs=true -DskipITs=true -B
 
       - name: Start Application
         run: |
