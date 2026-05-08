@@ -30,7 +30,7 @@ Feature: F3 - Receipt Finalization Edge Cases
     Then status 200
     # Should complete within 60 seconds
     And responseTime < 60000
-    And match response.linesFinalized >= 1000
+    And match response.linesFinalized == '#? _ >= 1000'
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC22: Concurrent finalize same receipt
@@ -55,7 +55,7 @@ Feature: F3 - Receipt Finalization Edge Cases
     When method post
     Then status 409
     And match response.errorCode == 'INT_021'
-    And match response.message contains 'concurrent'
+    And match response.message == '#? _.contains("concurrent")'
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC23: Finalize partial receipt
@@ -140,8 +140,8 @@ Feature: F3 - Receipt Finalization Edge Cases
 
     # Verify allocation created
     * def alloc = db.query("SELECT * FROM dbo.allocation WHERE sourcekey = '" + receiptKey + "'")
-    * match alloc.length >= 1
-    * match alloc[0].alloctype == 'XDOCK'
+    * assert alloc.size() >= 1
+    * match alloc.get(0).get('alloctype') == 'XDOCK'
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC27: Finalize via RDT with scan verification
@@ -184,12 +184,12 @@ Feature: F3 - Receipt Finalization Edge Cases
     And request {}
     When method post
     Then status 200
-    And match response.pluginsExecuted contains 'NikeReceiptFinalizePlugin'
+    And match response.pluginsExecuted == '#? _.contains("NikeReceiptFinalizePlugin")'
 
     # Verify plugin audit
     * def pluginAudit = db.query("SELECT * FROM dbo.pluginaudit WHERE entitykey = '" + receiptKey + "'")
-    * match pluginAudit[0].pluginname == 'NikeReceiptFinalizePlugin'
-    * match pluginAudit[0].status == 'SUCCESS'
+    * match pluginAudit.get(0).get('pluginname') == 'NikeReceiptFinalizePlugin'
+    * match pluginAudit.get(0).get('status') == 'SUCCESS'
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC29: Finalize idempotency test
@@ -260,6 +260,6 @@ Feature: F3 - Receipt Finalization Edge Cases
     When method get
     Then status 200
     # At least 5 events in workflow history
-    And match response.events.length >= 5
+    And match response.events == '#? _.size() >= 5'
     And match response.events[*].eventType contains 'ActivityTaskCompleted'
 

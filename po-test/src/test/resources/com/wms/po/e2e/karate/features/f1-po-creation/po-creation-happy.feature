@@ -37,13 +37,13 @@ Feature: F1 - PO Creation Happy Path Tests
     # Verify in database (dual-write validation)
     * def createdPoKey = response.poKey
     * def dbResult = db.query("SELECT * FROM dbo.orders WHERE orderkey = '" + createdPoKey + "'")
-    * match dbResult[0].storerkey == testStorerKey
-    * match dbResult[0].status == '0'
+    * match dbResult.get(0).get('storerkey') == testStorerKey
+    * match dbResult.get(0).get('status') == '0'
 
     # Verify PO detail
     * def detailResult = db.query("SELECT * FROM dbo.orderdetail WHERE orderkey = '" + createdPoKey + "'")
-    * match detailResult.length == 1
-    * match detailResult[0].qtyordered == 100
+    * assert detailResult.size() == 1
+    * match detailResult.get(0).get('qtyordered') == 100
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC02: Create multi-line PO (50 lines)
@@ -91,8 +91,8 @@ Feature: F1 - PO Creation Happy Path Tests
 
     # Verify PO created from EDI
     * def poResult = db.query("SELECT * FROM dbo.orders WHERE externorderkey LIKE 'EDI-" + uniqueId + "%'")
-    * match poResult.length == 1
-    * match poResult[0].status == '0'
+    * assert poResult.size() == 1
+    * match poResult.get(0).get('status') == '0'
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC04: Create PO via batch job

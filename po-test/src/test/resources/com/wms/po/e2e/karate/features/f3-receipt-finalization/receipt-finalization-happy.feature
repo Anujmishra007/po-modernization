@@ -43,8 +43,8 @@ Feature: F3 - Receipt Finalization Happy Path Tests
 
     # Verify inventory posted to LOTxLOCxID
     * def invResult = db.query("SELECT * FROM dbo.lotxlocxid WHERE receiptkey = '" + receiptKey + "'")
-    * match invResult.length >= 1
-    * match invResult[0].qty > 0
+    * assert invResult.size() >= 1
+    * assert invResult.get(0).get('qty') > 0
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC02: Finalize multi-line receipt
@@ -66,7 +66,7 @@ Feature: F3 - Receipt Finalization Happy Path Tests
 
     # Verify all lines finalized
     * def lineStatuses = db.query("SELECT DISTINCT status FROM dbo.receiptdetail WHERE receiptkey = '" + receiptKey + "'")
-    * match lineStatuses[0].status == '9'
+    * match lineStatuses.get(0).get('status') == '9'
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC03: Finalize receipt via RDT API
@@ -92,7 +92,7 @@ Feature: F3 - Receipt Finalization Happy Path Tests
 
     # Verify audit trail
     * def audit = db.query("SELECT * FROM dbo.receiptaudit WHERE receiptkey = '" + receiptKey + "' AND action = 'FINALIZE'")
-    * match audit[0].userid == userId
+    * match audit.get(0).get('userid') == userId
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC04: Finalize triggers putaway task creation
@@ -114,8 +114,8 @@ Feature: F3 - Receipt Finalization Happy Path Tests
 
     # Verify putaway tasks in DB
     * def tasks = db.query("SELECT * FROM dbo.task WHERE fromkey = '" + receiptKey + "' AND tasktype = 'PUTAWAY'")
-    * match tasks.length >= 1
-    * match tasks[0].status == '0'
+    * assert tasks.size() >= 1
+    * match tasks.get(0).get('status') == '0'
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC05: Finalize receipt with lottable tracking
@@ -135,9 +135,9 @@ Feature: F3 - Receipt Finalization Happy Path Tests
 
     # Verify lottables in inventory
     * def invResult = db.query("SELECT lottable01, lottable02, lottable03 FROM dbo.lotxlocxid WHERE receiptkey = '" + receiptKey + "'")
-    * match invResult[0].lottable01 == '#present'
-    * match invResult[0].lottable02 == '#present'
-    * match invResult[0].lottable03 == '#present'
+    * match invResult.get(0).get('lottable01') == '#present'
+    * match invResult.get(0).get('lottable02') == '#present'
+    * match invResult.get(0).get('lottable03') == '#present'
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC06: Finalize updates PO received quantities
@@ -160,7 +160,7 @@ Feature: F3 - Receipt Finalization Happy Path Tests
 
     # Verify PO quantities updated
     * def afterQty = db.getValue("SELECT qtyreceived FROM dbo.podetail WHERE pokey = 'PO-HAPPY-001' AND polinenumber = '00001'")
-    * match afterQty > beforeQty
+    * assert afterQty > beforeQty
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC07: Finalize with specific target location
@@ -199,11 +199,11 @@ Feature: F3 - Receipt Finalization Happy Path Tests
 
     # Verify trigger processed finalization
     * def invResult = db.query("SELECT * FROM dbo.lotxlocxid WHERE receiptkey = '" + receiptKey + "'")
-    * match invResult.length >= 1
+    * assert invResult.size() >= 1
 
     # Verify audit log shows trigger
     * def audit = db.query("SELECT * FROM dbo.receiptaudit WHERE receiptkey = '" + receiptKey + "' AND action = 'FINALIZE'")
-    * match audit[0].source == 'TRIGGER'
+    * match audit.get(0).get('source') == 'TRIGGER'
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC09: Finalize closes PO when fully received
@@ -246,5 +246,5 @@ Feature: F3 - Receipt Finalization Happy Path Tests
 
     # Verify hold on inventory
     * def holdResult = db.query("SELECT holdcode FROM dbo.lotxlocxid WHERE receiptkey = '" + receiptKey + "'")
-    * match holdResult[0].holdcode == 'QC_PENDING'
+    * match holdResult.get(0).get('holdcode') == 'QC_PENDING'
 

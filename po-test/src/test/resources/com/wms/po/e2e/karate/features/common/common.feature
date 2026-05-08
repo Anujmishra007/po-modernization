@@ -33,7 +33,9 @@ Feature: Common Utilities for E2E Tests
       function(poKey) {
         var sql = "SELECT status FROM dbo.orders WHERE orderkey = '" + poKey + "'";
         var result = db.query(sql);
-        return result && result.length > 0;
+        // Handle both Java ArrayList (size()) and JS array (length)
+        var len = result ? (typeof result.size === 'function' ? result.size() : result.length) : 0;
+        return len > 0;
       }
       """
 
@@ -43,7 +45,9 @@ Feature: Common Utilities for E2E Tests
       function(receiptKey) {
         var sql = "SELECT status FROM dbo.receipt WHERE receiptkey = '" + receiptKey + "'";
         var result = db.query(sql);
-        return result && result.length > 0;
+        // Handle both Java ArrayList (size()) and JS array (length)
+        var len = result ? (typeof result.size === 'function' ? result.size() : result.length) : 0;
+        return len > 0;
       }
       """
 
@@ -53,8 +57,11 @@ Feature: Common Utilities for E2E Tests
       function(poKey) {
         var sql = "SELECT status FROM dbo.orders WHERE orderkey = '" + poKey + "'";
         var result = db.query(sql);
-        if (result && result.length > 0) {
-          return result[0].status;
+        // Handle both Java ArrayList (size()) and JS array (length)
+        var len = result ? (typeof result.size === 'function' ? result.size() : result.length) : 0;
+        if (len > 0) {
+          var row = typeof result.get === 'function' ? result.get(0) : result[0];
+          return typeof row.get === 'function' ? row.get('status') : row.status;
         }
         return null;
       }
@@ -66,8 +73,11 @@ Feature: Common Utilities for E2E Tests
       function(receiptKey) {
         var sql = "SELECT status FROM dbo.receipt WHERE receiptkey = '" + receiptKey + "'";
         var result = db.query(sql);
-        if (result && result.length > 0) {
-          return result[0].status;
+        // Handle both Java ArrayList (size()) and JS array (length)
+        var len = result ? (typeof result.size === 'function' ? result.size() : result.length) : 0;
+        if (len > 0) {
+          var row = typeof result.get === 'function' ? result.get(0) : result[0];
+          return typeof row.get === 'function' ? row.get('status') : row.status;
         }
         return null;
       }

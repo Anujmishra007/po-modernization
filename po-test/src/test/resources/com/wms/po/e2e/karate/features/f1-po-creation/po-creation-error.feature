@@ -85,9 +85,9 @@ Feature: F1 - PO Creation Error Handling
     When method post
     Then status 400
     And match response.errorCode == 'INT_011'
-    And match response.message contains 'Parse error'
+    And match response.message == '#? _.contains("Parse error")'
     And match response.parseErrors == '#present'
-    And match response.parseErrors.length >= 1
+    And match response.parseErrors == '#[_ > 0]'
     # Should include details about what failed
     And match response.parseErrors[0] contains { segment: '#present', position: '#present' }
 
