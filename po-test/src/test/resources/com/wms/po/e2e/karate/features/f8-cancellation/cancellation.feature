@@ -75,7 +75,7 @@ Feature: F8 - PO/Receipt Cancellation Flow Tests
     When method post
     Then status 422
     And match response.errorCode == 'PO_009'
-    And match response.message contains 'already received'
+    And match response.message == '#? _.indexOf("already received") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F8-TC04: Cancel open receipt
@@ -111,7 +111,7 @@ Feature: F8 - PO/Receipt Cancellation Flow Tests
     When method post
     Then status 422
     And match response.errorCode == 'RCV_009'
-    And match response.message contains 'already finalized'
+    And match response.message == '#? _.indexOf("already finalized") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F8-TC06: Cancel PO line
@@ -281,7 +281,7 @@ Feature: F8 - PO/Receipt Cancellation Flow Tests
     When method post
     Then status 422
     And match response.errorCode == 'PO_010'
-    And match response.message contains 'already cancelled'
+    And match response.message == '#? _.indexOf("already cancelled") >= 0'
 
   @F8-TC16 @P3 @Compensation
   Scenario: Cancel with compensation rollback

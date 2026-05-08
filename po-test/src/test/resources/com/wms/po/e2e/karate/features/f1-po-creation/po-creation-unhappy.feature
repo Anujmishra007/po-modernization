@@ -66,7 +66,7 @@ Feature: F1 - PO Creation Unhappy Path Tests
     When method post
     Then status 400
     And match response.errorCode == 'VAL_001'
-    And match response.message contains 'storerKey'
+    And match response.message == '#? _.indexOf("storerKey") >= 0'
     And match response.field == 'storerKey'
 
   # ─────────────────────────────────────────────────────────────
@@ -85,7 +85,7 @@ Feature: F1 - PO Creation Unhappy Path Tests
     When method post
     Then status 422
     And match response.errorCode == 'PO_013'
-    And match response.message contains 'SKU'
+    And match response.message == '#? _.indexOf("SKU") >= 0'
     And match response.details.sku == 'INVALID-SKU-999'
 
   # ─────────────────────────────────────────────────────────────
@@ -104,7 +104,7 @@ Feature: F1 - PO Creation Unhappy Path Tests
     When method post
     Then status 422
     And match response.errorCode == 'PO_012'
-    And match response.message contains 'Supplier'
+    And match response.message == '#? _.indexOf("Supplier") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC19: Inactive storer
@@ -121,4 +121,4 @@ Feature: F1 - PO Creation Unhappy Path Tests
     When method post
     Then status 422
     And match response.errorCode == 'VAL_002'
-    And match response.message contains 'inactive'
+    And match response.message == '#? _.toLowerCase().indexOf("inactive") >= 0'

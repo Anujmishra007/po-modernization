@@ -30,7 +30,7 @@ Feature: F2 - ASN Population Unhappy Path Tests
     When method post
     Then status 400
     And match response.errorCode == 'EDI_001'
-    And match response.message contains 'Missing mandatory segment'
+    And match response.message == '#? _.indexOf("Missing mandatory segment") >= 0'
     And match response.missingSegments contains 'REF*DP'
 
   # ─────────────────────────────────────────────────────────────
@@ -48,7 +48,7 @@ Feature: F2 - ASN Population Unhappy Path Tests
     When method post
     Then status 400
     And match response.errorCode == 'EDI_002'
-    And match response.message contains 'Parse error'
+    And match response.message == '#? _.indexOf("Parse error") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F2-TC11: ASN for non-existent PO
@@ -74,7 +74,7 @@ Feature: F2 - ASN Population Unhappy Path Tests
     When method post
     Then status 404
     And match response.errorCode == 'PO_001'
-    And match response.message contains 'PO not found'
+    And match response.message == '#? _.indexOf("PO not found") >= 0'
     And match response.poKey == 'PO-DOES-NOT-EXIST-999'
 
   # ─────────────────────────────────────────────────────────────
@@ -101,7 +101,7 @@ Feature: F2 - ASN Population Unhappy Path Tests
     When method post
     Then status 422
     And match response.errorCode == 'PO_008'
-    And match response.message contains 'PO is closed'
+    And match response.message == '#? _.indexOf("PO is closed") >= 0'
     And match response.currentStatus == '9'
 
   # ─────────────────────────────────────────────────────────────
@@ -128,7 +128,7 @@ Feature: F2 - ASN Population Unhappy Path Tests
     When method post
     Then status 422
     And match response.errorCode == 'PO_006'
-    And match response.message contains 'cancelled'
+    And match response.message == '#? _.indexOf("cancelled") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F2-TC14: ASN with invalid SKU
@@ -154,7 +154,7 @@ Feature: F2 - ASN Population Unhappy Path Tests
     When method post
     Then status 422
     And match response.errorCode == 'PO_013'
-    And match response.message contains 'SKU not found'
+    And match response.message == '#? _.indexOf("SKU not found") >= 0'
     And match response.invalidSku == 'INVALID-SKU-NOT-IN-DB'
 
   # ─────────────────────────────────────────────────────────────
@@ -187,7 +187,7 @@ Feature: F2 - ASN Population Unhappy Path Tests
     When method post
     Then status 422
     And match response.errorCode == 'RCV_003'
-    And match response.message contains 'Over-receipt exceeds tolerance'
+    And match response.message == '#? _.indexOf("Over-receipt exceeds tolerance") >= 0'
     And match response.tolerance == 5
     And match response.actualOverage == 50
 
@@ -225,7 +225,7 @@ Feature: F2 - ASN Population Unhappy Path Tests
     When method post
     Then status 409
     And match response.errorCode == 'ASN_001'
-    And match response.message contains 'Duplicate ASN'
+    And match response.message == '#? _.indexOf("Duplicate ASN") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F2-TC17: ASN with SKU not on PO
@@ -253,5 +253,5 @@ Feature: F2 - ASN Population Unhappy Path Tests
     When method post
     Then status 422
     And match response.errorCode == 'RCV_004'
-    And match response.message contains 'SKU not found on PO'
+    And match response.message == '#? _.indexOf("SKU not found on PO") >= 0'
 

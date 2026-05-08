@@ -29,7 +29,7 @@ Feature: F3 - Receipt Finalization Unhappy Path Tests
     When method post
     Then status 404
     And match response.errorCode == 'RCV_001'
-    And match response.message contains 'Receipt not found'
+    And match response.message == '#? _.indexOf("Receipt not found") >= 0'
     And match response.receiptKey == receiptKey
 
   # ─────────────────────────────────────────────────────────────
@@ -46,7 +46,7 @@ Feature: F3 - Receipt Finalization Unhappy Path Tests
     When method post
     Then status 422
     And match response.errorCode == 'RCV_005'
-    And match response.message contains 'already finalized'
+    And match response.message == '#? _.indexOf("already finalized") >= 0'
     And match response.currentStatus == '9'
 
   # ─────────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ Feature: F3 - Receipt Finalization Unhappy Path Tests
     When method post
     Then status 422
     And match response.errorCode == 'RCV_006'
-    And match response.message contains 'cancelled'
+    And match response.message == '#? _.indexOf("cancelled") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC14: Finalize to invalid location
@@ -80,7 +80,7 @@ Feature: F3 - Receipt Finalization Unhappy Path Tests
     When method post
     Then status 422
     And match response.errorCode == 'LOC_001'
-    And match response.message contains 'Location not found'
+    And match response.message == '#? _.indexOf("Location not found") >= 0'
     And match response.location == 'INVALID-LOC-999'
 
   # ─────────────────────────────────────────────────────────────
@@ -98,7 +98,7 @@ Feature: F3 - Receipt Finalization Unhappy Path Tests
     When method post
     Then status 422
     And match response.errorCode == 'INV_011'
-    And match response.message contains 'Location full'
+    And match response.message == '#? _.indexOf("Location full") >= 0'
     And match response.availableCapacity == 0
 
   # ─────────────────────────────────────────────────────────────
@@ -115,7 +115,7 @@ Feature: F3 - Receipt Finalization Unhappy Path Tests
     When method post
     Then status 422
     And match response.errorCode == 'RCV_007'
-    And match response.message contains 'Missing required lottable'
+    And match response.message == '#? _.indexOf("Missing required lottable") >= 0'
     And match response.missingLottables contains 'lottable01'
 
   # ─────────────────────────────────────────────────────────────
@@ -132,7 +132,7 @@ Feature: F3 - Receipt Finalization Unhappy Path Tests
     When method post
     Then status 422
     And match response.errorCode == 'PO_007'
-    And match response.message contains 'PO is on hold'
+    And match response.message == '#? _.indexOf("PO is on hold") >= 0'
     And match response.holdCode == '#present'
 
   # ─────────────────────────────────────────────────────────────
@@ -149,7 +149,7 @@ Feature: F3 - Receipt Finalization Unhappy Path Tests
     When method post
     Then status 422
     And match response.errorCode == 'RCV_008'
-    And match response.message contains 'zero quantity'
+    And match response.message == '#? _.indexOf("zero quantity") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC19: Finalize with workflow timeout
@@ -167,7 +167,7 @@ Feature: F3 - Receipt Finalization Unhappy Path Tests
     When method post
     Then status 504
     And match response.errorCode == 'INT_003'
-    And match response.message contains 'Workflow timeout'
+    And match response.message == '#? _.indexOf("Workflow timeout") >= 0'
     And match response.compensated == '#? _ == true || _ == null'
 
   # ─────────────────────────────────────────────────────────────
@@ -186,7 +186,7 @@ Feature: F3 - Receipt Finalization Unhappy Path Tests
     When method post
     Then status 500
     And match response.errorCode == 'INT_001'
-    And match response.message contains 'Database error'
+    And match response.message == '#? _.indexOf("Database error") >= 0'
 
     # Verify receipt not changed
     * def receiptStatus = db.getValue("SELECT status FROM dbo.receipt WHERE receiptkey = '" + receiptKey + "'")

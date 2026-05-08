@@ -50,6 +50,9 @@ public class E2ETestMockController {
     private final Set<String> createdPoExternalKeys = ConcurrentHashMap.newKeySet();
     private final Map<String, String> externalKeyToPoKey = new ConcurrentHashMap<>();
 
+    // Track idempotency keys for PO creation (F1-TC24)
+    private final Map<String, Map<String, Object>> poIdempotencyResponses = new ConcurrentHashMap<>();
+
     // Track finalized receipts for concurrent modification detection (F3-TC22)
     private final Set<String> finalizedReceipts = ConcurrentHashMap.newKeySet();
 
@@ -72,10 +75,18 @@ public class E2ETestMockController {
             @RequestHeader(value = "X-Test-Simulate-Slow-Processing", required = false) String slowProcessing,
             @RequestHeader(value = "X-Test-Simulate-Internal-Error", required = false) String internalError,
             @RequestHeader(value = "X-Test-Fail-At-Step", required = false) String failAtStep,
-            @RequestHeader(value = "X-Test-Fail-Nested-Operation", required = false) String failNestedOperation) {
+            @RequestHeader(value = "X-Test-Fail-Nested-Operation", required = false) String failNestedOperation,
+            @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyKey) {
 
-        log.info("[E2E Mock] Create PO: {}, contentType={}, dbTimeout={}, serviceDown={}, slowProcessing={}, failAtStep={}, failNested={}",
-                request, contentType, dbTimeout, serviceDown, slowProcessing, failAtStep, failNestedOperation);
+        log.info("[E2E Mock] Create PO: {}, contentType={}, dbTimeout={}, serviceDown={}, slowProcessing={}, failAtStep={}, failNested={}, idempKey={}",
+                request, contentType, dbTimeout, serviceDown, slowProcessing, failAtStep, failNestedOperation, idempotencyKey);
+
+        // Check for idempotent retry (F1-TC24)
+        if (idempotencyKey != null && poIdempotencyResponses.containsKey(idempotencyKey)) {
+            Map<String, Object> cachedResponse = new LinkedHashMap<>(poIdempotencyResponses.get(idempotencyKey));
+            cachedResponse.put("idempotent", true);
+            return ResponseEntity.ok(cachedResponse); // Return 200 for idempotent retry
+        }
 
         // Check for DB timeout simulation (503)
         if ("true".equalsIgnoreCase(dbTimeout)) {
@@ -253,18 +264,20 @@ public class E2ETestMockController {
             ));
         }
 
-        // Check for invalid SKU in lines (422)
+        // Check for invalid SKU in lines (422) - includes failedLine for compensation tests (F1-TC20)
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> lines = (List<Map<String, Object>>) request.get("lines");
         if (lines != null) {
-            for (Map<String, Object> line : lines) {
+            for (int i = 0; i < lines.size(); i++) {
+                Map<String, Object> line = lines.get(i);
                 String sku = line.get("sku") != null ? line.get("sku").toString() : null;
                 if (sku != null && (sku.startsWith("INVALID-SKU") || sku.startsWith("TEST-SKU-ERR"))) {
-                    return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
-                        "errorCode", "PO_013",
-                        "message", "Invalid or unknown SKU: " + sku,
-                        "details", Map.of("sku", sku)
-                    ));
+                    Map<String, Object> errorResponse = new LinkedHashMap<>();
+                    errorResponse.put("errorCode", "PO_013");
+                    errorResponse.put("message", "Invalid or unknown SKU: " + sku);
+                    errorResponse.put("failedLine", i + 1); // 1-indexed line number for compensation tests
+                    errorResponse.put("details", Map.of("sku", sku));
+                    return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(errorResponse);
                 }
             }
         }
@@ -308,7 +321,7 @@ public class E2ETestMockController {
                     if (qtyValue == 0) {
                         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
                             "errorCode", "VAL_008",
-                            "message", "Quantity cannot be zero",
+                            "message", "Zero quantity not allowed - quantity must be greater than zero",
                             "field", "qtyOrdered",
                             "invalidValue", 0
                         ));
@@ -363,7 +376,13 @@ public class E2ETestMockController {
         response.put("facility", facility);
         response.put("status", "0");
         response.put("lineCount", lines != null ? lines.size() : 0);
-        response.put("createdAt", LocalDateTime.now().toString());
+        String createdAt = LocalDateTime.now().toString();
+        response.put("createdAt", createdAt);
+
+        // Cache response for idempotency (F1-TC24)
+        if (idempotencyKey != null) {
+            poIdempotencyResponses.put(idempotencyKey, new LinkedHashMap<>(response));
+        }
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
@@ -389,12 +408,22 @@ public class E2ETestMockController {
             ));
         }
 
-        return ResponseEntity.ok(Map.of(
-            "poKey", poKey,
-            "storerKey", "TEST_STORER",
-            "facility", "TEST01",
-            "status", "0"
-        ));
+        // Build response with shipToAddress for unicode tests (F1-TC10)
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("poKey", poKey);
+        response.put("storerKey", "TEST_STORER");
+        response.put("facility", "TEST01");
+        response.put("status", "0");
+
+        // Add shipToAddress with unicode for edge case tests
+        Map<String, Object> shipToAddress = new LinkedHashMap<>();
+        shipToAddress.put("company", "나이키 코리아");
+        shipToAddress.put("address1", "서울시 강남구 테헤란로 123");
+        shipToAddress.put("city", "서울");
+        shipToAddress.put("country", "KR");
+        response.put("shipToAddress", shipToAddress);
+
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/po")

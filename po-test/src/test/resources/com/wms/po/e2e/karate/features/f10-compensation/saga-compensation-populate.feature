@@ -131,7 +131,7 @@ Feature: F10 - Populate Flow Compensation Tests
     When method post
     Then status 504
     And match response.errorCode == 'INT_003'
-    And match response.message contains 'timeout'
+    And match response.message == '#? _.indexOf("timeout") >= 0'
 
     # Wait for compensation
     * sleep(5000)

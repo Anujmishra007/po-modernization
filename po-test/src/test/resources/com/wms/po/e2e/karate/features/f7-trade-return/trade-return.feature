@@ -193,7 +193,7 @@ Feature: F7 - Trade Return Flow Tests
     When method post
     Then status 404
     And match response.errorCode == 'TR_001'
-    And match response.message contains 'Original order not found'
+    And match response.message == '#? _.indexOf("Original order not found") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F7-TC08: Trade return exceeds original qty
@@ -223,7 +223,7 @@ Feature: F7 - Trade Return Flow Tests
     When method post
     Then status 422
     And match response.errorCode == 'TR_002'
-    And match response.message contains 'exceeds original'
+    And match response.message == '#? _.indexOf("exceeds original") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F7-TC09 to F7-TC15: Additional trade return scenarios

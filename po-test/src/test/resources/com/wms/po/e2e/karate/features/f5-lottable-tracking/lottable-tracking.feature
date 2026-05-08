@@ -86,7 +86,7 @@ Feature: F5 - Lottable Field Tracking Tests
     When method post
     Then status 422
     And match response.errorCode == 'LOT_001'
-    And match response.message contains 'Invalid lottable format'
+    And match response.message == '#? _.indexOf("Invalid lottable format") >= 0'
     And match response.field == 'lottable01'
 
   # ─────────────────────────────────────────────────────────────
@@ -181,7 +181,7 @@ Feature: F5 - Lottable Field Tracking Tests
     When method post
     Then status 422
     And match response.errorCode == 'LOT_002'
-    And match response.message contains 'Missing required lottable'
+    And match response.message == '#? _.indexOf("Missing required lottable") >= 0'
     And match response.missingLottables contains 'lottable01'
 
   # ─────────────────────────────────────────────────────────────
@@ -329,7 +329,7 @@ Feature: F5 - Lottable Field Tracking Tests
     When method post
     Then status 422
     And match response.errorCode == 'LOT_003'
-    And match response.message contains 'Invalid date format'
+    And match response.message == '#? _.indexOf("Invalid date format") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F5-TC12: Lottable length validation
@@ -360,7 +360,7 @@ Feature: F5 - Lottable Field Tracking Tests
     When method post
     Then status 422
     And match response.errorCode == 'LOT_004'
-    And match response.message contains 'exceeds maximum length'
+    And match response.message == '#? _.indexOf("exceeds maximum length") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F5-TC13 to F5-TC18: Additional lottable scenarios

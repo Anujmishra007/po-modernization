@@ -144,6 +144,15 @@ function fn() {
       // F1: PO CREATION QUERIES
       // ═══════════════════════════════════════════════════════════
 
+      // SELECT addwho, susr1 FROM dbo.po (RDT tests - F1-TC25)
+      if (sqlLower.indexOf('select addwho') >= 0 && sqlLower.indexOf('dbo.po') >= 0) {
+        karate.log('[MockDB] Matched addwho query for RDT test');
+        return toJavaList([{
+          addwho: 'RDT-OPR-001',
+          susr1: 'RDT-KR01-001'
+        }]);
+      }
+
       // SELECT * FROM dbo.orders WHERE orderkey = '...' or WHERE externorderkey LIKE '...'
       // Handles both F1-TC01 (by orderkey) and F1-TC03 (by externorderkey)
       if (sqlLower.indexOf('select * from dbo.orders') >= 0 ||
@@ -156,7 +165,8 @@ function fn() {
           facility: config.testFacility,
           status: '0',
           adddate: new Date().toISOString(),
-          editdate: new Date().toISOString()
+          editdate: new Date().toISOString(),
+          addwho: 'RDT-OPR-001'
         }]);
         karate.log('[MockDB] orders result size:', result.size());
         return result;
@@ -334,6 +344,41 @@ function fn() {
       }
 
       // ═══════════════════════════════════════════════════════════
+      // F1: PO AUDIT / TRIGGER QUERIES
+      // ═══════════════════════════════════════════════════════════
+
+      // PO audit records for trigger tests (F1-TC18, F1-TC19)
+      if (sqlLower.indexOf('select * from dbo.poaudit') >= 0) {
+        return toJavaList([{
+          auditid: 'AUDIT-PO-001',
+          pokey: 'PO-TRG-001',
+          action: 'INSERT',
+          triggertype: 'AFTER_INSERT',
+          tablename: 'po',
+          auditdate: new Date().toISOString(),
+          userid: 'system'
+        }]);
+      }
+
+      // PO detail audit for trigger cascade tests (F1-TC36)
+      if (sqlLower.indexOf('select * from dbo.podetailaudit') >= 0) {
+        return toJavaList([
+          { auditid: 'AUDIT-DET-001', pokey: 'PO-TRG-001', polinenumber: '00001', action: 'INSERT' },
+          { auditid: 'AUDIT-DET-002', pokey: 'PO-TRG-001', polinenumber: '00002', action: 'INSERT' }
+        ]);
+      }
+
+      // PO summary fields for trigger summary tests (F1-TC37)
+      if (sqlLower.indexOf('select totallines') >= 0 ||
+          (sqlLower.indexOf('totalqty') >= 0 && sqlLower.indexOf('dbo.po') >= 0)) {
+        return toJavaList([{
+          totallines: 2,
+          totalqty: 150,
+          totalvalue: 14498.50
+        }]);
+      }
+
+      // ═══════════════════════════════════════════════════════════
       // F3: RECEIPT FINALIZATION QUERIES
       // ═══════════════════════════════════════════════════════════
 
@@ -418,12 +463,13 @@ function fn() {
       // F10: COMPENSATION QUERIES
       // ═══════════════════════════════════════════════════════════
 
-      // Compensation audit records
+      // Compensation audit records (F1-TC40)
       if (sqlLower.indexOf('compensationaudit') >= 0) {
         return toJavaList([{
           auditid: 'AUDIT-001',
           entitykey: 'RCV-TEST-001',
           action: 'COMPENSATE',
+          compensationtype: 'PO_CREATION_ROLLBACK',
           auditdate: new Date().toISOString(),
           userid: 'system'
         }]);

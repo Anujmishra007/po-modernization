@@ -102,7 +102,7 @@ Feature: F9 - PO Archival Flow Tests
     When method post
     Then status 422
     And match response.errorCode == 'ARCH_001'
-    And match response.message contains 'not closed'
+    And match response.message == '#? _.indexOf("not closed") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F9-TC05: Archive with open receipts fails
@@ -118,7 +118,7 @@ Feature: F9 - PO Archival Flow Tests
     When method post
     Then status 422
     And match response.errorCode == 'ARCH_002'
-    And match response.message contains 'open receipts'
+    And match response.message == '#? _.indexOf("open receipts") >= 0'
     And match response.openReceiptKeys.length >= 1
 
   # ─────────────────────────────────────────────────────────────

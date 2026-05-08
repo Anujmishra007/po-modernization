@@ -38,7 +38,7 @@ Feature: F4 - Cross-Dock Allocation Unhappy Path Tests
     When method post
     Then status 422
     And match response.errorCode == 'XDOCK_001'
-    And match response.message contains 'Insufficient quantity'
+    And match response.message == '#? _.indexOf("Insufficient quantity") >= 0'
     And match response.availableQty < 99999
 
   # ─────────────────────────────────────────────────────────────
@@ -64,7 +64,7 @@ Feature: F4 - Cross-Dock Allocation Unhappy Path Tests
     When method post
     Then status 404
     And match response.errorCode == 'ORD_001'
-    And match response.message contains 'Order not found'
+    And match response.message == '#? _.indexOf("Order not found") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F4-TC11: Cross-dock for already shipped order
@@ -90,7 +90,7 @@ Feature: F4 - Cross-Dock Allocation Unhappy Path Tests
     When method post
     Then status 422
     And match response.errorCode == 'ORD_002'
-    And match response.message contains 'already shipped'
+    And match response.message == '#? _.indexOf("already shipped") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F4-TC12: Cross-dock SKU mismatch
@@ -116,7 +116,7 @@ Feature: F4 - Cross-Dock Allocation Unhappy Path Tests
     When method post
     Then status 422
     And match response.errorCode == 'XDOCK_002'
-    And match response.message contains 'SKU not on order'
+    And match response.message == '#? _.indexOf("SKU not on order") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F4-TC13: Cross-dock for different storer
@@ -142,7 +142,7 @@ Feature: F4 - Cross-Dock Allocation Unhappy Path Tests
     When method post
     Then status 422
     And match response.errorCode == 'XDOCK_003'
-    And match response.message contains 'Storer mismatch'
+    And match response.message == '#? _.indexOf("Storer mismatch") >= 0'
     And match response.receiptStorer != response.orderStorer
 
   # ─────────────────────────────────────────────────────────────
@@ -171,7 +171,7 @@ Feature: F4 - Cross-Dock Allocation Unhappy Path Tests
     When method post
     Then status 422
     And match response.errorCode == 'XDOCK_004'
-    And match response.message contains 'Receipt not finalized'
+    And match response.message == '#? _.indexOf("Receipt not finalized") >= 0'
     And match response.receiptStatus != '9'
 
   # ─────────────────────────────────────────────────────────────
@@ -208,5 +208,5 @@ Feature: F4 - Cross-Dock Allocation Unhappy Path Tests
     When method post
     Then status 409
     And match response.errorCode == 'XDOCK_005'
-    And match response.message contains 'Duplicate allocation'
+    And match response.message == '#? _.indexOf("Duplicate allocation") >= 0'
 

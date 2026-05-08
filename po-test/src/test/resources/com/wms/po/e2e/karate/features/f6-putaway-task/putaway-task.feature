@@ -179,7 +179,7 @@ Feature: F6 - Putaway Task Flow Tests
     When method post
     Then status 422
     And match response.errorCode == 'LOC_001'
-    And match response.message contains 'Location not found'
+    And match response.message == '#? _.indexOf("Location not found") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F6-TC07: Putaway to full location fails
@@ -202,7 +202,7 @@ Feature: F6 - Putaway Task Flow Tests
     When method post
     Then status 422
     And match response.errorCode == 'LOC_002'
-    And match response.message contains 'Location full'
+    And match response.message == '#? _.indexOf("Location full") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F6-TC08: Partial putaway

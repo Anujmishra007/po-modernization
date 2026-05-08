@@ -30,7 +30,7 @@ Feature: F10 - Infrastructure Failure Compensation Tests
     When method post
     Then status 500
     And match response.errorCode == 'INT_016'
-    And match response.message contains 'deadlock'
+    And match response.message == '#? _.indexOf("deadlock") >= 0'
     # Should have retried at least once
     And match response.retryAttempts >= 1
 
@@ -78,7 +78,7 @@ Feature: F10 - Infrastructure Failure Compensation Tests
     When method post
     Then status 500
     And match response.errorCode == 'INT_030'
-    And match response.message contains 'Compensation failed'
+    And match response.message == '#? _.indexOf("Compensation failed") >= 0'
     And match response.requiresManualIntervention == true
     And match response.partiallyCompensated == true
     And match response.failedCompensationStep == '#present'
@@ -153,6 +153,6 @@ Feature: F10 - Infrastructure Failure Compensation Tests
     When method post
     Then status 503
     And match response.errorCode == 'INT_050'
-    And match response.message contains 'resource'
+    And match response.message == '#? _.indexOf("resource") >= 0'
     And match response.retryAfter == '#present'
 

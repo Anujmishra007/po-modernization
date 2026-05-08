@@ -78,7 +78,7 @@ Feature: F10 - Compensation Flow Tests (Saga Pattern)
     When method post
     Then status 422
     And match response.errorCode == 'INV_011'
-    And match response.message contains 'Location full'
+    And match response.message == '#? _.indexOf("Location full") >= 0'
     And match response.compensated == true
 
     # Verify receipt status was reverted
@@ -106,7 +106,7 @@ Feature: F10 - Compensation Flow Tests (Saga Pattern)
     When method post
     Then status 504
     And match response.errorCode == 'INT_003'
-    And match response.message contains 'Workflow timeout'
+    And match response.message == '#? _.indexOf("Workflow timeout") >= 0'
 
     # Wait for compensation to complete
     * sleep(5000)
@@ -145,7 +145,7 @@ Feature: F10 - Compensation Flow Tests (Saga Pattern)
     When method post
     Then status 409
     And match response.errorCode == 'INT_021'
-    And match response.message contains 'concurrent'
+    And match response.message == '#? _.indexOf("concurrent") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # COMP-18: Temporal worker crash recovery
