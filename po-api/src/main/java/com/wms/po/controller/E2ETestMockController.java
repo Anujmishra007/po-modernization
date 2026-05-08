@@ -1072,9 +1072,16 @@ public class E2ETestMockController {
             @RequestBody(required = false) Map<String, Object> request,
             @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-Storer-Key", required = false) String storerKey,
             @RequestHeader(value = "X-Test-Fail-At-Step", required = false) String failAtStep,
+            @RequestHeader(value = "X-Test-Fail-Compensation-At", required = false) String failCompensationAt,
             @RequestHeader(value = "X-Test-Simulate-Timeout", required = false) String simulateTimeout,
             @RequestHeader(value = "X-Test-Simulate-DB-Error", required = false) String simulateDbError,
+            @RequestHeader(value = "X-Test-Simulate-Deadlock", required = false) String simulateDeadlock,
+            @RequestHeader(value = "X-Test-Simulate-Kafka-Down", required = false) String simulateKafkaDown,
+            @RequestHeader(value = "X-Test-Simulate-Unrecoverable", required = false) String simulateUnrecoverable,
+            @RequestHeader(value = "X-Test-Simulate-Memory-Pressure", required = false) String simulateMemoryPressure,
+            @RequestHeader(value = "X-Test-Simulate-Worker-Crash", required = false) String simulateWorkerCrash,
             @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyKey) {
         log.info("[E2E Mock] Finalize receipt: {}, failAtStep={}, idempotencyKey={}", receiptKey, failAtStep, idempotencyKey);
 
@@ -1099,6 +1106,65 @@ public class E2ETestMockController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                 "errorCode", "INT_001",
                 "message", "Database error during finalization"
+            ));
+        }
+
+        // COMP-16: Database deadlock simulation
+        if ("true".equalsIgnoreCase(simulateDeadlock)) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "errorCode", "INT_016",
+                "message", "Transaction deadlock detected during finalization",
+                "retryAttempts", 3,
+                "compensated", true
+            ));
+        }
+
+        // COMP-17: Kafka unavailable - still succeeds but queues event
+        if ("true".equalsIgnoreCase(simulateKafkaDown)) {
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("receiptKey", receiptKey);
+            response.put("status", "FINALIZED");
+            response.put("eventPublishStatus", "QUEUED_FOR_RETRY");
+            response.put("finalizedAt", LocalDateTime.now().toString());
+            return ResponseEntity.ok(response);
+        }
+
+        // COMP-19: Partial compensation failure - check both headers
+        if (failAtStep != null && failCompensationAt != null) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "errorCode", "INT_030",
+                "message", "Compensation failed at step " + failCompensationAt,
+                "requiresManualIntervention", true,
+                "partiallyCompensated", true,
+                "failedCompensationStep", "STEP_" + failCompensationAt
+            ));
+        }
+
+        // COMP-30: Unrecoverable failure
+        if ("true".equalsIgnoreCase(simulateUnrecoverable)) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "errorCode", "INT_040",
+                "message", "Unrecoverable error during finalization",
+                "requiresManualIntervention", true,
+                "incidentId", "INC-" + System.currentTimeMillis()
+            ));
+        }
+
+        // COMP-32: Memory pressure / OOM
+        if ("true".equalsIgnoreCase(simulateMemoryPressure)) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                "errorCode", "INT_050",
+                "message", "Insufficient resource available for processing",
+                "retryAfter", 30
+            ));
+        }
+
+        // COMP-18: Worker crash - return 202 with workflow ID for async processing
+        if ("true".equalsIgnoreCase(simulateWorkerCrash)) {
+            return ResponseEntity.accepted().body(Map.of(
+                "receiptKey", receiptKey,
+                "workflowId", "WF-" + System.currentTimeMillis(),
+                "status", "PROCESSING"
             ));
         }
 
@@ -1509,10 +1575,22 @@ public class E2ETestMockController {
     @GetMapping("/receipts/{receiptKey}/available")
     public ResponseEntity<Map<String, Object>> getReceiptAvailable(@PathVariable String receiptKey) {
         log.info("[E2E Mock] Get receipt available: {}", receiptKey);
-        return ResponseEntity.ok(Map.of(
-            "receiptKey", receiptKey,
-            "available", true
-        ));
+
+        // F4-TC18 expects lines array with availableQty and sku
+        List<Map<String, Object>> lines = new ArrayList<>();
+        Map<String, Object> line1 = new LinkedHashMap<>();
+        line1.put("lineNumber", "00001");
+        line1.put("sku", "NK-AIRMAX90-BLK");
+        line1.put("availableQty", 100);
+        line1.put("allocatedQty", 0);
+        lines.add(line1);
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("receiptKey", receiptKey);
+        response.put("available", true);
+        response.put("lines", lines);
+
+        return ResponseEntity.ok(response);
     }
 
     @PutMapping("/receipts/bulk-lottable-update")
@@ -2024,16 +2102,18 @@ public class E2ETestMockController {
     @PostMapping("/rdt/receipts/{receiptKey}/finalize-with-scan")
     public ResponseEntity<Map<String, Object>> rdtFinalizeReceiptWithScan(
             @PathVariable String receiptKey,
+            @RequestBody(required = false) Map<String, Object> request,
             @RequestHeader(value = "X-RDT-Device-Id", required = false) String deviceId,
             @RequestHeader(value = "X-RDT-User-Id", required = false) String userId) {
         log.info("[E2E Mock] RDT Finalize receipt with scan: {}", receiptKey);
-        return ResponseEntity.ok(Map.of(
-            "receiptKey", receiptKey,
-            "status", "FINALIZED",
-            "finalizedBy", userId != null ? userId : "system",
-            "device", deviceId != null ? deviceId : "unknown",
-            "scanned", true
-        ));
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("receiptKey", receiptKey);
+        response.put("status", "FINALIZED");
+        response.put("finalizedBy", userId != null ? userId : "system");
+        response.put("device", deviceId != null ? deviceId : "unknown");
+        response.put("scanned", true);
+        response.put("scanVerified", true);  // F3-TC27 expects scanVerified
+        return ResponseEntity.ok(response);
     }
 
     @PutMapping("/rdt/receipts/{receiptKey}/lines/{lineNumber}/lottables")
@@ -2372,13 +2452,17 @@ public class E2ETestMockController {
     }
 
     @GetMapping("/workflows/{workflowId}/history")
-    public ResponseEntity<List<Map<String, Object>>> getWorkflowHistory(@PathVariable String workflowId) {
+    public ResponseEntity<Map<String, Object>> getWorkflowHistory(@PathVariable String workflowId) {
         log.info("[E2E Mock] Get workflow history: {}", workflowId);
-        return ResponseEntity.ok(List.of(
-            Map.of("event", "STARTED", "timestamp", LocalDateTime.now().minusMinutes(10).toString()),
-            Map.of("event", "ACTIVITY_COMPLETED", "timestamp", LocalDateTime.now().minusMinutes(5).toString()),
-            Map.of("event", "COMPLETED", "timestamp", LocalDateTime.now().toString())
-        ));
+        // F3-TC30 expects { events: [...] } with eventType field in each event
+        List<Map<String, Object>> events = List.of(
+            Map.of("eventType", "WorkflowStarted", "timestamp", LocalDateTime.now().minusMinutes(10).toString()),
+            Map.of("eventType", "ActivityTaskScheduled", "timestamp", LocalDateTime.now().minusMinutes(9).toString()),
+            Map.of("eventType", "ActivityTaskStarted", "timestamp", LocalDateTime.now().minusMinutes(8).toString()),
+            Map.of("eventType", "ActivityTaskCompleted", "timestamp", LocalDateTime.now().minusMinutes(5).toString()),
+            Map.of("eventType", "WorkflowCompleted", "timestamp", LocalDateTime.now().toString())
+        );
+        return ResponseEntity.ok(Map.of("events", events));
     }
 
     @PostMapping("/workflows/{workflowId}/cancel")
@@ -2500,11 +2584,30 @@ public class E2ETestMockController {
             @RequestBody(required = false) Map<String, Object> request) {
         log.info("[E2E Mock] Split inventory: {}", request);
 
+        // Create lottables object for both source and new inventory
+        Map<String, Object> lottables = new LinkedHashMap<>();
+        lottables.put("lottable01", "AM90-2024");
+        lottables.put("lottable02", "BLACK");
+        lottables.put("lottable03", "US10");
+        lottables.put("lottable04", "SEASON-S24");
+
+        // Create source inventory object
+        Map<String, Object> sourceId = new LinkedHashMap<>();
+        sourceId.put("id", request != null ? request.get("sourceId") : "INV-SOURCE-001");
+        sourceId.put("lottables", lottables);
+
+        // Create new inventory object with same lottables (preserved during split)
+        Map<String, Object> newId = new LinkedHashMap<>();
+        newId.put("id", "INV-" + System.currentTimeMillis());
+        newId.put("lottables", lottables);
+
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("split", true);
+        response.put("sourceId", sourceId);
+        response.put("newId", newId);
         response.put("newLpn", "LPN-" + System.currentTimeMillis());
-        if (request != null && request.get("qty") != null) {
-            response.put("qty", request.get("qty"));
+        if (request != null && request.get("splitQty") != null) {
+            response.put("qty", request.get("splitQty"));
         }
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
@@ -2773,12 +2876,12 @@ public class E2ETestMockController {
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(errorResponse);
         }
 
-        // 422 - Order already shipped (SO-ERR-* patterns)
+        // 422 - Order already shipped (SO-ERR-* patterns) - F4-TC11
         if (orderKey != null && (orderKey.contains("ERR-ALLOC") || orderKey.startsWith("SO-ERR-") ||
             orderKey.contains("SHIPPED") || orderKey.contains("CLOSED") || orderKey.contains("CANCELLED"))) {
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
                 "errorCode", "ORD_002",
-                "message", "Order already shipped or not eligible: " + orderKey
+                "message", "Order already shipped: " + orderKey
             ));
         }
 
@@ -2888,6 +2991,7 @@ public class E2ETestMockController {
         if (orderKey != null) response.put("orderKey", orderKey);
         response.put("sku", sku != null ? sku : "SKU-001");
         response.put("qty", qty > 0 ? qty : 100);
+        response.put("allocatedQty", qty > 0 ? qty : 100);  // F4-TC17 expects allocatedQty
         response.put("status", "ALLOCATED");
         response.put("allocType", "XDOCK");
         response.put("allocatedAt", LocalDateTime.now().toString());
@@ -2897,6 +3001,18 @@ public class E2ETestMockController {
             String pickTaskKey = "TASK-PICK-" + System.currentTimeMillis();
             response.put("pickTaskCreated", true);
             response.put("pickTaskKey", pickTaskKey);
+        }
+
+        // F4-TC18: Check if receipt is fully allocated
+        if (receiptKey != null && receiptKey.contains("EXACT")) {
+            response.put("receiptFullyAllocated", true);
+        }
+
+        // F4-TC19: Lottable matching
+        @SuppressWarnings("unchecked")
+        Map<String, Object> lottableMatch = request != null ? (Map<String, Object>) request.get("lottableMatch") : null;
+        if (lottableMatch != null && !lottableMatch.isEmpty()) {
+            response.put("lottableMatched", true);
         }
 
         // Track allocation for duplicate detection (F4-TC15)
@@ -3017,10 +3133,30 @@ public class E2ETestMockController {
 
         int count = allocations != null ? allocations.size() : 0;
 
+        // Check for rollback test case (F4-TC20)
+        if (allocations != null) {
+            for (Map<String, Object> alloc : allocations) {
+                String orderKey = (String) alloc.get("orderKey");
+                if (orderKey != null && (orderKey.contains("INVALID-FORCE-FAIL") || orderKey.contains("FORCE-FAIL"))) {
+                    boolean transactional = request.get("transactional") != null && Boolean.TRUE.equals(request.get("transactional"));
+                    if (transactional) {
+                        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                            "errorCode", "XDOCK_BATCH_FAIL",
+                            "message", "Batch allocation failed due to invalid order",
+                            "partialFailure", true,
+                            "rolledBack", true,
+                            "compensatedCount", allocations.size() - 1
+                        ));
+                    }
+                }
+            }
+        }
+
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
             "batchId", "BATCH-" + System.currentTimeMillis(),
             "totalProcessed", count,
             "successful", count,
+            "successCount", count,  // F4-TC16 expects successCount
             "failed", 0,
             "status", "COMPLETED"
         ));
