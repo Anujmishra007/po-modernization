@@ -46,6 +46,14 @@ public class E2ETestMockController {
     private final Set<String> cancelledPOs = ConcurrentHashMap.newKeySet();
     private final Set<String> cancelledReceipts = ConcurrentHashMap.newKeySet();
 
+    // Track created PO external keys to detect duplicates
+    private final Set<String> createdPoExternalKeys = ConcurrentHashMap.newKeySet();
+    private final Map<String, String> externalKeyToPoKey = new ConcurrentHashMap<>();
+
+    // Additional error trigger patterns
+    private static final Set<String> INVALID_SUPPLIERS = Set.of("INVALID-SUPPLIER-999", "INVALID_SUPPLIER", "UNKNOWN-SUPPLIER");
+    private static final Set<String> ERROR_STORERS = Set.of("TEST_STORER_ERR", "STORER_INACTIVE", "STORER_DISABLED");
+
     // ==================== PO CRUD Operations ====================
     // These replace POController during E2E tests
 
@@ -55,9 +63,39 @@ public class E2ETestMockController {
             @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestHeader(value = "Content-Type", required = false) String contentType,
             @RequestHeader(value = "X-User-Id", required = false) String userId,
-            @RequestHeader(value = "X-Facility", required = false) String facilityHeader) {
+            @RequestHeader(value = "X-Facility", required = false) String facilityHeader,
+            @RequestHeader(value = "X-Test-Simulate-DB-Timeout", required = false) String dbTimeout,
+            @RequestHeader(value = "X-Test-Simulate-Service-Down", required = false) String serviceDown,
+            @RequestHeader(value = "X-Test-Simulate-Slow-Processing", required = false) String slowProcessing) {
 
-        log.info("[E2E Mock] Create PO: {}", request);
+        log.info("[E2E Mock] Create PO: {}, dbTimeout={}, serviceDown={}, slowProcessing={}",
+                request, dbTimeout, serviceDown, slowProcessing);
+
+        // Check for DB timeout simulation (503)
+        if ("true".equalsIgnoreCase(dbTimeout)) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                "errorCode", "INT_022",
+                "message", "Database connection timeout",
+                "retryable", true
+            ));
+        }
+
+        // Check for service down simulation (503)
+        if ("true".equalsIgnoreCase(serviceDown)) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                "errorCode", "INT_023",
+                "message", "Service unavailable - please retry later",
+                "retryAfter", 30
+            ));
+        }
+
+        // Check for slow processing timeout simulation (504)
+        if ("true".equalsIgnoreCase(slowProcessing)) {
+            return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(Map.of(
+                "errorCode", "INT_003",
+                "message", "Gateway timeout - request processing took too long"
+            ));
+        }
 
         // Check authentication
         if (authHeader == null || authHeader.isBlank()) {
@@ -68,13 +106,27 @@ public class E2ETestMockController {
         }
         if (authHeader.contains("invalid") || authHeader.contains("expired")) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
-                "errorCode", "AUTH_002",
+                "errorCode", "AUTH_001",
                 "message", "Invalid or expired token"
             ));
         }
+        // Check for read-only token (403)
+        if (authHeader.contains("readonly") || authHeader.contains("read-only")) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                "errorCode", "AUTH_002",
+                "message", "Insufficient privileges to create PO",
+                "requiredPrivilege", "PO_CREATE"
+            ));
+        }
 
-        // Check content type (415)
-        if (contentType != null && !contentType.contains("application/json")) {
+        // Check content type (415) - if no Content-Type header at all
+        if (contentType == null || contentType.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).body(Map.of(
+                "errorCode", "MEDIA_001",
+                "message", "Content-Type header is required"
+            ));
+        }
+        if (!contentType.contains("application/json")) {
             return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).body(Map.of(
                 "errorCode", "MEDIA_001",
                 "message", "Content-Type must be application/json"
@@ -88,65 +140,97 @@ public class E2ETestMockController {
 
         String storerKey = request.get("storerKey") != null ? request.get("storerKey").toString() : null;
         String facility = request.get("facility") != null ? request.get("facility").toString() : null;
+        String supplierKey = request.get("supplierKey") != null ? request.get("supplierKey").toString() : null;
         // Support both externPoKey and externalOrderKey field names
         String externPoKey = request.get("externPoKey") != null ? request.get("externPoKey").toString() :
                              request.get("externalOrderKey") != null ? request.get("externalOrderKey").toString() : null;
 
-        // Check for service down simulation (503)
-        if (SERVICE_DOWN_TRIGGERS.contains(storerKey) || SERVICE_DOWN_TRIGGERS.contains(facility)) {
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
-                "errorCode", "SVC_001",
-                "message", "Service temporarily unavailable"
+        // Validation checks (400) - Required fields first
+        if (storerKey == null || storerKey.isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "errorCode", "VAL_001",
+                "message", "storerKey is required",
+                "field", "storerKey"
+            ));
+        }
+        if (facility == null || facility.isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "errorCode", "VAL_001",
+                "message", "facility is required",
+                "field", "facility"
             ));
         }
 
-        // Check for timeout simulation (504)
-        if (TIMEOUT_TRIGGERS.contains(storerKey) || TIMEOUT_TRIGGERS.contains(externPoKey)) {
+        // Check for duplicate PO external key (409) - check tracking
+        if (externPoKey != null) {
+            if (DUPLICATE_PO_KEYS.contains(externPoKey) || createdPoExternalKeys.contains(externPoKey)) {
+                String existingPoKey = externalKeyToPoKey.getOrDefault(externPoKey, "PO-EXISTING");
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "errorCode", "VAL_003",
+                    "message", "Duplicate PO - external key already exists: " + externPoKey,
+                    "existingPoKey", existingPoKey
+                ));
+            }
+        }
+
+        // Check for service down triggers in data (503)
+        if (SERVICE_DOWN_TRIGGERS.contains(storerKey) || SERVICE_DOWN_TRIGGERS.contains(facility)) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                "errorCode", "INT_023",
+                "message", "Service temporarily unavailable",
+                "retryAfter", 60
+            ));
+        }
+
+        // Check for timeout triggers in data (504)
+        if (TIMEOUT_TRIGGERS.contains(storerKey) || (externPoKey != null && externPoKey.contains("TIMEOUT"))) {
             return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(Map.of(
-                "errorCode", "TIMEOUT_001",
+                "errorCode", "INT_003",
                 "message", "Gateway timeout - request took too long"
             ));
         }
 
-        // Check for duplicate PO (409)
-        if (externPoKey != null && DUPLICATE_PO_KEYS.contains(externPoKey)) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
-                "errorCode", "PO_009",
-                "message", "PO already exists with external key: " + externPoKey
-            ));
-        }
-
         // Check authorization for facility (403)
-        if (facility != null && INVALID_FACILITIES.contains(facility)) {
+        if (INVALID_FACILITIES.contains(facility)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
                 "errorCode", "AUTH_003",
                 "message", "Not authorized for facility: " + facility
             ));
         }
 
-        // Validation checks (400, 422)
-        if (storerKey == null || storerKey.isBlank()) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                "errorCode", "VAL_001",
-                "message", "Storer key is required"
-            ));
-        }
-        if (facility == null || facility.isBlank()) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                "errorCode", "VAL_002",
-                "message", "Facility is required"
-            ));
-        }
-        if (INVALID_STORERS.contains(storerKey)) {
+        // Check for inactive/error storer (422)
+        if (ERROR_STORERS.contains(storerKey) || INVALID_STORERS.contains(storerKey)) {
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
-                "errorCode", "VAL_003",
-                "message", "Invalid storer key: " + storerKey
+                "errorCode", "VAL_002",
+                "message", "Storer is inactive or invalid: " + storerKey
             ));
         }
 
-        // Check for specific validation error patterns
+        // Check for invalid supplier (422)
+        if (supplierKey != null && (INVALID_SUPPLIERS.contains(supplierKey) || supplierKey.startsWith("INVALID-SUPPLIER"))) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "PO_012",
+                "message", "Invalid or unknown Supplier: " + supplierKey
+            ));
+        }
+
+        // Check for invalid SKU in lines (422)
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> lines = (List<Map<String, Object>>) request.get("lines");
+        if (lines != null) {
+            for (Map<String, Object> line : lines) {
+                String sku = line.get("sku") != null ? line.get("sku").toString() : null;
+                if (sku != null && (sku.startsWith("INVALID-SKU") || sku.startsWith("TEST-SKU-ERR"))) {
+                    return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                        "errorCode", "PO_013",
+                        "message", "Invalid or unknown SKU: " + sku,
+                        "details", Map.of("sku", sku)
+                    ));
+                }
+            }
+        }
+
+        // Check for specific validation error patterns (lines already extracted above)
         if (lines != null) {
             for (Map<String, Object> line : lines) {
                 Object qty = line.get("qtyOrdered");
@@ -168,13 +252,24 @@ public class E2ETestMockController {
 
         // Success - create PO
         String poKey = "PO-" + System.currentTimeMillis();
-        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
-            "poKey", poKey,
-            "storerKey", storerKey,
-            "facility", facility,
-            "status", "0",
-            "createdAt", LocalDateTime.now().toString()
-        ));
+
+        // Track the external key for duplicate detection
+        if (externPoKey != null) {
+            createdPoExternalKeys.add(externPoKey);
+            externalKeyToPoKey.put(externPoKey, poKey);
+        }
+
+        // Build response
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("poKey", poKey);
+        response.put("externalOrderKey", externPoKey);
+        response.put("storerKey", storerKey);
+        response.put("facility", facility);
+        response.put("status", "0");
+        response.put("lineCount", lines != null ? lines.size() : 0);
+        response.put("createdAt", LocalDateTime.now().toString());
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @GetMapping("/po/{poKey}")
