@@ -1533,15 +1533,6 @@ public class E2ETestMockController {
         ));
     }
 
-    @PostMapping("/tasks/{taskKey}/reassign")
-    public ResponseEntity<Map<String, Object>> reassignTask(@PathVariable String taskKey) {
-        log.info("[E2E Mock] Reassign task: {}", taskKey);
-        return ResponseEntity.ok(Map.of(
-            "taskKey", taskKey,
-            "reassigned", true
-        ));
-    }
-
     @PostMapping("/tasks/{taskKey}/timeout")
     public ResponseEntity<Map<String, Object>> timeoutTask(@PathVariable String taskKey) {
         log.info("[E2E Mock] Timeout task: {}", taskKey);
@@ -1596,43 +1587,7 @@ public class E2ETestMockController {
         ));
     }
 
-    // ==================== Cross-Dock ====================
-
-    @PostMapping("/xdock/allocate")
-    public ResponseEntity<Map<String, Object>> xdockAllocate(@RequestBody Map<String, Object> request) {
-        log.info("[E2E Mock] X-Dock allocate: {}", request);
-        return ResponseEntity.ok(Map.of(
-            "allocated", true,
-            "allocationKey", "XDOCK-" + System.currentTimeMillis()
-        ));
-    }
-
-    @PostMapping("/xdock/allocate-batch")
-    public ResponseEntity<Map<String, Object>> xdockAllocateBatch(@RequestBody Map<String, Object> request) {
-        log.info("[E2E Mock] X-Dock allocate batch: {}", request);
-        return ResponseEntity.ok(Map.of(
-            "allocated", true,
-            "batchId", "BATCH-" + System.currentTimeMillis()
-        ));
-    }
-
-    @PostMapping("/xdock/allocate-full")
-    public ResponseEntity<Map<String, Object>> xdockAllocateFull(@RequestBody Map<String, Object> request) {
-        log.info("[E2E Mock] X-Dock allocate full: {}", request);
-        return ResponseEntity.ok(Map.of(
-            "allocated", true,
-            "fullAllocation", true
-        ));
-    }
-
-    @PostMapping("/xdock/allocate-multi")
-    public ResponseEntity<Map<String, Object>> xdockAllocateMulti(@RequestBody Map<String, Object> request) {
-        log.info("[E2E Mock] X-Dock allocate multi: {}", request);
-        return ResponseEntity.ok(Map.of(
-            "allocated", true,
-            "multiAllocation", true
-        ));
-    }
+    // ==================== Cross-Dock Utilities ====================
 
     @PostMapping("/xdock/auto-allocate")
     public ResponseEntity<Map<String, Object>> xdockAutoAllocate(@RequestBody Map<String, Object> request) {
@@ -1772,92 +1727,6 @@ public class E2ETestMockController {
         log.info("[E2E Mock] Consolidate inventory: {}", request);
         return ResponseEntity.ok(Map.of(
             "consolidated", true
-        ));
-    }
-
-    // ==================== ASN ====================
-
-    @PostMapping("/asn/populate")
-    public ResponseEntity<Map<String, Object>> populateASN(@RequestBody Map<String, Object> request) {
-        log.info("[E2E Mock] Populate ASN: {}", request);
-        String receiptKey = "RCV-" + System.currentTimeMillis();
-        String poKey = (String) request.get("poKey");
-
-        // Calculate carton count and total qty from request
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> cartons = (List<Map<String, Object>>) request.get("cartons");
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> lines = (List<Map<String, Object>>) request.get("lines");
-
-        int cartonCount = cartons != null ? cartons.size() : 0;
-        int totalQty = 0;
-        boolean isPartialShipment = Boolean.TRUE.equals(request.get("isPartialShipment"));
-        boolean allowOverReceipt = Boolean.TRUE.equals(request.get("allowOverReceipt"));
-        int overReceiptQty = 0;
-
-        // Calculate total qty from lines or cartons
-        if (cartons != null) {
-            for (Map<String, Object> carton : cartons) {
-                @SuppressWarnings("unchecked")
-                List<Map<String, Object>> cartonLines = (List<Map<String, Object>>) carton.get("lines");
-                if (cartonLines != null) {
-                    for (Map<String, Object> line : cartonLines) {
-                        Object qty = line.get("qtyShipped");
-                        if (qty instanceof Number) {
-                            totalQty += ((Number) qty).intValue();
-                        }
-                    }
-                }
-            }
-        } else if (lines != null) {
-            for (Map<String, Object> line : lines) {
-                Object qtyShipped = line.get("qtyShipped");
-                Object qtyOrdered = line.get("qtyOrdered");
-                if (qtyShipped instanceof Number) {
-                    int shipped = ((Number) qtyShipped).intValue();
-                    totalQty += shipped;
-                    if (qtyOrdered instanceof Number && allowOverReceipt) {
-                        int ordered = ((Number) qtyOrdered).intValue();
-                        if (shipped > ordered) {
-                            overReceiptQty += (shipped - ordered);
-                        }
-                    }
-                }
-            }
-        }
-
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("receiptKey", receiptKey);
-        response.put("asnKey", "ASN-" + System.currentTimeMillis());
-        response.put("status", "POPULATED");
-        if (poKey != null) {
-            response.put("linkedPoKey", poKey);
-        }
-        if (cartonCount > 0) {
-            response.put("cartonCount", cartonCount);
-        }
-        if (totalQty > 0) {
-            response.put("totalQty", totalQty);
-        }
-        if (isPartialShipment) {
-            response.put("partialShipment", true);
-        }
-        if (overReceiptQty > 0) {
-            response.put("overReceiptWarning", true);
-            response.put("overReceiptQty", overReceiptQty);
-        }
-
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
-    }
-
-    // ==================== Saga ====================
-
-    @PostMapping("/saga/po-to-inventory")
-    public ResponseEntity<Map<String, Object>> sagaPOToInventory(@RequestBody Map<String, Object> request) {
-        log.info("[E2E Mock] Saga PO to inventory: {}", request);
-        return ResponseEntity.ok(Map.of(
-            "sagaId", "SAGA-" + System.currentTimeMillis(),
-            "status", "COMPLETED"
         ));
     }
 
