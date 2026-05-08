@@ -1474,15 +1474,20 @@ public class E2ETestMockController {
         return ResponseEntity.ok(response);
     }
 
-    @PostMapping("/rdt/tasks/next")
-    public ResponseEntity<Map<String, Object>> rdtGetNextTask() {
-        log.info("[E2E Mock] RDT Get next task");
-        return ResponseEntity.ok(Map.of(
-            "taskKey", "TASK-" + System.currentTimeMillis(),
-            "taskType", "PUTAWAY",
-            "fromLocation", "RECV-01",
-            "toLocation", "A-01-01"
-        ));
+    @GetMapping("/rdt/tasks/next")
+    public ResponseEntity<Map<String, Object>> rdtGetNextTask(
+            @RequestParam(required = false) String taskType,
+            @RequestParam(required = false) String facility) {
+        log.info("[E2E Mock] RDT Get next task: taskType={}, facility={}", taskType, facility);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("taskKey", "TASK-" + System.currentTimeMillis());
+        response.put("taskType", taskType != null ? taskType : "PUTAWAY");
+        response.put("fromLocation", "RECV-01");
+        response.put("toLocation", "A-01-01");
+        if (facility != null) {
+            response.put("facility", facility);
+        }
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/rdt/tasks/queue")
@@ -1504,8 +1509,27 @@ public class E2ETestMockController {
     }
 
     @PostMapping("/rdt/tasks/{taskKey}/complete")
-    public ResponseEntity<Map<String, Object>> rdtCompleteTask(@PathVariable String taskKey) {
+    public ResponseEntity<Map<String, Object>> rdtCompleteTask(
+            @PathVariable String taskKey,
+            @RequestBody(required = false) Map<String, Object> request) {
         log.info("[E2E Mock] RDT Complete task: {}", taskKey);
+
+        // Simulate validation errors for specific task keys
+        if (taskKey.contains("PUTAWAY-003") || taskKey.contains("PUTAWAY-004")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "TASK_ERR_001",
+                "message", "Task cannot be completed: invalid location state",
+                "taskKey", taskKey
+            ));
+        }
+        if (taskKey.contains("ERR") || taskKey.contains("INVALID")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "TASK_ERR_002",
+                "message", "Task completion failed: " + taskKey,
+                "taskKey", taskKey
+            ));
+        }
+
         return ResponseEntity.ok(Map.of(
             "taskKey", taskKey,
             "completed", true,
@@ -1579,12 +1603,14 @@ public class E2ETestMockController {
     @GetMapping("/tasks/metrics")
     public ResponseEntity<Map<String, Object>> getTaskMetrics() {
         log.info("[E2E Mock] Get task metrics");
-        return ResponseEntity.ok(Map.of(
-            "totalTasks", 100,
-            "completed", 80,
-            "pending", 15,
-            "inProgress", 5
-        ));
+        Map<String, Object> metrics = new LinkedHashMap<>();
+        metrics.put("totalTasks", 100);
+        metrics.put("completed", 80);
+        metrics.put("pending", 15);
+        metrics.put("inProgress", 5);
+        metrics.put("avgCompletionTime", 125.5);
+        metrics.put("throughputPerHour", 45);
+        return ResponseEntity.ok(metrics);
     }
 
     // ==================== Cross-Dock Utilities ====================
@@ -2114,14 +2140,17 @@ public class E2ETestMockController {
 
         String taskKey = "TASK-" + System.currentTimeMillis();
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
-            "taskKey", taskKey,
-            "taskType", taskType,
-            "receiptKey", receiptKey,
-            "facility", facility != null ? facility : "TEST01",
-            "status", "PENDING",
-            "createdAt", LocalDateTime.now().toString()
-        ));
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("taskKey", taskKey);
+        response.put("taskType", taskType);
+        if (receiptKey != null) {
+            response.put("receiptKey", receiptKey);
+        }
+        response.put("facility", facility != null ? facility : "TEST01");
+        response.put("status", "PENDING");
+        response.put("createdAt", LocalDateTime.now().toString());
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @GetMapping("/tasks/{taskKey}")
