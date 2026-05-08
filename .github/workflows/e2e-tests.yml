@@ -65,7 +65,7 @@ jobs:
         run: chmod +x ./mvnw || true
 
       - name: Build all modules (skip tests)
-        run: mvn install -DskipTests -B
+        run: mvn install -DskipTests -DskipUTs=true -DskipITs=true -B
 
       - name: Run Unit Tests (Layer 2)
         run: |
