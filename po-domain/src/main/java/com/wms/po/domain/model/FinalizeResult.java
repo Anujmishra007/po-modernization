@@ -1,5 +1,6 @@
 package com.wms.po.domain.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -56,7 +57,10 @@ public class FinalizeResult {
     /**
      * Returns "FINALIZED" if success, otherwise the actual finalStatus.
      * This provides backward compatibility with test expectations.
+     * Note: @JsonIgnore prevents serialization of this derived property to avoid
+     * deserialization errors (no matching field).
      */
+    @JsonIgnore
     public String getStatus() {
         if (success && "9".equals(finalStatus)) {
             return "FINALIZED";
@@ -65,15 +69,19 @@ public class FinalizeResult {
     }
 
     /**
-     * Alias for linesFinalizedCount for backward compatibility
+     * Alias for linesFinalizedCount for backward compatibility.
+     * Note: @JsonIgnore prevents serialization of this derived property.
      */
+    @JsonIgnore
     public int getLinesFinalized() {
         return linesFinalizedCount;
     }
 
     /**
-     * Alias for putawayTasksReleased for backward compatibility
+     * Alias for putawayTasksReleased for backward compatibility.
+     * Note: @JsonIgnore prevents serialization of this derived property.
      */
+    @JsonIgnore
     public int getPutawayTasksCreated() {
         return putawayTasksReleased;
     }
