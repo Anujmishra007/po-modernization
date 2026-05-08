@@ -1,8 +1,6 @@
 # Test profile configuration for E2E testing
+# NOTE: spring.profiles.active cannot be set in profile-specific files
 spring:
-  profiles:
-    active: test
-
   datasource:
     url: jdbc:postgresql://localhost:5433/po_test
     username: wms
