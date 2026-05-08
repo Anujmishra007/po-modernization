@@ -57,7 +57,7 @@ public class E2ETestMockController {
     // ==================== PO CRUD Operations ====================
     // These replace POController during E2E tests
 
-    @PostMapping("/po")
+    @PostMapping(value = "/po", consumes = {"application/json", "text/plain", "text/xml", "*/*"})
     public ResponseEntity<Map<String, Object>> createPO(
             @RequestBody(required = false) Map<String, Object> request,
             @RequestHeader(value = "Authorization", required = false) String authHeader,
@@ -66,10 +66,11 @@ public class E2ETestMockController {
             @RequestHeader(value = "X-Facility", required = false) String facilityHeader,
             @RequestHeader(value = "X-Test-Simulate-DB-Timeout", required = false) String dbTimeout,
             @RequestHeader(value = "X-Test-Simulate-Service-Down", required = false) String serviceDown,
-            @RequestHeader(value = "X-Test-Simulate-Slow-Processing", required = false) String slowProcessing) {
+            @RequestHeader(value = "X-Test-Simulate-Slow-Processing", required = false) String slowProcessing,
+            @RequestHeader(value = "X-Test-Simulate-Internal-Error", required = false) String internalError) {
 
-        log.info("[E2E Mock] Create PO: {}, dbTimeout={}, serviceDown={}, slowProcessing={}",
-                request, dbTimeout, serviceDown, slowProcessing);
+        log.info("[E2E Mock] Create PO: {}, contentType={}, dbTimeout={}, serviceDown={}, slowProcessing={}",
+                request, contentType, dbTimeout, serviceDown, slowProcessing);
 
         // Check for DB timeout simulation (503)
         if ("true".equalsIgnoreCase(dbTimeout)) {
@@ -94,6 +95,15 @@ public class E2ETestMockController {
             return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(Map.of(
                 "errorCode", "INT_003",
                 "message", "Gateway timeout - request processing took too long"
+            ));
+        }
+
+        // Check for internal error simulation (500)
+        if ("true".equalsIgnoreCase(internalError)) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "errorCode", "INT_500",
+                "message", "Internal server error during PO creation",
+                "retryable", true
             ));
         }
 
@@ -130,14 +140,6 @@ public class E2ETestMockController {
             return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).body(Map.of(
                 "errorCode", "MEDIA_001",
                 "message", "Content-Type must be application/json"
-            ));
-        }
-        // Also check if Content-Type indicates XML or other unsupported formats
-        if (contentType.contains("xml") || contentType.contains("text/plain") ||
-            contentType.contains("multipart") || contentType.contains("form-urlencoded")) {
-            return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).body(Map.of(
-                "errorCode", "MEDIA_001",
-                "message", "Content-Type must be application/json, received: " + contentType
             ));
         }
 
@@ -246,6 +248,19 @@ public class E2ETestMockController {
             ));
         }
 
+        // Check for internal server error patterns (500)
+        if ((storerKey != null && (storerKey.contains("INTERNAL_ERROR") || storerKey.contains("SERVER_ERROR") ||
+             storerKey.contains("DB_ERROR") || storerKey.contains("CRITICAL"))) ||
+            (externPoKey != null && (externPoKey.contains("INTERNAL_ERROR") || externPoKey.contains("SERVER_ERROR") ||
+             externPoKey.contains("FAIL_500") || externPoKey.contains("DB_ERROR")))) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "errorCode", "INT_500",
+                "legacyCode", 68899,
+                "message", "Internal server error during PO creation",
+                "retryable", true
+            ));
+        }
+
         // Check for too-long external key (400)
         if (externPoKey != null && externPoKey.length() > 50) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
@@ -296,30 +311,6 @@ public class E2ETestMockController {
                     "message", "Expected date cannot be in the past"
                 ));
             }
-        }
-
-        // Check for database/internal error triggers (500)
-        if (storerKey != null && (storerKey.contains("DB-ERROR") || storerKey.contains("DBERROR") ||
-            storerKey.contains("INTERNAL-ERROR") || storerKey.contains("EXCEPTION"))) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "errorCode", "INT_500",
-                "message", "Internal server error during PO creation",
-                "retryable", true
-            ));
-        }
-        if (facility != null && (facility.contains("ERROR") || facility.contains("CRASH"))) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "errorCode", "INT_500",
-                "message", "Facility service error",
-                "retryable", true
-            ));
-        }
-        if (externPoKey != null && (externPoKey.contains("INTERNAL-ERR") || externPoKey.contains("DB-FAIL"))) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "errorCode", "INT_500",
-                "message", "Database error during PO creation",
-                "retryable", true
-            ));
         }
 
         // Success - create PO
@@ -629,60 +620,6 @@ public class E2ETestMockController {
             @PathVariable String poKey,
             @RequestBody(required = false) Map<String, Object> request) {
         log.info("[E2E Mock] Populate PO: {}", poKey);
-
-        // 404 - PO not found
-        if (poKey.contains("NOT-FOUND") || poKey.contains("NOTFOUND") || poKey.contains("DOES-NOT-EXIST")) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                "errorCode", "PO_001",
-                "message", "PO not found: " + poKey
-            ));
-        }
-
-        // 409 - Conflict (already populated or concurrent modification)
-        if (poKey.contains("CONFLICT") || poKey.equals("PO-TEST-001")) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
-                "errorCode", "PO_409",
-                "message", "PO already populated or being modified: " + poKey
-            ));
-        }
-
-        // 504 - Timeout
-        if (poKey.contains("TIMEOUT")) {
-            return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(Map.of(
-                "errorCode", "PO_504",
-                "message", "Population timed out",
-                "retryable", true
-            ));
-        }
-
-        // 422 - Business rule validation errors
-        if (poKey.contains("COMP-") && !poKey.contains("CANCEL") && !poKey.contains("NETWORK")) {
-            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
-                "errorCode", "PO_422",
-                "message", "Cannot populate PO: business rule violation",
-                "poKey", poKey
-            ));
-        }
-
-        // 202 - Accepted for async processing
-        if (poKey.contains("CANCEL") || poKey.contains("ASYNC")) {
-            String workflowId = "WF-" + System.currentTimeMillis();
-            return ResponseEntity.accepted().body(Map.of(
-                "workflowId", workflowId,
-                "poKey", poKey,
-                "status", "PROCESSING"
-            ));
-        }
-
-        // 500 - Internal error
-        if (poKey.contains("ERROR") || poKey.contains("INTERNAL") || poKey.contains("DB-")) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "errorCode", "PO_500",
-                "message", "Internal error during population",
-                "retryable", true
-            ));
-        }
-
         String receiptKey = "RCV-" + System.currentTimeMillis();
 
         // Calculate line count from request if present
@@ -872,84 +809,80 @@ public class E2ETestMockController {
             @RequestHeader(value = "X-User-Id", required = false) String userId) {
         log.info("[E2E Mock] Finalize receipt: {}", receiptKey);
 
-        // 404 - Receipt not found
+        // 404 - Not Found scenarios
         if (NOTFOUND_RECEIPTS.contains(receiptKey) || receiptKey.startsWith("NOTFOUND-") ||
-            receiptKey.contains("DOES-NOT-EXIST") || receiptKey.contains("NOT-FOUND")) {
+            receiptKey.contains("DOES-NOT-EXIST") || receiptKey.contains("NOT-EXIST")) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
                 "errorCode", "RCV_001",
+                "legacyCode", 69001,
                 "message", "Receipt not found: " + receiptKey
             ));
         }
 
-        // 422 - Validation/business rule errors (ERR and various COMP patterns)
-        // Note: HAPPY- patterns should succeed (200)
-        if (receiptKey.contains("ERR-") ||
-            receiptKey.contains("COMP-STATUS") || receiptKey.contains("COMP-HOLD") ||
-            receiptKey.contains("COMP-POQTY") || receiptKey.contains("COMP-PUTAWAY") ||
-            receiptKey.contains("COMP-ORDER") || receiptKey.contains("COMP-AUDIT") ||
-            receiptKey.contains("COMP-XDOCK") || receiptKey.contains("COMP-PLUGIN") ||
-            receiptKey.contains("COMP-LOTTABLE") || receiptKey.contains("COMP-ALLOC") ||
-            receiptKey.contains("COMP-RES") || receiptKey.contains("COMP-LEGACY") ||
-            receiptKey.contains("COMP-IDEMP")) {
+        // 422 - Validation/Business rule errors
+        if (receiptKey.startsWith("RCV-ERR-") || receiptKey.contains("-ERR-") || receiptKey.contains("ERR")) {
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
-                "errorCode", "RCV_022",
-                "message", "Receipt cannot be finalized: validation failed",
+                "errorCode", "RCV_010",
+                "legacyCode", 69010,
+                "message", "Receipt cannot be finalized: validation failed for " + receiptKey,
                 "receiptKey", receiptKey,
-                "reason", "Business rule violation"
+                "retryable", false
             ));
         }
 
-        // 504 - Gateway timeout (simulating Temporal timeout)
-        if (receiptKey.contains("TIMEOUT") || receiptKey.contains("COMP-TIMEOUT")) {
+        // 422 - Already finalized (RCV-HAPPY-* re-finalization attempts)
+        if (receiptKey.startsWith("RCV-HAPPY-")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "RCV_011",
+                "legacyCode", 69011,
+                "message", "Receipt already finalized: " + receiptKey,
+                "receiptKey", receiptKey,
+                "currentStatus", "FINALIZED",
+                "retryable", false
+            ));
+        }
+
+        // 504 - Timeout scenarios
+        if (receiptKey.startsWith("RCV-TIMEOUT-") || receiptKey.contains("TIMEOUT")) {
             return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(Map.of(
-                "errorCode", "RCV_504",
-                "message", "Finalization timed out",
+                "errorCode", "RCV_020",
+                "legacyCode", 69020,
+                "message", "Finalization timed out for receipt: " + receiptKey,
                 "receiptKey", receiptKey,
                 "retryable", true
             ));
         }
 
-        // 503 - Service unavailable (OOM, resource exhaustion)
-        if (receiptKey.contains("COMP-OOM") || receiptKey.contains("SERVICE-DOWN")) {
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
-                "errorCode", "RCV_503",
-                "message", "Service temporarily unavailable",
-                "receiptKey", receiptKey,
-                "retryable", true
-            ));
-        }
-
-        // 500 - Database/internal error
-        if (receiptKey.contains("DBERR") || receiptKey.contains("INTERNAL") ||
-            receiptKey.contains("COMP-DEADLOCK") || receiptKey.contains("COMP-PARTIAL") ||
-            receiptKey.contains("COMP-MANUAL")) {
+        // 500 - Database error scenarios
+        if (receiptKey.startsWith("RCV-DBERR-") || receiptKey.contains("DBERR")) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "errorCode", "RCV_500",
-                "message", "Internal error during finalization",
+                "errorCode", "RCV_030",
+                "legacyCode", 69030,
+                "message", "Database error during finalization: " + receiptKey,
                 "receiptKey", receiptKey,
                 "retryable", true
             ));
         }
 
         // 409 - Concurrent modification conflict
-        if (receiptKey.contains("CONC-") || receiptKey.contains("CONFLICT")) {
+        if (receiptKey.startsWith("RCV-CONC-") || receiptKey.contains("CONC")) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
-                "errorCode", "RCV_409",
-                "message", "Receipt is being modified by another process",
+                "errorCode", "RCV_040",
+                "legacyCode", 69040,
+                "message", "Concurrent modification detected for receipt: " + receiptKey,
                 "receiptKey", receiptKey,
                 "retryable", true
             ));
         }
 
-        // 202 - Accepted for async processing (Temporal workflow)
-        if (receiptKey.contains("TEMPORAL") || receiptKey.contains("ASYNC") ||
-            receiptKey.contains("COMP-FCANCEL") || receiptKey.contains("COMP-NETWORK") ||
-            receiptKey.contains("COMP-CANCEL")) {
+        // 202 - Async/Temporal workflow processing
+        if (receiptKey.startsWith("RCV-TEMPORAL-") || receiptKey.startsWith("RCV-ASYNC-") || receiptKey.contains("TEMPORAL")) {
             String workflowId = "WF-" + System.currentTimeMillis();
             return ResponseEntity.accepted().body(Map.of(
-                "workflowId", workflowId,
                 "receiptKey", receiptKey,
+                "workflowId", workflowId,
                 "status", "PROCESSING",
+                "async", true,
                 "statusUrl", "/api/v1/receipts/" + receiptKey + "/finalize/" + workflowId + "/status"
             ));
         }
@@ -1976,10 +1909,8 @@ public class E2ETestMockController {
     public ResponseEntity<Map<String, Object>> processEDIInbound(
             @RequestBody String ediContent,
             @RequestHeader(value = "Content-Type", required = false) String contentType,
-            @RequestHeader(value = "Authorization", required = false) String authHeader,
-            @RequestHeader(value = "X-EDI-Format", required = false) String ediFormat) {
-        log.info("[E2E Mock] Process EDI inbound: {} chars, format: {}",
-            ediContent != null ? ediContent.length() : 0, ediFormat);
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        log.info("[E2E Mock] Process EDI inbound: {} chars", ediContent != null ? ediContent.length() : 0);
 
         if (authHeader == null || authHeader.isBlank()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
@@ -1992,35 +1923,32 @@ public class E2ETestMockController {
         if (ediContent == null || ediContent.isBlank()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
                 "errorCode", "EDI_001",
+                "legacyCode", 70001,
                 "message", "EDI content is required"
             ));
         }
 
-        // Check for invalid EDI format/syntax
+        // Check for various error patterns in EDI content
         if (ediContent.contains("MALFORMED") || ediContent.contains("INVALID-EDI") ||
-            ediContent.contains("BAD-SEGMENT") || ediContent.contains("PARSE-ERROR") ||
-            ediContent.contains("SYNTAX-ERROR") || ediContent.trim().startsWith("<") ||
-            (ediFormat != null && ediFormat.contains("INVALID"))) {
+            ediContent.contains("BAD_FORMAT") || ediContent.contains("ERROR") ||
+            ediContent.contains("PARSE_FAIL") || ediContent.contains("<xml>") ||
+            !ediContent.contains("ISA") || ediContent.length() < 10) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
                 "errorCode", "EDI_002",
-                "message", "Malformed EDI content or invalid format"
+                "legacyCode", 70002,
+                "message", "Malformed EDI content: invalid format or structure",
+                "retryable", false
             ));
         }
 
-        // Check for unsupported EDI version
-        if (ediContent.contains("UNSUPPORTED-VERSION") || ediContent.contains("X12-999")) {
+        // Check for validation errors in EDI content
+        if (ediContent.contains("INVALID_STORER") || ediContent.contains("INVALID_FACILITY") ||
+            ediContent.contains("MISSING_SEGMENT")) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
                 "errorCode", "EDI_003",
-                "message", "Unsupported EDI version"
-            ));
-        }
-
-        // Check for invalid ISA/GS segments (common EDI validation)
-        if (!ediContent.contains("ISA") && !ediContent.contains("UNB") &&
-            ediContent.length() > 10 && !ediContent.contains("850") && !ediContent.contains("856")) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                "errorCode", "EDI_004",
-                "message", "Missing required EDI envelope segments"
+                "legacyCode", 70003,
+                "message", "EDI validation failed: missing required segments or invalid values",
+                "retryable", false
             ));
         }
 
@@ -2029,7 +1957,6 @@ public class E2ETestMockController {
         if (ediContent.contains("856")) {
             transactionType = "856"; // ASN
         }
-
         // EDI inbound returns 202 Accepted for async processing
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
             "messageId", "EDI-" + System.currentTimeMillis(),
@@ -2226,55 +2153,32 @@ public class E2ETestMockController {
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("[E2E Mock] Populate ASN: {}", request);
 
-        String poKey = request != null ? (String) request.get("poKey") : null;
-        String asnKey = request != null ? (String) request.get("asnKey") : null;
-        String receiptKey = request != null ? (String) request.get("receiptKey") : null;
+        String poKey = (String) request.get("poKey");
+        String asnKey = (String) request.get("asnKey");
 
-        // 404 - PO or ASN not found
-        if ((poKey != null && (poKey.contains("NOTFOUND") || poKey.contains("NOT-FOUND"))) ||
-            (asnKey != null && (asnKey.contains("NOTFOUND") || asnKey.contains("NOT-FOUND")))) {
+        if (poKey != null && poKey.contains("NOTFOUND")) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
                 "errorCode", "ASN_001",
-                "message", "PO or ASN not found"
+                "message", "PO not found: " + poKey
             ));
         }
-
-        // 422 - Validation errors
-        if ((poKey != null && (poKey.contains("ERR") || poKey.contains("INVALID"))) ||
-            (asnKey != null && (asnKey.contains("ERR") || asnKey.contains("INVALID")))) {
+        if (poKey != null && poKey.contains("ERR")) {
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
                 "errorCode", "ASN_002",
-                "message", "ASN population failed: validation error"
+                "message", "PO not eligible for ASN population"
             ));
         }
 
-        // 409 - Conflict (already populated)
-        if ((poKey != null && poKey.contains("CONFLICT")) ||
-            (asnKey != null && asnKey.contains("CONFLICT")) ||
-            (asnKey != null && asnKey.contains("DUPLICATE"))) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
-                "errorCode", "ASN_409",
-                "message", "ASN already populated"
-            ));
-        }
+        String receiptKey = "RCV-" + System.currentTimeMillis();
 
-        String generatedReceiptKey = "RCV-" + System.currentTimeMillis();
-        Map<String, Object> response = new LinkedHashMap<>();
-        if (poKey != null) {
-            response.put("poKey", poKey);
-        }
-        response.put("asnKey", asnKey != null ? asnKey : "ASN-" + System.currentTimeMillis());
-        response.put("receiptKey", receiptKey != null ? receiptKey : generatedReceiptKey);
-        response.put("status", "POPULATED");
-        response.put("linesPopulated", 3);
-        response.put("populatedAt", LocalDateTime.now().toString());
-
-        // Return 200 for update scenarios (when receiptKey already exists)
-        if (receiptKey != null) {
-            return ResponseEntity.ok(response);
-        }
-
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+            "poKey", poKey,
+            "asnKey", asnKey != null ? asnKey : "ASN-" + System.currentTimeMillis(),
+            "receiptKey", receiptKey,
+            "status", "POPULATED",
+            "linesPopulated", 3,
+            "populatedAt", LocalDateTime.now().toString()
+        ));
     }
 
     // ==================== Receipts (Create) ====================
