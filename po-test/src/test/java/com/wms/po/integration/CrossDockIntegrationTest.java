@@ -37,7 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CrossDockIntegrationTest {
 
     @RegisterExtension
-    public static final TestWorkflowExtension testExtension =
+    public TestWorkflowExtension testExtension =
         TestWorkflowExtension.newBuilder()
             .setWorkflowTypes(FinalizeReceiptWorkflowImpl.class)
             .setDoNotStart(true)
