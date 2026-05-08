@@ -202,7 +202,7 @@ Feature: F2 - ASN Population Happy Path Tests
 
     # Verify carton tracking in DB
     * def cartonResult = db.query("SELECT * FROM dbo.cartonheader WHERE receiptkey = '" + response.receiptKey + "'")
-    * assert cartonResult.size() == 2
+    * assert karate.sizeOf(cartonResult) == 2
 
   # ─────────────────────────────────────────────────────────────
   # F2-TC06: ASN with partial shipment

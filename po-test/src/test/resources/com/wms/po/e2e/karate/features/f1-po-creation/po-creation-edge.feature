@@ -128,7 +128,7 @@ Feature: F1 - PO Creation Edge Cases
     When method post
     Then status 400
     And match response.errorCode == 'VAL_008'
-    And match response.message == '#? _.contains("quantity")'
+    And match response.message == '#? _.indexOf("quantity") >= 0'
     And match response.field == 'qtyOrdered'
     And match response.invalidValue == 0
 

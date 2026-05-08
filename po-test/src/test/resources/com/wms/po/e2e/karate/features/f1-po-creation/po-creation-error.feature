@@ -32,7 +32,7 @@ Feature: F1 - PO Creation Error Handling
     When method post
     Then status 503
     And match response.errorCode == 'INT_022'
-    And match response.message == '#? _.contains("Database")'
+    And match response.message == '#? _.indexOf("Database") >= 0'
     And match response.retryable == true
 
     # Verify no partial data created
@@ -86,7 +86,7 @@ Feature: F1 - PO Creation Error Handling
     When method post
     Then status 400
     And match response.errorCode == 'INT_011'
-    And match response.message == '#? _.contains("Parse error")'
+    And match response.message == '#? _.indexOf("Parse error") >= 0'
     And match response.parseErrors == '#present'
     And match response.parseErrors == '#[_ > 0]'
     # Should include details about what failed
@@ -156,7 +156,7 @@ Feature: F1 - PO Creation Error Handling
     And request poRequest
     When method post
     Then status 415
-    And match response.message == '#? _.contains("Content-Type")'
+    And match response.message == '#? _.indexOf("Content-Type") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC32: Authentication failure
