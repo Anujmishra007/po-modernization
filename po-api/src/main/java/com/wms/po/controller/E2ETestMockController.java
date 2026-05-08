@@ -1011,12 +1011,22 @@ public class E2ETestMockController {
     }
 
     @PostMapping("/receipts/bulk-lottable-update")
-    public ResponseEntity<Map<String, Object>> bulkLottableUpdate(@RequestBody Map<String, Object> request) {
+    public ResponseEntity<Map<String, Object>> bulkLottableUpdate(
+            @RequestBody(required = false) Map<String, Object> request) {
         log.info("[E2E Mock] Bulk lottable update: {}", request);
-        return ResponseEntity.ok(Map.of(
-            "updated", true,
-            "updatedAt", LocalDateTime.now().toString()
-        ));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> updates = request != null ?
+            (List<Map<String, Object>>) request.get("updates") : null;
+
+        int updatedCount = updates != null ? updates.size() : 0;
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("updated", true);
+        response.put("updatedCount", updatedCount);
+        response.put("updatedAt", LocalDateTime.now().toString());
+
+        return ResponseEntity.ok(response);
     }
 
     // ==================== Trade Returns ====================
@@ -1615,7 +1625,9 @@ public class E2ETestMockController {
                 "taskKey", taskKey
             ));
         }
-        if (taskKey.contains("ERR") || taskKey.contains("INVALID")) {
+        // Check for error patterns but exclude OVERRIDE which contains "ERR"
+        if ((taskKey.contains("-ERR-") || taskKey.startsWith("ERR-") || taskKey.endsWith("-ERR") ||
+             taskKey.contains("INVALID")) && !taskKey.contains("OVERRIDE")) {
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
                 "errorCode", "TASK_ERR_002",
                 "message", "Task completion failed: " + taskKey,
@@ -1833,12 +1845,18 @@ public class E2ETestMockController {
     }
 
     @PostMapping("/inventory/split")
-    public ResponseEntity<Map<String, Object>> splitInventory(@RequestBody Map<String, Object> request) {
+    public ResponseEntity<Map<String, Object>> splitInventory(
+            @RequestBody(required = false) Map<String, Object> request) {
         log.info("[E2E Mock] Split inventory: {}", request);
-        return ResponseEntity.ok(Map.of(
-            "split", true,
-            "newLpn", "LPN-" + System.currentTimeMillis()
-        ));
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("split", true);
+        response.put("newLpn", "LPN-" + System.currentTimeMillis());
+        if (request != null && request.get("qty") != null) {
+            response.put("qty", request.get("qty"));
+        }
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @PostMapping("/inventory/consolidate")
@@ -2024,25 +2042,67 @@ public class E2ETestMockController {
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("[E2E Mock] Cross-dock allocate: {}", request);
 
-        String receiptKey = (String) request.get("receiptKey");
-        String orderKey = (String) request.get("orderKey");
-        String sku = (String) request.get("sku");
-        Object qtyObj = request.get("qty");
+        String receiptKey = request != null ? (String) request.get("receiptKey") : null;
+        String orderKey = request != null ? (String) request.get("orderKey") : null;
+        String sku = request != null ? (String) request.get("sku") : null;
+        String storerKey = request != null ? (String) request.get("storerKey") : null;
+        String facility = request != null ? (String) request.get("facility") : null;
+        Object qtyObj = request != null ? request.get("qty") : null;
         int qty = qtyObj instanceof Number ? ((Number) qtyObj).intValue() : 0;
 
-        // Check for error scenarios
-        if (receiptKey != null && receiptKey.contains("ERR")) {
+        // 422 - Validation errors for various patterns
+        if (receiptKey != null && (receiptKey.contains("-ERR-") || receiptKey.contains("INVALID") ||
+            receiptKey.contains("NOT_ELIGIBLE") || receiptKey.contains("ALREADY_ALLOCATED"))) {
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
                 "errorCode", "XDOCK_001",
                 "message", "Receipt not eligible for cross-dock: " + receiptKey
             ));
         }
-        if (orderKey != null && orderKey.contains("NOTFOUND")) {
+        if (orderKey != null && (orderKey.contains("-ERR-") || orderKey.contains("INVALID") ||
+            orderKey.contains("CLOSED") || orderKey.contains("CANCELLED"))) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "XDOCK_004",
+                "message", "Order not eligible for allocation: " + orderKey
+            ));
+        }
+        if (sku != null && (sku.contains("INVALID") || sku.contains("-ERR-") ||
+            sku.contains("HAZMAT") || sku.contains("RESTRICTED"))) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "XDOCK_005",
+                "message", "SKU not eligible for cross-dock: " + sku
+            ));
+        }
+        if (storerKey != null && (storerKey.contains("INVALID") || storerKey.contains("INACTIVE"))) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "XDOCK_006",
+                "message", "Storer not eligible for cross-dock: " + storerKey
+            ));
+        }
+
+        // 404 - Not found scenarios
+        if (orderKey != null && (orderKey.contains("NOTFOUND") || orderKey.contains("NOT_EXIST"))) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
                 "errorCode", "XDOCK_002",
                 "message", "Order not found: " + orderKey
             ));
         }
+        if (receiptKey != null && (receiptKey.contains("NOTFOUND") || receiptKey.contains("NOT_EXIST"))) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "XDOCK_007",
+                "message", "Receipt not found: " + receiptKey
+            ));
+        }
+
+        // 409 - Conflict scenarios
+        if (receiptKey != null && (receiptKey.contains("CONCURRENT") || receiptKey.contains("CONFLICT") ||
+            receiptKey.contains("LOCKED"))) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                "errorCode", "XDOCK_008",
+                "message", "Concurrent allocation conflict for receipt: " + receiptKey
+            ));
+        }
+
+        // 400 - Bad request
         if (qty <= 0) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
                 "errorCode", "XDOCK_003",
@@ -2050,16 +2110,17 @@ public class E2ETestMockController {
             ));
         }
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
-            "allocationKey", "ALLOC-" + System.currentTimeMillis(),
-            "receiptKey", receiptKey,
-            "orderKey", orderKey,
-            "sku", sku != null ? sku : "SKU-001",
-            "qty", qty,
-            "status", "ALLOCATED",
-            "allocType", "XDOCK",
-            "allocatedAt", LocalDateTime.now().toString()
-        ));
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("allocationKey", "ALLOC-" + System.currentTimeMillis());
+        if (receiptKey != null) response.put("receiptKey", receiptKey);
+        if (orderKey != null) response.put("orderKey", orderKey);
+        response.put("sku", sku != null ? sku : "SKU-001");
+        response.put("qty", qty > 0 ? qty : 100);
+        response.put("status", "ALLOCATED");
+        response.put("allocType", "XDOCK");
+        response.put("allocatedAt", LocalDateTime.now().toString());
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @PostMapping("/xdock/allocate-full")
@@ -2185,44 +2246,76 @@ public class E2ETestMockController {
 
     @PostMapping("/receipts")
     public ResponseEntity<Map<String, Object>> createReceipt(
-            @RequestBody Map<String, Object> request,
+            @RequestBody(required = false) Map<String, Object> request,
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("[E2E Mock] Create receipt: {}", request);
+
+        if (request == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "errorCode", "RCV_000",
+                "message", "Request body is required"
+            ));
+        }
 
         String poKey = (String) request.get("poKey");
         String storerKey = (String) request.get("storerKey");
         String facility = (String) request.get("facility");
+        String supplierKey = (String) request.get("supplierKey");
 
-        // Validation
+        // Validation - required fields
         if (storerKey == null || storerKey.isBlank()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
                 "errorCode", "RCV_001",
                 "message", "Storer key is required"
             ));
         }
-        if (poKey != null && poKey.contains("NOTFOUND")) {
+
+        // 404 - Not found
+        if (poKey != null && (poKey.contains("NOTFOUND") || poKey.contains("NOT_EXIST"))) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
                 "errorCode", "RCV_002",
                 "message", "PO not found: " + poKey
             ));
         }
-        if (poKey != null && poKey.contains("ERR")) {
+
+        // 422 - Unprocessable entity (various error patterns)
+        if (poKey != null && (poKey.contains("-ERR-") || poKey.startsWith("ERR-") || poKey.endsWith("-ERR") ||
+            poKey.contains("INVALID") || poKey.contains("CLOSED") || poKey.contains("CANCELLED"))) {
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
                 "errorCode", "RCV_003",
                 "message", "Cannot create receipt for PO: " + poKey
             ));
         }
+        if (storerKey.contains("INVALID") || storerKey.contains("INACTIVE") || storerKey.contains("-ERR-")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "RCV_004",
+                "message", "Invalid or inactive storer: " + storerKey
+            ));
+        }
+        if (facility != null && (facility.contains("INVALID") || facility.contains("CLOSED"))) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "RCV_005",
+                "message", "Invalid or closed facility: " + facility
+            ));
+        }
+        if (supplierKey != null && (supplierKey.contains("INVALID") || supplierKey.contains("-ERR-"))) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "RCV_006",
+                "message", "Invalid supplier: " + supplierKey
+            ));
+        }
 
         String receiptKey = "RCV-" + System.currentTimeMillis();
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
-            "receiptKey", receiptKey,
-            "poKey", poKey != null ? poKey : "PO-AUTO",
-            "storerKey", storerKey,
-            "facility", facility != null ? facility : "TEST01",
-            "status", "0",
-            "createdAt", LocalDateTime.now().toString()
-        ));
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("receiptKey", receiptKey);
+        response.put("poKey", poKey != null ? poKey : "PO-AUTO");
+        response.put("storerKey", storerKey);
+        response.put("facility", facility != null ? facility : "TEST01");
+        response.put("status", "0");
+        response.put("createdAt", LocalDateTime.now().toString());
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     // ==================== Tasks ====================
@@ -2300,14 +2393,19 @@ public class E2ETestMockController {
             ));
         }
 
-        String newUserId = request != null ? (String) request.get("userId") : "USER-001";
+        // Safe extraction of userId with default
+        String newUserId = "USER-001";
+        if (request != null && request.get("userId") != null) {
+            newUserId = request.get("userId").toString();
+        }
 
-        return ResponseEntity.ok(Map.of(
-            "taskKey", taskKey,
-            "assignedTo", newUserId,
-            "status", "REASSIGNED",
-            "reassignedAt", LocalDateTime.now().toString()
-        ));
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("taskKey", taskKey);
+        response.put("assignedTo", newUserId);
+        response.put("status", "REASSIGNED");
+        response.put("reassignedAt", LocalDateTime.now().toString());
+
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/tasks/interleaved-assignment")
