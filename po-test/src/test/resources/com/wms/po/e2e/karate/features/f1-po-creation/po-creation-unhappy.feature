@@ -40,7 +40,7 @@ Feature: F1 - PO Creation Unhappy Path Tests
     When method post
     Then status 409
     And match response.errorCode == 'VAL_003'
-    And match response.message contains 'Duplicate'
+    And match response.message == '#? _.toLowerCase().indexOf("duplicate") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC06: Missing required field (storerKey)

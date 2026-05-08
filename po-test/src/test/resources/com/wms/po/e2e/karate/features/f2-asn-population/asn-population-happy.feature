@@ -237,9 +237,10 @@ Feature: F2 - ASN Population Happy Path Tests
 
     # Verify PO line shows open qty
     * def poDetail = db.query("SELECT qtyordered, qtyreceived FROM dbo.podetail WHERE pokey = 'PO-HAPPY-001' AND sku = 'NK-AIRMAX90-BLK'")
-    * match poDetail[0].qtyordered == 100
+    * def poDetailRow = karate.toMap(poDetail[0])
+    * match poDetailRow.qtyordered == 100
     # Original qty received plus new partial
-    * match poDetail[0].qtyreceived >= 60
+    * match poDetailRow.qtyreceived >= 60
 
   # ─────────────────────────────────────────────────────────────
   # F2-TC07: ASN via API (non-EDI)

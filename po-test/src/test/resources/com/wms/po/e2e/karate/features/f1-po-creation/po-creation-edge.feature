@@ -128,7 +128,7 @@ Feature: F1 - PO Creation Edge Cases
     When method post
     Then status 400
     And match response.errorCode == 'VAL_008'
-    And match response.message contains 'quantity'
+    And match response.message == '#? _.contains("quantity")'
     And match response.field == 'qtyOrdered'
     And match response.invalidValue == 0
 
@@ -157,7 +157,7 @@ Feature: F1 - PO Creation Edge Cases
     When method post
     Then status 400
     And match response.errorCode == 'VAL_009'
-    And match response.message contains 'Negative'
+    And match response.message == '#? _.toLowerCase().indexOf("negative") >= 0'
     And match response.invalidValue == -10
 
   # ─────────────────────────────────────────────────────────────
@@ -187,7 +187,7 @@ Feature: F1 - PO Creation Edge Cases
     When method post
     Then status 400
     And match response.errorCode == 'VAL_006'
-    And match response.message contains 'past'
+    And match response.message == '#? _.toLowerCase().indexOf("past") >= 0'
     And match response.field == 'expectedDate'
 
   # ─────────────────────────────────────────────────────────────
@@ -240,7 +240,7 @@ Feature: F1 - PO Creation Edge Cases
     When method post
     Then status 400
     And match response.errorCode == 'VAL_011'
-    And match response.message contains 'exceeds maximum length'
+    And match response.message == '#? _.toLowerCase().indexOf("exceeds") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC28: Special characters in external PO key

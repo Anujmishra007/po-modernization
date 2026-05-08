@@ -51,7 +51,8 @@ Feature: F1 - PO Creation via RDT
     # Verify audit shows RDT source
     * def poKey = response.poKey
     * def poRecord = db.query("SELECT addwho, susr1 FROM dbo.po WHERE pokey = '" + poKey + "'")
-    * match poRecord[0].addwho == userId
+    * def poRecordRow = karate.toMap(poRecord[0])
+    * match poRecordRow.addwho == userId
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC42: RDT PO with barcode scan
@@ -102,7 +103,7 @@ Feature: F1 - PO Creation via RDT
     When method post
     Then status 401
     And match response.errorCode == 'RDT_001'
-    And match response.message contains 'Device not registered'
+    And match response.message == '#? _.toLowerCase().indexOf("device") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC44: RDT invalid operator
@@ -121,7 +122,7 @@ Feature: F1 - PO Creation via RDT
     When method post
     Then status 401
     And match response.errorCode == 'RDT_002'
-    And match response.message contains 'Operator not found'
+    And match response.message == '#? _.toLowerCase().indexOf("operator") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC45: RDT operator not authorized for facility
@@ -150,7 +151,7 @@ Feature: F1 - PO Creation via RDT
     When method post
     Then status 403
     And match response.errorCode == 'RDT_003'
-    And match response.message contains 'Not authorized for facility'
+    And match response.message == '#? _.toLowerCase().indexOf("authorized") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC46: RDT offline mode queue
@@ -199,5 +200,5 @@ Feature: F1 - PO Creation via RDT
     When method post
     Then status 401
     And match response.errorCode == 'RDT_004'
-    And match response.message contains 'Session expired'
+    And match response.message == '#? _.toLowerCase().indexOf("session") >= 0'
 

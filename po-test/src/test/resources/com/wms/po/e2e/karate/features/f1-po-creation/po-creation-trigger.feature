@@ -39,14 +39,16 @@ Feature: F1 - PO Creation Trigger Tests
 
     # Verify trigger audit log
     * def auditResult = db.query("SELECT * FROM dbo.poaudit WHERE pokey = '" + poKey + "' AND action = 'INSERT'")
-    * match auditResult.length >= 1
-    * match auditResult[0].triggertype == 'AFTER_INSERT'
-    * match auditResult[0].tablename == 'po'
+    * match karate.sizeOf(auditResult) >= 1
+    * def auditRow = karate.toMap(auditResult[0])
+    * match auditRow.triggertype == 'AFTER_INSERT'
+    * match auditRow.tablename == 'po'
 
     # Verify trigger populated default fields
     * def poResult = db.query("SELECT adddate, addwho, editdate, editwho FROM dbo.po WHERE pokey = '" + poKey + "'")
-    * match poResult[0].adddate == '#present'
-    * match poResult[0].addwho == '#present'
+    * def poRow = karate.toMap(poResult[0])
+    * match poRow.adddate == '#present'
+    * match poRow.addwho == '#present'
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC19: Trigger handles duplicate detection
@@ -70,7 +72,8 @@ Feature: F1 - PO Creation Trigger Tests
     # Try direct DB insert with same external key (bypassing API validation)
     # This tests the trigger-level duplicate check
     * def duplicateCheck = db.query("SELECT COUNT(*) as cnt FROM dbo.po WHERE externpokey = '" + externalKey + "'")
-    * match duplicateCheck[0].cnt == 1
+    * def dupRow = karate.toMap(duplicateCheck[0])
+    * match dupRow.cnt == 1
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC36: Trigger cascades to detail table
@@ -94,7 +97,7 @@ Feature: F1 - PO Creation Trigger Tests
 
     # Verify detail audit
     * def detailAudit = db.query("SELECT * FROM dbo.podetailaudit WHERE pokey = '" + poKey + "'")
-    * match detailAudit.length >= 2
+    * match karate.sizeOf(detailAudit) >= 2
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC37: Trigger updates summary fields
@@ -116,8 +119,9 @@ Feature: F1 - PO Creation Trigger Tests
 
     # Verify summary calculated by trigger
     * def poResult = db.query("SELECT totallines, totalqty, totalvalue FROM dbo.po WHERE pokey = '" + poKey + "'")
-    * match poResult[0].totallines == 2
-    * match poResult[0].totalqty == 150
+    * def sumRow = karate.toMap(poResult[0])
+    * match sumRow.totallines == 2
+    * match sumRow.totalqty == 150
     # Total value = (100 * 89.99) + (50 * 109.99) = 8999 + 5499.50 = 14498.50
 
   # ─────────────────────────────────────────────────────────────
@@ -136,7 +140,7 @@ Feature: F1 - PO Creation Trigger Tests
     When method post
     Then status 422
     And match response.errorCode == 'VAL_002'
-    And match response.message contains 'storer'
+    And match response.message == '#? _.toLowerCase().indexOf("storer") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC39: Trigger performance on large insert

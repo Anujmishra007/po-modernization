@@ -231,8 +231,9 @@ Feature: F2 - ASN Population Edge Cases
 
     # Verify audit trail created
     * def auditResult = db.query("SELECT * FROM dbo.receiptaudit WHERE receiptkey = '" + receiptKey + "' ORDER BY auditdate DESC")
-    * match auditResult.length >= 1
-    * match auditResult[0].action == 'INSERT'
+    * match karate.sizeOf(auditResult) >= 1
+    * def auditRow = karate.toMap(auditResult[0])
+    * match auditRow.action == 'INSERT'
 
   # ─────────────────────────────────────────────────────────────
   # F2-TC25: ASN idempotency test

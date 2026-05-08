@@ -63,11 +63,13 @@ Feature: F1 - PO Creation Compensation Tests
 
     # Verify NO PO created (full rollback)
     * def poCheck = db.query("SELECT COUNT(*) as cnt FROM dbo.po WHERE externpokey = '" + externalKey + "'")
-    * match poCheck[0].cnt == 0
+    * def poCheckRow = karate.toMap(poCheck[0])
+    * match poCheckRow.cnt == 0
 
     # Verify NO detail lines created
     * def detailCheck = db.query("SELECT COUNT(*) as cnt FROM dbo.podetail WHERE externpokey = '" + externalKey + "'")
-    * match detailCheck[0].cnt == 0
+    * def detailCheckRow = karate.toMap(detailCheck[0])
+    * match detailCheckRow.cnt == 0
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC21: Header created, details fail - header rolled back
@@ -97,7 +99,8 @@ Feature: F1 - PO Creation Compensation Tests
 
     # Verify no orphan header
     * def headerCheck = db.query("SELECT COUNT(*) as cnt FROM dbo.po WHERE externpokey = '" + externalKey + "'")
-    * match headerCheck[0].cnt == 0
+    * def headerCheckRow = karate.toMap(headerCheck[0])
+    * match headerCheckRow.cnt == 0
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC22: Partial rollback verification
@@ -134,7 +137,13 @@ Feature: F1 - PO Creation Compensation Tests
         for (var i = 0; i < tables.length; i++) {
           var sql = "SELECT COUNT(*) as cnt FROM dbo." + tables[i] + " WHERE externpokey = '" + key + "' OR pokey LIKE '%-" + key + "'";
           var result = db.query(sql);
-          if (result[0].cnt > 0) return false;
+          // Handle Java ArrayList - use size() and get() methods
+          var len = result && typeof result.size === 'function' ? result.size() : (result ? result.length : 0);
+          if (len > 0) {
+            var row = typeof result.get === 'function' ? result.get(0) : result[0];
+            var cnt = typeof row.get === 'function' ? row.get('cnt') : row.cnt;
+            if (cnt > 0) return false;
+          }
         }
         return true;
       }
@@ -209,7 +218,8 @@ Feature: F1 - PO Creation Compensation Tests
 
     # Verify only one PO exists
     * def poCount = db.query("SELECT COUNT(*) as cnt FROM dbo.po WHERE externpokey = '" + poRequest.externalOrderKey + "'")
-    * match poCount[0].cnt == 1
+    * def poCountRow = karate.toMap(poCount[0])
+    * match poCountRow.cnt == 1
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC40: Compensation audit trail
@@ -238,8 +248,9 @@ Feature: F1 - PO Creation Compensation Tests
 
     # Verify compensation event logged
     * def compAudit = db.query("SELECT * FROM dbo.compensationaudit WHERE entitykey = '" + externalKey + "'")
-    * match compAudit.length >= 1
-    * match compAudit[0].compensationtype == 'PO_CREATION_ROLLBACK'
+    * match karate.sizeOf(compAudit) >= 1
+    * def compRow = karate.toMap(compAudit[0])
+    * match compRow.compensationtype == 'PO_CREATION_ROLLBACK'
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC41: Nested transaction rollback
@@ -270,5 +281,6 @@ Feature: F1 - PO Creation Compensation Tests
 
     # Verify parent transaction rolled back
     * def poCheck = db.query("SELECT COUNT(*) as cnt FROM dbo.po WHERE externpokey = '" + externalKey + "'")
-    * match poCheck[0].cnt == 0
+    * def poCheckRow2 = karate.toMap(poCheck[0])
+    * match poCheckRow2.cnt == 0
 

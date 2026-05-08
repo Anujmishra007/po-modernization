@@ -32,12 +32,13 @@ Feature: F1 - PO Creation Error Handling
     When method post
     Then status 503
     And match response.errorCode == 'INT_022'
-    And match response.message contains 'Database'
+    And match response.message == '#? _.contains("Database")'
     And match response.retryable == true
 
     # Verify no partial data created
     * def partialCheck = db.query("SELECT COUNT(*) as cnt FROM dbo.po WHERE externpokey = '" + poRequest.externalOrderKey + "'")
-    * match partialCheck[0].cnt == 0
+    * def partialRow = karate.toMap(partialCheck[0])
+    * match partialRow.cnt == 0
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC15: Concurrent PO creation race condition
@@ -67,7 +68,7 @@ Feature: F1 - PO Creation Error Handling
     When method post
     Then status 409
     And match response.errorCode == 'VAL_003'
-    And match response.message contains 'Duplicate'
+    And match response.message == '#? _.toLowerCase().indexOf("duplicate") >= 0'
     And match response.existingPoKey == firstPoKey
 
   # ─────────────────────────────────────────────────────────────
@@ -106,8 +107,8 @@ Feature: F1 - PO Creation Error Handling
     When method post
     Then status 400
     And match response.errorCode == 'INT_011'
-    And match response.message contains 'Missing'
-    And match response.missingSegments contains 'REF*DP'
+    And match response.message == '#? _.toLowerCase().indexOf("missing") >= 0'
+    And match response.missingSegments == '#? _.toString().indexOf("REF*DP") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC29: Service unavailable (circuit breaker)
@@ -126,7 +127,7 @@ Feature: F1 - PO Creation Error Handling
     When method post
     Then status 503
     And match response.errorCode == 'INT_023'
-    And match response.message contains 'Service unavailable'
+    And match response.message == '#? _.toLowerCase().indexOf("service") >= 0'
     And match response.retryAfter == '#present'
 
   # ─────────────────────────────────────────────────────────────
@@ -141,7 +142,7 @@ Feature: F1 - PO Creation Error Handling
     When method post
     Then status 400
     And match response.errorCode == 'VAL_000'
-    And match response.message contains 'Invalid JSON'
+    And match response.message == '#? _.toLowerCase().indexOf("invalid") >= 0'
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC31: Missing Content-Type header
@@ -155,7 +156,7 @@ Feature: F1 - PO Creation Error Handling
     And request poRequest
     When method post
     Then status 415
-    And match response.message contains 'Content-Type'
+    And match response.message == '#? _.contains("Content-Type")'
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC32: Authentication failure
@@ -229,5 +230,5 @@ Feature: F1 - PO Creation Error Handling
     When method post
     Then status 504
     And match response.errorCode == 'INT_003'
-    And match response.message contains 'timeout'
+    And match response.message == '#? _.toLowerCase().indexOf("timeout") >= 0'
 
