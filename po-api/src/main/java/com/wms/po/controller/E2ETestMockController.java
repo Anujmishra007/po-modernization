@@ -1176,6 +1176,10 @@ public class E2ETestMockController {
 
         // 422 - Invalid target location (F3-TC14)
         String targetLocation = request != null ? (String) request.get("targetLocation") : null;
+        // Also check for toLocation (COMP-09 uses toLocation instead of targetLocation)
+        if (targetLocation == null && request != null) {
+            targetLocation = (String) request.get("toLocation");
+        }
         if (targetLocation != null && targetLocation.equals("INVALID-LOC-999")) {
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
                 "errorCode", "LOC_001",
