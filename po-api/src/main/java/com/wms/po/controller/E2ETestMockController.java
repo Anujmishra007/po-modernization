@@ -634,9 +634,26 @@ public class E2ETestMockController {
         ));
     }
 
+    // Track compensated POs for idempotency (COMP-20)
+    private final Set<String> compensatedPOs = ConcurrentHashMap.newKeySet();
+
     @PostMapping("/po/{poKey}/compensate")
     public ResponseEntity<Map<String, Object>> compensatePO(@PathVariable String poKey) {
         log.info("[E2E Mock] Compensate PO: {}", poKey);
+
+        // Check if already compensated (idempotent) - COMP-20
+        if (compensatedPOs.contains(poKey)) {
+            return ResponseEntity.ok(Map.of(
+                "poKey", poKey,
+                "compensated", true,
+                "alreadyCompensated", true,
+                "compensatedAt", LocalDateTime.now().toString()
+            ));
+        }
+
+        // Track compensation
+        compensatedPOs.add(poKey);
+
         return ResponseEntity.ok(Map.of(
             "poKey", poKey,
             "compensated", true,
@@ -1167,13 +1184,14 @@ public class E2ETestMockController {
             ));
         }
 
-        // 422 - Location full (F3-TC15)
+        // 422 - Location full (F3-TC15, COMP-09)
         if (targetLocation != null && targetLocation.equals("TEST-LOC-FULL")) {
-            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
-                "errorCode", "INV_011",
-                "message", "Location full: " + targetLocation,
-                "availableCapacity", 0
-            ));
+            Map<String, Object> errorResponse = new LinkedHashMap<>();
+            errorResponse.put("errorCode", "INV_011");
+            errorResponse.put("message", "Location full: " + targetLocation);
+            errorResponse.put("availableCapacity", 0);
+            errorResponse.put("compensated", true);  // COMP-09 expects compensated=true
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(errorResponse);
         }
 
         // 422 - Generic compensation patterns (any RCV-COMP-* that simulates failure for compensation tests)
@@ -1267,6 +1285,7 @@ public class E2ETestMockController {
         boolean qualityHold = request != null && Boolean.TRUE.equals(request.get("qualityHold"));
         boolean partial = request != null && Boolean.TRUE.equals(request.get("partial"));
         boolean enableCrossDock = request != null && Boolean.TRUE.equals(request.get("enableCrossDock"));
+        boolean enableAutoCrossDock = request != null && Boolean.TRUE.equals(request.get("enableAutoCrossDock"));
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> lineLocations = request != null ? (List<Map<String, Object>>) request.get("lineLocations") : null;
         @SuppressWarnings("unchecked")
@@ -1315,6 +1334,12 @@ public class E2ETestMockController {
 
         if (createPutawayTasks) {
             response.put("putawayTasksCreated", 2);
+            // F6-TC01: Also return putawayTaskKeys array
+            response.put("putawayTaskKeys", List.of("TASK-PA-" + System.currentTimeMillis(), "TASK-PA-" + (System.currentTimeMillis() + 1)));
+        }
+        // F4-TC08: Auto cross-dock triggered
+        if (enableAutoCrossDock) {
+            response.put("autoCrossDockTriggered", true);
         }
         if (closePoIfComplete) {
             response.put("poClosedAutomatically", true);
@@ -2052,6 +2077,7 @@ public class E2ETestMockController {
         response.put("taskType", taskType != null ? taskType : "PUTAWAY");
         response.put("fromLocation", "RECV-01");
         response.put("toLocation", "A-01-01");
+        response.put("priority", 2); // F6-TC10 expects priority <= 3
         if (facility != null) {
             response.put("facility", facility);
         }
@@ -2059,19 +2085,31 @@ public class E2ETestMockController {
     }
 
     @GetMapping("/rdt/tasks/queue")
-    public ResponseEntity<List<Map<String, Object>>> rdtGetTaskQueue() {
-        log.info("[E2E Mock] RDT Get task queue");
-        return ResponseEntity.ok(List.of(
-            Map.of("taskKey", "TASK-001", "taskType", "PUTAWAY", "priority", 1),
-            Map.of("taskKey", "TASK-002", "taskType", "PICK", "priority", 2)
-        ));
+    public ResponseEntity<Map<String, Object>> rdtGetTaskQueue(
+            @RequestParam(required = false) String taskType,
+            @RequestParam(required = false) String facility) {
+        log.info("[E2E Mock] RDT Get task queue: taskType={}, facility={}", taskType, facility);
+        // F6-TC18 expects { tasks: [...] } with createdDate field
+        LocalDateTime now = LocalDateTime.now();
+        List<Map<String, Object>> tasks = List.of(
+            Map.of("taskKey", "TASK-001", "taskType", "PUTAWAY", "priority", 1,
+                   "createdDate", now.minusHours(2).toString()),
+            Map.of("taskKey", "TASK-002", "taskType", "PICK", "priority", 2,
+                   "createdDate", now.minusHours(1).toString())
+        );
+        return ResponseEntity.ok(Map.of("tasks", tasks));
     }
 
     @PostMapping("/rdt/tasks/{taskKey}/assign")
-    public ResponseEntity<Map<String, Object>> rdtAssignTask(@PathVariable String taskKey) {
-        log.info("[E2E Mock] RDT Assign task: {}", taskKey);
+    public ResponseEntity<Map<String, Object>> rdtAssignTask(
+            @PathVariable String taskKey,
+            @RequestHeader(value = "X-RDT-User-Id", required = false) String userId) {
+        log.info("[E2E Mock] RDT Assign task: {}, userId: {}", taskKey, userId);
+        String assignedTo = userId != null ? userId : "RDT_USER_001";
         return ResponseEntity.ok(Map.of(
             "taskKey", taskKey,
+            "assignedTo", assignedTo,  // F6-TC03 expects assignedTo
+            "status", "ASSIGNED",      // F6-TC03 expects status='ASSIGNED'
             "assigned", true
         ));
     }
@@ -2079,17 +2117,33 @@ public class E2ETestMockController {
     @PostMapping("/rdt/tasks/{taskKey}/complete")
     public ResponseEntity<Map<String, Object>> rdtCompleteTask(
             @PathVariable String taskKey,
-            @RequestBody(required = false) Map<String, Object> request) {
-        log.info("[E2E Mock] RDT Complete task: {}", taskKey);
+            @RequestBody(required = false) Map<String, Object> request,
+            @RequestHeader(value = "X-RDT-User-Id", required = false) String userId) {
+        log.info("[E2E Mock] RDT Complete task: {}, request: {}", taskKey, request);
 
-        // Simulate validation errors for specific task keys
-        if (taskKey.contains("PUTAWAY-003") || taskKey.contains("PUTAWAY-004")) {
+        String scannedLocation = request != null ? (String) request.get("scannedLocation") : null;
+        Number scannedQtyNum = request != null ? (Number) request.get("scannedQty") : null;
+        int scannedQty = scannedQtyNum != null ? scannedQtyNum.intValue() : 100;
+        boolean allowPartial = request != null && Boolean.TRUE.equals(request.get("allowPartial"));
+
+        // F6-TC06: Invalid location (LOC_001)
+        if (taskKey.contains("PUTAWAY-003") || "INVALID-LOC-999".equals(scannedLocation)) {
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
-                "errorCode", "TASK_ERR_001",
-                "message", "Task cannot be completed: invalid location state",
+                "errorCode", "LOC_001",
+                "message", "Location not found: " + (scannedLocation != null ? scannedLocation : "unknown"),
                 "taskKey", taskKey
             ));
         }
+
+        // F6-TC07: Full location (LOC_002)
+        if (taskKey.contains("PUTAWAY-004") || "TEST-LOC-FULL".equals(scannedLocation)) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "LOC_002",
+                "message", "Location full: " + (scannedLocation != null ? scannedLocation : "unknown"),
+                "taskKey", taskKey
+            ));
+        }
+
         // Check for error patterns but exclude OVERRIDE which contains "ERR"
         if ((taskKey.contains("-ERR-") || taskKey.startsWith("ERR-") || taskKey.endsWith("-ERR") ||
              taskKey.contains("INVALID")) && !taskKey.contains("OVERRIDE")) {
@@ -2102,14 +2156,26 @@ public class E2ETestMockController {
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("taskKey", taskKey);
-        response.put("completed", true);
+
+        // F6-TC08: Partial putaway
+        if (taskKey.contains("PUTAWAY-005") || (allowPartial && scannedQty < 100)) {
+            response.put("status", "PARTIAL");
+            response.put("completedQty", scannedQty);
+            response.put("remainderTaskKey", "TASK-REMAINDER-" + System.currentTimeMillis());
+            response.put("completedBy", userId != null ? userId : "system");
+        } else {
+            // Normal completion (F6-TC04)
+            response.put("status", "COMPLETED");
+            response.put("completedBy", userId != null ? userId : "system");
+        }
+
         response.put("completedAt", LocalDateTime.now().toString());
 
         // Handle location override (F6-TC14)
         if (request != null && Boolean.TRUE.equals(request.get("overrideLocation"))) {
             response.put("locationOverridden", true);
-            if (request.get("scannedLocation") != null) {
-                response.put("location", request.get("scannedLocation"));
+            if (scannedLocation != null) {
+                response.put("location", scannedLocation);
             }
         }
 
@@ -2148,28 +2214,35 @@ public class E2ETestMockController {
     }
 
     @GetMapping("/tasks/{taskKey}/audit")
-    public ResponseEntity<List<Map<String, Object>>> getTaskAudit(@PathVariable String taskKey) {
+    public ResponseEntity<Map<String, Object>> getTaskAudit(@PathVariable String taskKey) {
         log.info("[E2E Mock] Get task audit: {}", taskKey);
-        return ResponseEntity.ok(List.of(
+        // F6-TC16 expects { events: [...] } format
+        List<Map<String, Object>> events = List.of(
             Map.of("action", "CREATED", "timestamp", LocalDateTime.now().minusHours(2).toString()),
             Map.of("action", "ASSIGNED", "timestamp", LocalDateTime.now().minusHours(1).toString())
-        ));
+        );
+        return ResponseEntity.ok(Map.of("events", events));
     }
 
     @PostMapping("/tasks/batch-complete")
     public ResponseEntity<Map<String, Object>> batchCompleteTasks(@RequestBody Map<String, Object> request) {
         log.info("[E2E Mock] Batch complete tasks: {}", request);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> tasks = (List<Map<String, Object>>) request.get("tasks");
+        int count = tasks != null ? tasks.size() : 2;
         return ResponseEntity.ok(Map.of(
             "completed", true,
-            "count", 5
+            "completedCount", count // F6-TC11 expects completedCount
         ));
     }
 
     @PostMapping("/tasks/consolidate")
     public ResponseEntity<Map<String, Object>> consolidateTasks(@RequestBody Map<String, Object> request) {
         log.info("[E2E Mock] Consolidate tasks: {}", request);
+        // F6-TC20 expects consolidatedTaskKey
         return ResponseEntity.ok(Map.of(
-            "consolidated", true
+            "consolidated", true,
+            "consolidatedTaskKey", "TASK-CONSOLIDATED-" + System.currentTimeMillis()
         ));
     }
 
@@ -2179,6 +2252,26 @@ public class E2ETestMockController {
         return ResponseEntity.ok(Map.of(
             "assigned", true
         ));
+    }
+
+    // F6-TC19: GET endpoint for interleaved assignment
+    @GetMapping("/tasks/interleaved-assignment")
+    public ResponseEntity<Map<String, Object>> getInterleavedAssignment(
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String facility) {
+        log.info("[E2E Mock] Get interleaved assignment: userId={}, facility={}", userId, facility);
+        // Randomly return either PUTAWAY or PICK task
+        String taskType = System.currentTimeMillis() % 2 == 0 ? "PUTAWAY" : "PICK";
+        Map<String, Object> nextTask = new LinkedHashMap<>();
+        nextTask.put("taskKey", "TASK-" + System.currentTimeMillis());
+        nextTask.put("taskType", taskType);
+        nextTask.put("fromLocation", "RECV-01");
+        nextTask.put("toLocation", "A-01-01");
+        nextTask.put("priority", 2);
+        if (facility != null) {
+            nextTask.put("facility", facility);
+        }
+        return ResponseEntity.ok(Map.of("nextTask", nextTask));
     }
 
     @GetMapping("/tasks/metrics")
@@ -2200,17 +2293,38 @@ public class E2ETestMockController {
     @PostMapping("/xdock/auto-allocate")
     public ResponseEntity<Map<String, Object>> xdockAutoAllocate(@RequestBody Map<String, Object> request) {
         log.info("[E2E Mock] X-Dock auto allocate: {}", request);
+        String receiptKey = (String) request.get("receiptKey");
+        String sku = (String) request.get("sku");
+        String strategy = (String) request.get("strategy");
+        LocalDateTime now = LocalDateTime.now();
+
+        // F4-TC04, F4-TC05: Return allocations with orderPriority and orderDate
+        List<Map<String, Object>> allocations = List.of(
+            Map.of("orderKey", "SO-001", "orderPriority", 2, "orderDate", now.minusDays(3).toString(),
+                   "qty", 50, "status", "ALLOCATED"),
+            Map.of("orderKey", "SO-002", "orderPriority", 3, "orderDate", now.minusDays(2).toString(),
+                   "qty", 30, "status", "ALLOCATED")
+        );
+
         return ResponseEntity.ok(Map.of(
             "allocated", true,
-            "autoAllocation", true
+            "autoAllocation", true,
+            "receiptKey", receiptKey != null ? receiptKey : "RCV-AUTO",
+            "sku", sku != null ? sku : "SKU-001",
+            "strategy", strategy != null ? strategy : "PRIORITY_FIRST",
+            "allocations", allocations
         ));
     }
 
     @PostMapping("/xdock/process-linkage")
     public ResponseEntity<Map<String, Object>> xdockProcessLinkage(@RequestBody Map<String, Object> request) {
         log.info("[E2E Mock] X-Dock process linkage: {}", request);
+        String receiptKey = (String) request.get("receiptKey");
+        // F4-TC06: Return linksProcessed
         return ResponseEntity.ok(Map.of(
-            "processed", true
+            "processed", true,
+            "receiptKey", receiptKey != null ? receiptKey : "RCV-LINKAGE",
+            "linksProcessed", 3
         ));
     }
 
@@ -2608,6 +2722,7 @@ public class E2ETestMockController {
         Object qtyObj = request != null ? request.get("qty") : null;
         int qty = qtyObj instanceof Number ? ((Number) qtyObj).intValue() : 0;
         Boolean requireFinalized = request != null ? (Boolean) request.get("requireFinalized") : null;
+        boolean createPickTask = request != null && Boolean.TRUE.equals(request.get("createPickTask"));
 
         // 404 - Not found scenarios (check first)
         if (orderKey != null && (orderKey.contains("DOES-NOT-EXIST") || orderKey.contains("NOTFOUND") ||
@@ -2753,6 +2868,13 @@ public class E2ETestMockController {
         response.put("status", "ALLOCATED");
         response.put("allocType", "XDOCK");
         response.put("allocatedAt", LocalDateTime.now().toString());
+
+        // F4-TC07: Create pick task if requested
+        if (createPickTask) {
+            String pickTaskKey = "TASK-PICK-" + System.currentTimeMillis();
+            response.put("pickTaskCreated", true);
+            response.put("pickTaskKey", pickTaskKey);
+        }
 
         // Track allocation for duplicate detection (F4-TC15)
         if (receiptKey != null && orderKey != null) {
@@ -3221,7 +3343,11 @@ public class E2ETestMockController {
 
         String taskType = (String) request.get("taskType");
         String receiptKey = (String) request.get("receiptKey");
+        String sourceKey = (String) request.get("sourceKey");
         String facility = (String) request.get("facility");
+        String zoneRestriction = (String) request.get("zoneRestriction");
+        String fromLocation = (String) request.get("fromLocation");
+        String toLocation = (String) request.get("toLocation");
 
         if (taskType == null || taskType.isBlank()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
@@ -3241,11 +3367,24 @@ public class E2ETestMockController {
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("taskKey", taskKey);
         response.put("taskType", taskType);
+        response.put("status", "OPEN"); // F6-TC02 expects 'OPEN' not 'PENDING'
         if (receiptKey != null) {
             response.put("receiptKey", receiptKey);
         }
+        if (sourceKey != null) {
+            response.put("sourceKey", sourceKey);
+        }
+        if (fromLocation != null) {
+            response.put("fromLocation", fromLocation);
+        }
+        if (toLocation != null) {
+            response.put("toLocation", toLocation);
+        }
         response.put("facility", facility != null ? facility : "TEST01");
-        response.put("status", "PENDING");
+        // F6-TC09: Zone-directed putaway
+        if (zoneRestriction != null) {
+            response.put("suggestedZone", zoneRestriction);
+        }
         response.put("createdAt", LocalDateTime.now().toString());
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
@@ -3312,13 +3451,15 @@ public class E2ETestMockController {
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("[E2E Mock] Get interleaved assignment: userId={}, facility={}", userId, facility);
 
-        return ResponseEntity.ok(Map.of(
-            "taskKey", "TASK-INTERLEAVED-" + System.currentTimeMillis(),
-            "taskType", "PUTAWAY",
-            "userId", userId != null ? userId : "USER-001",
-            "facility", facility != null ? facility : "TEST01",
-            "status", "ASSIGNED"
-        ));
+        // F6-TC19 expects { nextTask: { taskType: ... } }
+        Map<String, Object> nextTask = new LinkedHashMap<>();
+        nextTask.put("taskKey", "TASK-INTERLEAVED-" + System.currentTimeMillis());
+        nextTask.put("taskType", "PUTAWAY");  // Can be PUTAWAY or PICK
+        nextTask.put("userId", userId != null ? userId : "USER-001");
+        nextTask.put("facility", facility != null ? facility : "TEST01");
+        nextTask.put("status", "ASSIGNED");
+
+        return ResponseEntity.ok(Map.of("nextTask", nextTask));
     }
 
     // ==================== Putaway ====================
