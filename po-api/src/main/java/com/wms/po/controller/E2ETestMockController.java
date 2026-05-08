@@ -2008,4 +2008,375 @@ public class E2ETestMockController {
             Map.of("changeId", "CHG-002", "field", "lottable02", "oldValue", "A", "newValue", "B")
         ));
     }
+
+    // ==================== Cross-Dock Allocation ====================
+
+    @PostMapping("/xdock/allocate")
+    public ResponseEntity<Map<String, Object>> xdockAllocate(
+            @RequestBody Map<String, Object> request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        log.info("[E2E Mock] Cross-dock allocate: {}", request);
+
+        String receiptKey = (String) request.get("receiptKey");
+        String orderKey = (String) request.get("orderKey");
+        String sku = (String) request.get("sku");
+        Object qtyObj = request.get("qty");
+        int qty = qtyObj instanceof Number ? ((Number) qtyObj).intValue() : 0;
+
+        // Check for error scenarios
+        if (receiptKey != null && receiptKey.contains("ERR")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "XDOCK_001",
+                "message", "Receipt not eligible for cross-dock: " + receiptKey
+            ));
+        }
+        if (orderKey != null && orderKey.contains("NOTFOUND")) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "XDOCK_002",
+                "message", "Order not found: " + orderKey
+            ));
+        }
+        if (qty <= 0) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "errorCode", "XDOCK_003",
+                "message", "Quantity must be positive"
+            ));
+        }
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+            "allocationKey", "ALLOC-" + System.currentTimeMillis(),
+            "receiptKey", receiptKey,
+            "orderKey", orderKey,
+            "sku", sku != null ? sku : "SKU-001",
+            "qty", qty,
+            "status", "ALLOCATED",
+            "allocType", "XDOCK",
+            "allocatedAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    @PostMapping("/xdock/allocate-full")
+    public ResponseEntity<Map<String, Object>> xdockAllocateFull(
+            @RequestBody Map<String, Object> request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        log.info("[E2E Mock] Cross-dock allocate full: {}", request);
+
+        String receiptKey = (String) request.get("receiptKey");
+        String orderKey = (String) request.get("orderKey");
+
+        if (receiptKey != null && receiptKey.contains("ERR")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "XDOCK_001",
+                "message", "Receipt not eligible for cross-dock"
+            ));
+        }
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+            "receiptKey", receiptKey,
+            "orderKey", orderKey,
+            "totalQtyAllocated", 100,
+            "allocations", List.of(
+                Map.of("sku", "SKU-001", "qty", 50, "status", "ALLOCATED"),
+                Map.of("sku", "SKU-002", "qty", 50, "status", "ALLOCATED")
+            )
+        ));
+    }
+
+    @PostMapping("/xdock/allocate-multi")
+    public ResponseEntity<Map<String, Object>> xdockAllocateMulti(
+            @RequestBody Map<String, Object> request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        log.info("[E2E Mock] Cross-dock allocate multi: {}", request);
+
+        String receiptKey = (String) request.get("receiptKey");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> allocations = (List<Map<String, Object>>) request.get("allocations");
+
+        if (receiptKey != null && receiptKey.contains("ERR")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "XDOCK_001",
+                "message", "Receipt not eligible for cross-dock"
+            ));
+        }
+
+        List<Map<String, Object>> resultAllocations = new ArrayList<>();
+        if (allocations != null) {
+            for (Map<String, Object> alloc : allocations) {
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("orderKey", alloc.get("orderKey"));
+                result.put("sku", alloc.get("sku"));
+                result.put("qty", alloc.get("qty"));
+                result.put("status", "ALLOCATED");
+                result.put("allocationKey", "ALLOC-" + System.currentTimeMillis());
+                resultAllocations.add(result);
+            }
+        }
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+            "receiptKey", receiptKey,
+            "allocations", resultAllocations,
+            "totalAllocated", resultAllocations.size()
+        ));
+    }
+
+    @PostMapping("/xdock/allocate-batch")
+    public ResponseEntity<Map<String, Object>> xdockAllocateBatch(
+            @RequestBody Map<String, Object> request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        log.info("[E2E Mock] Cross-dock allocate batch: {}", request);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> allocations = (List<Map<String, Object>>) request.get("allocations");
+        int count = allocations != null ? allocations.size() : 0;
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+            "batchId", "BATCH-" + System.currentTimeMillis(),
+            "totalProcessed", count,
+            "successful", count,
+            "failed", 0,
+            "status", "COMPLETED"
+        ));
+    }
+
+    // ==================== ASN Population ====================
+
+    @PostMapping("/asn/populate")
+    public ResponseEntity<Map<String, Object>> populateAsn(
+            @RequestBody Map<String, Object> request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        log.info("[E2E Mock] Populate ASN: {}", request);
+
+        String poKey = (String) request.get("poKey");
+        String asnKey = (String) request.get("asnKey");
+
+        if (poKey != null && poKey.contains("NOTFOUND")) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "ASN_001",
+                "message", "PO not found: " + poKey
+            ));
+        }
+        if (poKey != null && poKey.contains("ERR")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "ASN_002",
+                "message", "PO not eligible for ASN population"
+            ));
+        }
+
+        String receiptKey = "RCV-" + System.currentTimeMillis();
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+            "poKey", poKey,
+            "asnKey", asnKey != null ? asnKey : "ASN-" + System.currentTimeMillis(),
+            "receiptKey", receiptKey,
+            "status", "POPULATED",
+            "linesPopulated", 3,
+            "populatedAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    // ==================== Receipts (Create) ====================
+
+    @PostMapping("/receipts")
+    public ResponseEntity<Map<String, Object>> createReceipt(
+            @RequestBody Map<String, Object> request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        log.info("[E2E Mock] Create receipt: {}", request);
+
+        String poKey = (String) request.get("poKey");
+        String storerKey = (String) request.get("storerKey");
+        String facility = (String) request.get("facility");
+
+        // Validation
+        if (storerKey == null || storerKey.isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "errorCode", "RCV_001",
+                "message", "Storer key is required"
+            ));
+        }
+        if (poKey != null && poKey.contains("NOTFOUND")) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "RCV_002",
+                "message", "PO not found: " + poKey
+            ));
+        }
+        if (poKey != null && poKey.contains("ERR")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "RCV_003",
+                "message", "Cannot create receipt for PO: " + poKey
+            ));
+        }
+
+        String receiptKey = "RCV-" + System.currentTimeMillis();
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+            "receiptKey", receiptKey,
+            "poKey", poKey != null ? poKey : "PO-AUTO",
+            "storerKey", storerKey,
+            "facility", facility != null ? facility : "TEST01",
+            "status", "0",
+            "createdAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    // ==================== Tasks ====================
+
+    @PostMapping("/tasks")
+    public ResponseEntity<Map<String, Object>> createTask(
+            @RequestBody Map<String, Object> request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        log.info("[E2E Mock] Create task: {}", request);
+
+        String taskType = (String) request.get("taskType");
+        String receiptKey = (String) request.get("receiptKey");
+        String facility = (String) request.get("facility");
+
+        if (taskType == null || taskType.isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "errorCode", "TASK_001",
+                "message", "Task type is required"
+            ));
+        }
+        if (receiptKey != null && receiptKey.contains("ERR")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "TASK_002",
+                "message", "Cannot create task for receipt: " + receiptKey
+            ));
+        }
+
+        String taskKey = "TASK-" + System.currentTimeMillis();
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+            "taskKey", taskKey,
+            "taskType", taskType,
+            "receiptKey", receiptKey,
+            "facility", facility != null ? facility : "TEST01",
+            "status", "PENDING",
+            "createdAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    @GetMapping("/tasks/{taskKey}")
+    public ResponseEntity<Map<String, Object>> getTask(
+            @PathVariable String taskKey,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        log.info("[E2E Mock] Get task: {}", taskKey);
+
+        if (taskKey.contains("NOTFOUND")) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "TASK_003",
+                "message", "Task not found: " + taskKey
+            ));
+        }
+
+        return ResponseEntity.ok(Map.of(
+            "taskKey", taskKey,
+            "taskType", "PUTAWAY",
+            "status", "PENDING",
+            "facility", "TEST01"
+        ));
+    }
+
+    @PostMapping("/tasks/{taskKey}/reassign")
+    public ResponseEntity<Map<String, Object>> reassignTask(
+            @PathVariable String taskKey,
+            @RequestBody(required = false) Map<String, Object> request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        log.info("[E2E Mock] Reassign task: {}", taskKey);
+
+        if (taskKey.contains("NOTFOUND")) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "TASK_003",
+                "message", "Task not found: " + taskKey
+            ));
+        }
+
+        String newUserId = request != null ? (String) request.get("userId") : "USER-001";
+
+        return ResponseEntity.ok(Map.of(
+            "taskKey", taskKey,
+            "assignedTo", newUserId,
+            "status", "REASSIGNED",
+            "reassignedAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    @GetMapping("/tasks/interleaved-assignment")
+    public ResponseEntity<Map<String, Object>> getInterleavedAssignment(
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String facility,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        log.info("[E2E Mock] Get interleaved assignment: userId={}, facility={}", userId, facility);
+
+        return ResponseEntity.ok(Map.of(
+            "taskKey", "TASK-INTERLEAVED-" + System.currentTimeMillis(),
+            "taskType", "PUTAWAY",
+            "userId", userId != null ? userId : "USER-001",
+            "facility", facility != null ? facility : "TEST01",
+            "status", "ASSIGNED"
+        ));
+    }
+
+    // ==================== Putaway ====================
+
+    @GetMapping("/putaway/suggest-location")
+    public ResponseEntity<Map<String, Object>> suggestPutawayLocation(
+            @RequestParam(required = false) Integer qty,
+            @RequestParam(required = false) String sku,
+            @RequestParam(required = false) String facility,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        log.info("[E2E Mock] Suggest putaway location: qty={}, sku={}, facility={}", qty, sku, facility);
+
+        if (sku != null && sku.contains("ERR")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "PUT_001",
+                "message", "Cannot suggest location for SKU: " + sku
+            ));
+        }
+
+        return ResponseEntity.ok(Map.of(
+            "suggestedLocation", "A-01-01-01",
+            "locationType", "STORAGE",
+            "sku", sku != null ? sku : "SKU-001",
+            "maxQty", 1000,
+            "currentQty", 0,
+            "available", true
+        ));
+    }
+
+    // ==================== Saga ====================
+
+    @PostMapping("/saga/po-to-inventory")
+    public ResponseEntity<Map<String, Object>> sagaPoToInventory(
+            @RequestBody Map<String, Object> request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestHeader(value = "X-Test-Fail-At-Step", required = false) String failAtStep) {
+        log.info("[E2E Mock] Saga PO to inventory: {}, failAtStep={}", request, failAtStep);
+
+        String poKey = (String) request.get("poKey");
+
+        // Simulate failure at step
+        if (failAtStep != null && !failAtStep.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "SAGA_001",
+                "message", "Saga failed at step: " + failAtStep,
+                "compensated", true,
+                "failedStep", failAtStep
+            ));
+        }
+
+        if (poKey != null && poKey.contains("ERR")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "SAGA_002",
+                "message", "Saga failed for PO: " + poKey
+            ));
+        }
+
+        return ResponseEntity.ok(Map.of(
+            "sagaId", "SAGA-" + System.currentTimeMillis(),
+            "poKey", poKey,
+            "status", "COMPLETED",
+            "steps", List.of("VALIDATE", "CREATE_RECEIPT", "UPDATE_INVENTORY", "NOTIFY"),
+            "completedAt", LocalDateTime.now().toString()
+        ));
+    }
 }
