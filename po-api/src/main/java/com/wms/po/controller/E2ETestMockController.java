@@ -72,13 +72,27 @@ public class E2ETestMockController {
     }
 
     @PostMapping("/po/{poKey}/populate")
-    public ResponseEntity<Map<String, Object>> populatePO(@PathVariable String poKey) {
+    public ResponseEntity<Map<String, Object>> populatePO(
+            @PathVariable String poKey,
+            @RequestBody(required = false) Map<String, Object> request) {
         log.info("[E2E Mock] Populate PO: {}", poKey);
         String receiptKey = "RCV-" + System.currentTimeMillis();
+
+        // Calculate line count from request if present
+        int lineCount = 1;
+        if (request != null) {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> details = (List<Map<String, Object>>) request.get("receiptDetails");
+            if (details != null && !details.isEmpty()) {
+                lineCount = details.size();
+            }
+        }
+
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
             "poKey", poKey,
             "receiptKey", receiptKey,
-            "status", "populated",
+            "status", "POPULATED",
+            "lineCount", lineCount,
             "populatedAt", LocalDateTime.now().toString()
         ));
     }
@@ -143,8 +157,24 @@ public class E2ETestMockController {
         ));
     }
 
-    // ==================== Receipt Cancel (additional to FinalizeController) ====================
-    // Note: FinalizeController handles /receipts/{key}/finalize, we handle /receipts/{key}/cancel
+    // ==================== Receipt Operations ====================
+    // Note: FinalizeController handles /receipts/{key}/finalize, we handle other operations
+
+    @GetMapping("/receipts/{receiptKey}")
+    public ResponseEntity<Map<String, Object>> getMockReceipt(@PathVariable String receiptKey) {
+        log.info("[E2E Mock] Get receipt: {}", receiptKey);
+        // Return mock receipt with expected fields for tests
+        // Extract poKey from receiptKey (e.g., RCV-HAPPY-001 becomes PO-HAPPY-001)
+        String poKey = receiptKey.replace("RCV-", "PO-");
+        return ResponseEntity.ok(Map.of(
+            "receiptKey", receiptKey,
+            "storerKey", "TEST_STORER_001",
+            "facility", "TEST01",
+            "status", "5", // Ready for finalization
+            "poKey", poKey,
+            "lineCount", 1
+        ));
+    }
 
     @PostMapping("/receipts/{receiptKey}/cancel")
     public ResponseEntity<Map<String, Object>> cancelReceipt(@PathVariable String receiptKey) {
@@ -282,50 +312,145 @@ public class E2ETestMockController {
     }
 
     // ==================== RDT Operations ====================
+    // RDT endpoints validate device, user, and facility authorization based on headers
+
+    // Valid RDT devices and users for testing
+    private static final Set<String> VALID_RDT_DEVICES = Set.of(
+        "RDT-KR01-001", "RDT-KR01-002", "RDT-DEV-001", "RDT-DEV-002"
+    );
+    private static final Set<String> VALID_RDT_USERS = Set.of(
+        "RDT-OPR-001", "RDT-OPR-002", "RDT-OP-001", "RDT-OP-002"
+    );
+    // User to authorized facilities mapping
+    private static final Map<String, Set<String>> USER_FACILITY_AUTH = Map.of(
+        "RDT-OPR-001", Set.of("KR01", "KR02"),
+        "RDT-OPR-002", Set.of("IN01", "IN02"),
+        "RDT-OP-001", Set.of("KR01", "KR02"),
+        "RDT-OP-002", Set.of("IN01", "IN02")
+    );
+    private static final Set<String> EXPIRED_SESSIONS = Set.of("EXPIRED-SESSION-XXX");
 
     @PostMapping("/rdt/po")
-    public ResponseEntity<Map<String, Object>> rdtCreatePO(@RequestBody Map<String, Object> request) {
-        log.info("[E2E Mock] RDT Create PO: {}", request);
+    public ResponseEntity<Map<String, Object>> rdtCreatePO(
+            @RequestBody Map<String, Object> request,
+            @RequestHeader(value = "X-RDT-Device-Id", required = false) String deviceId,
+            @RequestHeader(value = "X-RDT-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-RDT-Session-Id", required = false) String sessionId) {
+        log.info("[E2E Mock] RDT Create PO: device={}, user={}, session={}", deviceId, userId, sessionId);
+
+        // Check for expired session first
+        if (sessionId != null && EXPIRED_SESSIONS.contains(sessionId)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "errorCode", "RDT_004",
+                "message", "Session expired or invalid"
+            ));
+        }
+
+        // Validate device
+        if (deviceId != null && !VALID_RDT_DEVICES.contains(deviceId)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "errorCode", "RDT_001",
+                "message", "Device not registered: " + deviceId
+            ));
+        }
+
+        // Validate user
+        if (userId != null && !VALID_RDT_USERS.contains(userId)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "errorCode", "RDT_002",
+                "message", "Operator not found: " + userId
+            ));
+        }
+
+        // Validate facility authorization
+        String facility = (String) request.get("facility");
+        if (userId != null && facility != null) {
+            Set<String> authorizedFacilities = USER_FACILITY_AUTH.getOrDefault(userId, Set.of());
+            if (!authorizedFacilities.contains(facility)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                    "errorCode", "RDT_003",
+                    "message", "Not authorized for facility: " + facility
+                ));
+            }
+        }
+
+        // Success case
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
             "poKey", "PO-RDT-" + System.currentTimeMillis(),
-            "status", "0"
+            "status", "0",
+            "createdBy", userId != null ? userId : "system",
+            "device", deviceId != null ? deviceId : "unknown"
         ));
     }
 
     @PostMapping("/rdt/po/from-scan")
-    public ResponseEntity<Map<String, Object>> rdtCreatePOFromScan(@RequestBody Map<String, Object> request) {
+    public ResponseEntity<Map<String, Object>> rdtCreatePOFromScan(
+            @RequestBody Map<String, Object> request,
+            @RequestHeader(value = "X-RDT-Device-Id", required = false) String deviceId,
+            @RequestHeader(value = "X-RDT-User-Id", required = false) String userId) {
         log.info("[E2E Mock] RDT Create PO from scan: {}", request);
+
+        // Validate device
+        if (deviceId != null && !VALID_RDT_DEVICES.contains(deviceId)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "errorCode", "RDT_001",
+                "message", "Device not registered: " + deviceId
+            ));
+        }
+
+        // Count scanned items for response
+        @SuppressWarnings("unchecked")
+        List<Object> scannedItems = (List<Object>) request.getOrDefault("scannedItems", List.of());
+        int resolvedSkus = scannedItems.size();
+
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
             "poKey", "PO-SCAN-" + System.currentTimeMillis(),
-            "status", "0"
+            "status", "0",
+            "resolvedSkus", resolvedSkus
         ));
     }
 
     @PostMapping("/rdt/po/offline-sync")
-    public ResponseEntity<Map<String, Object>> rdtOfflineSync(@RequestBody Map<String, Object> request) {
+    public ResponseEntity<Map<String, Object>> rdtOfflineSync(
+            @RequestBody Map<String, Object> request,
+            @RequestHeader(value = "X-RDT-Device-Id", required = false) String deviceId,
+            @RequestHeader(value = "X-RDT-User-Id", required = false) String userId) {
         log.info("[E2E Mock] RDT Offline sync: {}", request);
-        return ResponseEntity.ok(Map.of(
-            "synced", true,
+        // Offline sync returns 202 Accepted for async processing
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
+            "queuedForProcessing", true,
+            "syncId", "SYNC-" + System.currentTimeMillis(),
             "syncedAt", LocalDateTime.now().toString()
         ));
     }
 
     @PostMapping("/rdt/receipts/{receiptKey}/finalize")
-    public ResponseEntity<Map<String, Object>> rdtFinalizeReceipt(@PathVariable String receiptKey) {
+    public ResponseEntity<Map<String, Object>> rdtFinalizeReceipt(
+            @PathVariable String receiptKey,
+            @RequestHeader(value = "X-RDT-Device-Id", required = false) String deviceId,
+            @RequestHeader(value = "X-RDT-User-Id", required = false) String userId,
+            @RequestBody(required = false) Map<String, Object> request) {
         log.info("[E2E Mock] RDT Finalize receipt: {}", receiptKey);
         return ResponseEntity.ok(Map.of(
             "receiptKey", receiptKey,
-            "status", "9",
+            "status", "FINALIZED",
+            "finalizedBy", userId != null ? userId : "system",
+            "device", deviceId != null ? deviceId : "unknown",
             "finalizedAt", LocalDateTime.now().toString()
         ));
     }
 
     @PostMapping("/rdt/receipts/{receiptKey}/finalize-with-scan")
-    public ResponseEntity<Map<String, Object>> rdtFinalizeReceiptWithScan(@PathVariable String receiptKey) {
+    public ResponseEntity<Map<String, Object>> rdtFinalizeReceiptWithScan(
+            @PathVariable String receiptKey,
+            @RequestHeader(value = "X-RDT-Device-Id", required = false) String deviceId,
+            @RequestHeader(value = "X-RDT-User-Id", required = false) String userId) {
         log.info("[E2E Mock] RDT Finalize receipt with scan: {}", receiptKey);
         return ResponseEntity.ok(Map.of(
             "receiptKey", receiptKey,
-            "status", "9",
+            "status", "FINALIZED",
+            "finalizedBy", userId != null ? userId : "system",
+            "device", deviceId != null ? deviceId : "unknown",
             "scanned", true
         ));
     }
@@ -652,10 +777,74 @@ public class E2ETestMockController {
     @PostMapping("/asn/populate")
     public ResponseEntity<Map<String, Object>> populateASN(@RequestBody Map<String, Object> request) {
         log.info("[E2E Mock] Populate ASN: {}", request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
-            "asnKey", "ASN-" + System.currentTimeMillis(),
-            "status", "POPULATED"
-        ));
+        String receiptKey = "RCV-" + System.currentTimeMillis();
+        String poKey = (String) request.get("poKey");
+
+        // Calculate carton count and total qty from request
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> cartons = (List<Map<String, Object>>) request.get("cartons");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> lines = (List<Map<String, Object>>) request.get("lines");
+
+        int cartonCount = cartons != null ? cartons.size() : 0;
+        int totalQty = 0;
+        boolean isPartialShipment = Boolean.TRUE.equals(request.get("isPartialShipment"));
+        boolean allowOverReceipt = Boolean.TRUE.equals(request.get("allowOverReceipt"));
+        int overReceiptQty = 0;
+
+        // Calculate total qty from lines or cartons
+        if (cartons != null) {
+            for (Map<String, Object> carton : cartons) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> cartonLines = (List<Map<String, Object>>) carton.get("lines");
+                if (cartonLines != null) {
+                    for (Map<String, Object> line : cartonLines) {
+                        Object qty = line.get("qtyShipped");
+                        if (qty instanceof Number) {
+                            totalQty += ((Number) qty).intValue();
+                        }
+                    }
+                }
+            }
+        } else if (lines != null) {
+            for (Map<String, Object> line : lines) {
+                Object qtyShipped = line.get("qtyShipped");
+                Object qtyOrdered = line.get("qtyOrdered");
+                if (qtyShipped instanceof Number) {
+                    int shipped = ((Number) qtyShipped).intValue();
+                    totalQty += shipped;
+                    if (qtyOrdered instanceof Number && allowOverReceipt) {
+                        int ordered = ((Number) qtyOrdered).intValue();
+                        if (shipped > ordered) {
+                            overReceiptQty += (shipped - ordered);
+                        }
+                    }
+                }
+            }
+        }
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("receiptKey", receiptKey);
+        response.put("asnKey", "ASN-" + System.currentTimeMillis());
+        response.put("status", "POPULATED");
+        if (poKey != null) {
+            response.put("linkedPoKey", poKey);
+        }
+        if (cartonCount > 0) {
+            response.put("cartonCount", cartonCount);
+        }
+        if (totalQty > 0) {
+            response.put("totalQty", totalQty);
+        }
+        if (isPartialShipment) {
+            response.put("partialShipment", true);
+        }
+        if (overReceiptQty > 0) {
+            response.put("overReceiptWarning", true);
+            response.put("overReceiptQty", overReceiptQty);
+        }
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     // ==================== Saga ====================
@@ -712,11 +901,18 @@ public class E2ETestMockController {
     // ==================== EDI ====================
 
     @PostMapping("/edi/inbound")
-    public ResponseEntity<Map<String, Object>> processEDIInbound(@RequestBody Map<String, Object> request) {
-        log.info("[E2E Mock] Process EDI inbound: {}", request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+    public ResponseEntity<Map<String, Object>> processEDIInbound(@RequestBody String ediContent) {
+        log.info("[E2E Mock] Process EDI inbound: {} chars", ediContent != null ? ediContent.length() : 0);
+        // Determine transaction type from content (simplified)
+        String transactionType = "850"; // Default to PO
+        if (ediContent != null && ediContent.contains("856")) {
+            transactionType = "856"; // ASN
+        }
+        // EDI inbound returns 202 Accepted for async processing
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
             "messageId", "EDI-" + System.currentTimeMillis(),
-            "status", "PROCESSED"
+            "status", "ACCEPTED",
+            "transactionType", transactionType
         ));
     }
 
@@ -735,7 +931,8 @@ public class E2ETestMockController {
         log.info("[E2E Mock] Get EDI message status: {}", messageId);
         return ResponseEntity.ok(Map.of(
             "messageId", messageId,
-            "status", "PROCESSED"
+            "status", "PROCESSED",
+            "processingStatus", "COMPLETED"
         ));
     }
 

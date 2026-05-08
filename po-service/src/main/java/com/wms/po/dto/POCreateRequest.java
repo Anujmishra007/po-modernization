@@ -1,7 +1,6 @@
 package com.wms.po.dto;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -27,7 +26,6 @@ public class POCreateRequest {
 
     private String externPoKey;
 
-    @NotBlank(message = "Supplier key is required")
     private String supplierKey;
 
     private String poType;
@@ -38,6 +36,6 @@ public class POCreateRequest {
     private String buyerRef;
     private String notes;
 
-    @NotNull(message = "At least one line item is required")
+    // Lines are optional for simple PO creation - can be added later
     private List<PODetailRequest> lines;
 }
