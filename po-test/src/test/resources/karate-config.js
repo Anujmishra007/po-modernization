@@ -113,6 +113,27 @@ function fn() {
     podetailQueryCount: 0
   };
 
+  // Java types for proper Karate array/map compatibility
+  var ArrayList = Java.type('java.util.ArrayList');
+  var LinkedHashMap = Java.type('java.util.LinkedHashMap');
+
+  // Helper to create a Java ArrayList from JavaScript array
+  // This ensures .length works correctly in Karate match statements
+  function toJavaList(jsArray) {
+    var list = new ArrayList();
+    for (var i = 0; i < jsArray.length; i++) {
+      var jsObj = jsArray[i];
+      var map = new LinkedHashMap();
+      for (var key in jsObj) {
+        if (jsObj.hasOwnProperty(key)) {
+          map.put(key, jsObj[key]);
+        }
+      }
+      list.add(map);
+    }
+    return list;
+  }
+
   var mockDb = {
     // Mock query that returns expected values based on SQL patterns
     query: function(sql) {
@@ -128,7 +149,7 @@ function fn() {
       if (sqlLower.indexOf('select * from dbo.orders') >= 0 ||
           sqlLower.indexOf('select * from dbo.po ') >= 0) {
         karate.log('[MockDB] Matched orders/po handler, returning 1 row');
-        var result = [{
+        var result = toJavaList([{
           orderkey: 'PO-TEST-001',
           externorderkey: 'EXT-TEST-001',
           storerkey: config.testStorerKey,
@@ -136,8 +157,8 @@ function fn() {
           status: '0',
           adddate: new Date().toISOString(),
           editdate: new Date().toISOString()
-        }];
-        karate.log('[MockDB] orders result length:', result.length);
+        }]);
+        karate.log('[MockDB] orders result size:', result.size());
         return result;
       }
 
@@ -148,15 +169,15 @@ function fn() {
       if (sqlLower.indexOf('select * from dbo.orderdetail') >= 0 &&
           sqlLower.indexOf('receiptdetail') < 0) {
         karate.log('[MockDB] Matched orderdetail handler, returning 1 row');
-        var result = [{
+        var result = toJavaList([{
           orderkey: 'PO-TEST-001',
           orderlinenumber: 1,
           sku: 'TEST-SKU-001',
           qtyordered: 100,
           qtyreceived: 0,
           status: '0'
-        }];
-        karate.log('[MockDB] orderdetail result length:', result.length);
+        }]);
+        karate.log('[MockDB] orderdetail result size:', result.size());
         return result;
       }
 
@@ -218,7 +239,7 @@ function fn() {
         }
 
         // Return array format for query(), getValue will extract the number
-        return [{ cnt: countValue }];
+        return toJavaList([{ cnt: countValue }]);
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -230,13 +251,13 @@ function fn() {
           sqlLower.indexOf('select status from dbo.po') >= 0) {
         // F3-TC09: PO closed after full receipt
         if (sqlLower.indexOf('po-close') >= 0) {
-          return [{ status: '9' }];
+          return toJavaList([{ status: '9' }]);
         }
         // F2-TC04: PO status after ASN received
         if (sqlLower.indexOf('po-') >= 0) {
-          return [{ status: '1' }]; // ASN Received status
+          return toJavaList([{ status: '1' }]); // ASN Received status
         }
-        return [{ status: '0' }];
+        return toJavaList([{ status: '0' }]);
       }
 
       // Receipt status queries
@@ -245,9 +266,9 @@ function fn() {
         if (sqlLower.indexOf('rcv-finalize') >= 0 ||
             sqlLower.indexOf('rcv-test') >= 0 ||
             sqlLower.indexOf('rcv-happy') >= 0) {
-          return [{ status: '9' }];
+          return toJavaList([{ status: '9' }]);
         }
-        return [{ status: '5' }];
+        return toJavaList([{ status: '5' }]);
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -256,44 +277,44 @@ function fn() {
 
       // Receipt with external key (F2-TC01)
       if (sqlLower.indexOf('select * from dbo.receipt where externreceiptkey') >= 0) {
-        return [{
+        return toJavaList([{
           receiptkey: 'RCV-ASN-001',
           externreceiptkey: 'ASN-12345',
           storerkey: config.testStorerKey,
           status: '0',
           adddate: new Date().toISOString()
-        }];
+        }]);
       }
 
       // Receipt detail for ASN (F2-TC01 expects 3 lines)
       if (sqlLower.indexOf('select * from dbo.receiptdetail') >= 0) {
-        return [
+        return toJavaList([
           { receiptkey: 'RCV-ASN-001', receiptlinenumber: 1, sku: 'TEST-SKU-001', qtyreceived: 100, status: '9' },
           { receiptkey: 'RCV-ASN-001', receiptlinenumber: 2, sku: 'TEST-SKU-002', qtyreceived: 150, status: '9' },
           { receiptkey: 'RCV-ASN-001', receiptlinenumber: 3, sku: 'TEST-SKU-003', qtyreceived: 200, status: '9' }
-        ];
+        ]);
       }
 
       // Receipt detail lottables (F2-TC02)
       if (sqlLower.indexOf('select lottable') >= 0 && sqlLower.indexOf('receiptdetail') >= 0) {
-        return [{
+        return toJavaList([{
           lottable01: 'STYLE-001',
           lottable02: 'BLK',
           lottable03: 'SIZE-10'
-        }];
+        }]);
       }
 
       // DISTINCT status from receiptdetail (F3-TC02)
       if (sqlLower.indexOf('select distinct status from dbo.receiptdetail') >= 0) {
-        return [{ status: '9' }];
+        return toJavaList([{ status: '9' }]);
       }
 
       // Carton header (F2-TC05)
       if (sqlLower.indexOf('select * from dbo.cartonheader') >= 0) {
-        return [
+        return toJavaList([
           { cartonid: 'CTN-001', receiptkey: 'RCV-ASN-001', weight: 25.5 },
           { cartonid: 'CTN-002', receiptkey: 'RCV-ASN-001', weight: 30.0 }
-        ];
+        ]);
       }
 
       // PO detail with quantities (F2-TC06, F3-TC06)
@@ -303,13 +324,13 @@ function fn() {
         mockDbState.podetailQueryCount++;
         // First call returns 50 (before finalize), subsequent calls return 60 (after finalize)
         var qtyReceived = mockDbState.podetailQueryCount === 1 ? 50 : 60;
-        return [{
+        return toJavaList([{
           pokey: 'PO-HAPPY-001',
           polinenumber: '00001',
           sku: 'NK-AIRMAX90-BLK',
           qtyordered: 100,
           qtyreceived: qtyReceived
-        }];
+        }]);
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -318,36 +339,36 @@ function fn() {
 
       // Receipt audit records (F3-TC03, F3-TC08)
       if (sqlLower.indexOf('select * from dbo.receiptaudit') >= 0) {
-        return [{
+        return toJavaList([{
           auditid: 'AUDIT-RCV-001',
           receiptkey: 'RCV-HAPPY-001',
           action: 'FINALIZE',
           userid: 'RDT_USER_001',
           source: 'TRIGGER',
           auditdate: new Date().toISOString()
-        }];
+        }]);
       }
 
       // Task records (F3-TC04)
       if (sqlLower.indexOf('select * from dbo.task') >= 0) {
-        return [{
+        return toJavaList([{
           taskid: 'TASK-001',
           fromkey: 'RCV-HAPPY-004',
           tasktype: 'PUTAWAY',
           status: '0',
           adddate: new Date().toISOString()
-        }];
+        }]);
       }
 
       // Receipt record queries
       if (sqlLower.indexOf('select * from dbo.receipt') >= 0) {
-        return [{
+        return toJavaList([{
           receiptkey: 'RCV-TEST-001',
           orderkey: 'PO-TEST-001',
           storerkey: config.testStorerKey,
           status: '9', // Finalized
           adddate: new Date().toISOString()
-        }];
+        }]);
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -356,18 +377,18 @@ function fn() {
 
       // Location from inventory (F3-TC07)
       if (sqlLower.indexOf('select loc from dbo.lotxlocxid') >= 0) {
-        return [{ loc: 'KR01-STOR-A01' }];
+        return toJavaList([{ loc: 'KR01-STOR-A01' }]);
       }
 
       // Hold code from inventory (F3-TC10)
       if (sqlLower.indexOf('select holdcode from dbo.lotxlocxid') >= 0) {
-        return [{ holdcode: 'QC_PENDING' }];
+        return toJavaList([{ holdcode: 'QC_PENDING' }]);
       }
 
       // Inventory with lottables
       if (sqlLower.indexOf('select * from dbo.lotxlocxid') >= 0 ||
           sqlLower.indexOf('select lottable') >= 0) {
-        return [{
+        return toJavaList([{
           inventoryid: 'INV-001',
           receiptkey: 'RCV-TEST-001',
           sku: 'TEST-SKU-001',
@@ -378,7 +399,7 @@ function fn() {
           lottable02: '2026-12-31',
           lottable03: 'VENDOR-001',
           holdcode: 'QC_PENDING'
-        }];
+        }]);
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -386,11 +407,11 @@ function fn() {
       // ═══════════════════════════════════════════════════════════
 
       if (sqlLower.indexOf('returnkey') >= 0) {
-        return [{
+        return toJavaList([{
           returnkey: 'RTN-001',
           status: 'COMPLETED',
           qty: 50
-        }];
+        }]);
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -399,45 +420,54 @@ function fn() {
 
       // Compensation audit records
       if (sqlLower.indexOf('compensationaudit') >= 0) {
-        return [{
+        return toJavaList([{
           auditid: 'AUDIT-001',
           entitykey: 'RCV-TEST-001',
           action: 'COMPENSATE',
           auditdate: new Date().toISOString(),
           userid: 'system'
-        }];
+        }]);
       }
 
       // Event outbox
       if (sqlLower.indexOf('eventoutbox') >= 0) {
-        return [];
+        return new ArrayList();
       }
 
       // Compensation incident
       if (sqlLower.indexOf('compensationincident') >= 0) {
-        return [];
+        return new ArrayList();
       }
 
       // Alert log
       if (sqlLower.indexOf('alertlog') >= 0) {
-        return [];
+        return new ArrayList();
       }
 
       // ═══════════════════════════════════════════════════════════
       // DEFAULT: Return empty but log for debugging
       // ═══════════════════════════════════════════════════════════
       karate.log('[MockDB] No specific match for query, returning empty array');
-      return [];
+      return new ArrayList();
     },
 
-    // Get single value from query - handles both array results and direct values
+    // Get single value from query - handles both Java ArrayList and direct values
     getValue: function(sql) {
       var result = mockDb.query(sql);
       // If result is a number (from COUNT queries), return directly
       if (typeof result === 'number') {
         return result;
       }
-      // If result is an array with rows
+      // If result is a Java ArrayList (size() method)
+      if (result && typeof result.size === 'function' && result.size() > 0) {
+        var row = result.get(0);
+        // Row is a LinkedHashMap, iterate its keys
+        var keys = row.keySet().toArray();
+        if (keys.length > 0) {
+          return row.get(keys[0]);
+        }
+      }
+      // If result is an array with rows (fallback)
       if (result && result.length > 0) {
         var row = result[0];
         for (var key in row) {
