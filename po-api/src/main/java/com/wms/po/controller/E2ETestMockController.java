@@ -2003,11 +2003,20 @@ public class E2ETestMockController {
             ));
         }
 
-        return ResponseEntity.ok(Map.of(
-            "taskKey", taskKey,
-            "completed", true,
-            "completedAt", LocalDateTime.now().toString()
-        ));
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("taskKey", taskKey);
+        response.put("completed", true);
+        response.put("completedAt", LocalDateTime.now().toString());
+
+        // Handle location override (F6-TC14)
+        if (request != null && Boolean.TRUE.equals(request.get("overrideLocation"))) {
+            response.put("locationOverridden", true);
+            if (request.get("scannedLocation") != null) {
+                response.put("location", request.get("scannedLocation"));
+            }
+        }
+
+        return ResponseEntity.ok(response);
     }
 
     // ==================== Tasks ====================
@@ -2035,7 +2044,9 @@ public class E2ETestMockController {
         log.info("[E2E Mock] Timeout task: {}", taskKey);
         return ResponseEntity.ok(Map.of(
             "taskKey", taskKey,
-            "timedOut", true
+            "timedOut", true,
+            "status", "TIMED_OUT",
+            "reassignmentRequired", true
         ));
     }
 
@@ -2078,6 +2089,7 @@ public class E2ETestMockController {
         log.info("[E2E Mock] Get task metrics");
         Map<String, Object> metrics = new LinkedHashMap<>();
         metrics.put("totalTasks", 100);
+        metrics.put("totalCompleted", 80);
         metrics.put("completed", 80);
         metrics.put("pending", 15);
         metrics.put("inProgress", 5);
@@ -2535,28 +2547,35 @@ public class E2ETestMockController {
             ));
         }
 
-        // 422 - SKU not on order / Storer mismatch
+        // 422 - SKU not on order (F4-TC12)
+        // Check if Nike SKU is being allocated to HM order
+        if (sku != null && orderKey != null) {
+            boolean nikeSku = sku.startsWith("NK-") || sku.contains("NIKE");
+            boolean hmOrder = orderKey.contains("HM") || orderKey.startsWith("SO-HM-");
+            boolean hmSku = sku.startsWith("HM-") || sku.contains("-HM-");
+            boolean nikeOrder = orderKey.contains("NIKE") || orderKey.startsWith("SO-NIKE-");
+
+            if ((nikeSku && hmOrder) || (hmSku && nikeOrder)) {
+                Map<String, Object> errorResponse = new LinkedHashMap<>();
+                errorResponse.put("errorCode", "XDOCK_002");
+                errorResponse.put("message", "SKU not on order: " + sku);
+                return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(errorResponse);
+            }
+        }
+
+        // 422 - Storer mismatch (F4-TC13) - check receipt vs order storer
         if (receiptKey != null && orderKey != null) {
             boolean nikeReceipt = receiptKey.contains("NIKE") || receiptKey.contains("-HAPPY-NIKE-");
             boolean hmOrder = orderKey.contains("HM") || orderKey.startsWith("SO-HM-");
             boolean hmReceipt = receiptKey.contains("HM") || receiptKey.contains("-HAPPY-HM-");
             boolean nikeOrder = orderKey.contains("NIKE") || orderKey.startsWith("SO-NIKE-");
+
             if ((nikeReceipt && hmOrder) || (hmReceipt && nikeOrder)) {
-                Map<String, Object> errorResponse = new LinkedHashMap<>();
-                errorResponse.put("errorCode", "XDOCK_002");
-                errorResponse.put("message", "SKU not on order: storer mismatch");
-                errorResponse.put("receiptStorer", nikeReceipt ? "NIKE_KR" : "HM_KR");
-                errorResponse.put("orderStorer", hmOrder ? "HM_KR" : "NIKE_KR");
-                return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(errorResponse);
-            }
-            // Explicit storer mismatch pattern
-            if ((receiptKey.contains("-HAPPY-NIKE-") && orderKey.startsWith("SO-HM-")) ||
-                (receiptKey.contains("-HAPPY-HM-") && orderKey.startsWith("SO-NIKE-"))) {
                 Map<String, Object> errorResponse = new LinkedHashMap<>();
                 errorResponse.put("errorCode", "XDOCK_003");
                 errorResponse.put("message", "Storer mismatch between receipt and order");
-                errorResponse.put("receiptStorer", receiptKey.contains("NIKE") ? "NIKE_KR" : "HM_KR");
-                errorResponse.put("orderStorer", orderKey.contains("HM") ? "HM_KR" : "NIKE_KR");
+                errorResponse.put("receiptStorer", nikeReceipt ? "NIKE_KR" : "HM_KR");
+                errorResponse.put("orderStorer", hmOrder ? "HM_KR" : "NIKE_KR");
                 return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(errorResponse);
             }
         }
@@ -2719,6 +2738,41 @@ public class E2ETestMockController {
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> allocations = (List<Map<String, Object>>) request.get("allocations");
+
+        // Check for error patterns in allocations
+        if (allocations != null) {
+            for (Map<String, Object> alloc : allocations) {
+                String orderKey = (String) alloc.get("orderKey");
+                String receiptKey = (String) alloc.get("receiptKey");
+                String sku = (String) alloc.get("sku");
+
+                // Check for storer mismatch errors
+                if (sku != null && orderKey != null) {
+                    boolean nikeSku = sku.startsWith("NK-") || sku.contains("NIKE");
+                    boolean hmOrder = orderKey.contains("HM") || orderKey.startsWith("SO-HM-");
+                    boolean hmSku = sku.startsWith("HM-") || sku.contains("-HM-");
+                    boolean nikeOrder = orderKey.contains("NIKE") || orderKey.startsWith("SO-NIKE-");
+
+                    if ((nikeSku && hmOrder) || (hmSku && nikeOrder)) {
+                        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                            "errorCode", "XDOCK_002",
+                            "message", "SKU not on order: storer mismatch in batch",
+                            "failedSku", sku
+                        ));
+                    }
+                }
+
+                // Check for ERR patterns
+                if ((receiptKey != null && receiptKey.contains("-ERR-")) ||
+                    (orderKey != null && orderKey.contains("-ERR-"))) {
+                    return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                        "errorCode", "XDOCK_001",
+                        "message", "Batch allocation failed due to error patterns"
+                    ));
+                }
+            }
+        }
+
         int count = allocations != null ? allocations.size() : 0;
 
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
@@ -3121,7 +3175,7 @@ public class E2ETestMockController {
         ));
     }
 
-    @PostMapping("/tasks/{taskKey}/reassign")
+    @PutMapping("/tasks/{taskKey}/reassign")
     public ResponseEntity<Map<String, Object>> reassignTask(
             @PathVariable String taskKey,
             @RequestBody(required = false) Map<String, Object> request,
@@ -3135,10 +3189,14 @@ public class E2ETestMockController {
             ));
         }
 
-        // Safe extraction of userId with default
+        // Safe extraction of newUser with default
         String newUserId = "USER-001";
-        if (request != null && request.get("userId") != null) {
-            newUserId = request.get("userId").toString();
+        if (request != null) {
+            if (request.get("newUser") != null) {
+                newUserId = request.get("newUser").toString();
+            } else if (request.get("userId") != null) {
+                newUserId = request.get("userId").toString();
+            }
         }
 
         Map<String, Object> response = new LinkedHashMap<>();
