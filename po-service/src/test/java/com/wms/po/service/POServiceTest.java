@@ -218,10 +218,10 @@ class POServiceTest {
                 .thenReturn(List.of(po));
             when(variationResolver.resolve("DC01", "STORER001")).thenReturn(context);
 
-            // Mock delete operations to return rows affected
-            when(jdbcTemplate.update(contains("DELETE FROM ORDERDETAIL"), eq("PO001")))
+            // Mock delete operations to return rows affected (use actual table names from POService)
+            when(jdbcTemplate.update(contains("podetail"), eq("PO001")))
                 .thenReturn(3); // 3 details deleted
-            when(jdbcTemplate.update(contains("DELETE FROM ORDERS"), eq("PO001")))
+            when(jdbcTemplate.update(contains("dbo.po WHERE"), eq("PO001")))
                 .thenReturn(1); // 1 header deleted
 
             // When
@@ -229,8 +229,8 @@ class POServiceTest {
 
             // Then
             verify(validationService).validateForDelete("PO001", context);
-            verify(jdbcTemplate).update(contains("DELETE FROM ORDERDETAIL"), eq("PO001"));
-            verify(jdbcTemplate).update(contains("DELETE FROM ORDERS"), eq("PO001"));
+            verify(jdbcTemplate).update(contains("podetail"), eq("PO001"));
+            verify(jdbcTemplate).update(contains("dbo.po WHERE"), eq("PO001"));
         }
     }
 
@@ -265,14 +265,15 @@ class POServiceTest {
         @DisplayName("Should update PO status successfully")
         void shouldUpdatePOStatusSuccessfully() {
             // Given - mock the update to return 1 row affected
-            when(jdbcTemplate.update(contains("UPDATE ORDERS SET STATUS"), eq("5"), eq("testuser"), eq("PO001")))
+            // Actual argument order: status, userId, poKey
+            when(jdbcTemplate.update(contains("UPDATE dbo.po SET status"), eq("5"), eq("testuser"), eq("PO001")))
                 .thenReturn(1);
 
             // When
             poService.updatePOStatus("PO001", "5", "testuser");
 
             // Then
-            verify(jdbcTemplate).update(contains("UPDATE ORDERS SET STATUS"), eq("5"), eq("testuser"), eq("PO001"));
+            verify(jdbcTemplate).update(contains("UPDATE dbo.po SET status"), eq("5"), eq("testuser"), eq("PO001"));
         }
     }
 }
