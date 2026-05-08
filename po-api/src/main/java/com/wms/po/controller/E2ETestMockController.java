@@ -620,6 +620,89 @@ public class E2ETestMockController {
             @PathVariable String poKey,
             @RequestBody(required = false) Map<String, Object> request) {
         log.info("[E2E Mock] Populate PO: {}", poKey);
+
+        // 404 - Not Found
+        if (poKey.contains("NOTFOUND") || poKey.contains("NOT-EXIST")) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "PO_001",
+                "message", "PO not found: " + poKey
+            ));
+        }
+
+        // 422 - Validation errors (PO-COMP-RES-*, PO-COMP-ALLOC-*, PO-COMP-LEGACY-*, etc.)
+        if (poKey.startsWith("PO-COMP-RES-") || poKey.startsWith("PO-COMP-ALLOC-") ||
+            poKey.startsWith("PO-COMP-LEGACY-") || poKey.startsWith("PO-COMP-VALID-") ||
+            poKey.startsWith("PO-COMP-STATUS-") || poKey.startsWith("PO-COMP-HOLD-") ||
+            poKey.startsWith("PO-ERR-") || poKey.contains("-ERR-")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "PO_010",
+                "legacyCode", 68010,
+                "message", "PO cannot be populated: validation failed for " + poKey,
+                "poKey", poKey,
+                "retryable", false
+            ));
+        }
+
+        // 504 - Timeout
+        if (poKey.startsWith("PO-COMP-TIMEOUT-") || poKey.contains("TIMEOUT")) {
+            return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(Map.of(
+                "errorCode", "PO_020",
+                "legacyCode", 68020,
+                "message", "Population timed out for PO: " + poKey,
+                "poKey", poKey,
+                "retryable", true
+            ));
+        }
+
+        // 202 - Async/Cancelled (PO-COMP-CANCEL-*)
+        if (poKey.startsWith("PO-COMP-CANCEL-") || poKey.startsWith("PO-ASYNC-") ||
+            poKey.startsWith("PO-TEMPORAL-")) {
+            String workflowId = "WF-" + System.currentTimeMillis();
+            return ResponseEntity.accepted().body(Map.of(
+                "poKey", poKey,
+                "workflowId", workflowId,
+                "status", "PROCESSING",
+                "async", true,
+                "statusUrl", "/api/v1/po/" + poKey + "/populate/" + workflowId + "/status"
+            ));
+        }
+
+        // 409 - Conflict
+        if (poKey.startsWith("PO-COMP-CONC-") || poKey.contains("CONC")) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                "errorCode", "PO_040",
+                "legacyCode", 68040,
+                "message", "Concurrent modification detected for PO: " + poKey,
+                "poKey", poKey,
+                "retryable", true
+            ));
+        }
+
+        // 500 - Database errors
+        if (poKey.startsWith("PO-COMP-DBERR-") || poKey.contains("DBERR") ||
+            poKey.startsWith("PO-COMP-DEADLOCK-") || poKey.startsWith("PO-COMP-PARTIAL-") ||
+            poKey.startsWith("PO-COMP-MANUAL-")) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "errorCode", "PO_030",
+                "legacyCode", 68030,
+                "message", "Database error during population: " + poKey,
+                "poKey", poKey,
+                "retryable", true
+            ));
+        }
+
+        // 503 - Service unavailable (OOM, etc.)
+        if (poKey.startsWith("PO-COMP-OOM-") || poKey.contains("OOM") ||
+            poKey.startsWith("PO-COMP-SERVICE-")) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                "errorCode", "PO_050",
+                "legacyCode", 68050,
+                "message", "Service unavailable for PO: " + poKey,
+                "poKey", poKey,
+                "retryable", true
+            ));
+        }
+
         String receiptKey = "RCV-" + System.currentTimeMillis();
 
         // Calculate line count from request if present
@@ -819,8 +902,11 @@ public class E2ETestMockController {
             ));
         }
 
-        // 422 - Validation/Business rule errors
-        if (receiptKey.startsWith("RCV-ERR-") || receiptKey.contains("-ERR-") || receiptKey.contains("ERR")) {
+        // 422 - Validation/Business rule errors (including compensation patterns)
+        if (receiptKey.startsWith("RCV-ERR-") || receiptKey.contains("-ERR-") ||
+            receiptKey.startsWith("RCV-COMP-STATUS-") || receiptKey.startsWith("RCV-COMP-HOLD-") ||
+            receiptKey.startsWith("RCV-COMP-VALID-") || receiptKey.startsWith("RCV-COMP-RES-") ||
+            receiptKey.startsWith("RCV-COMP-ALLOC-") || receiptKey.startsWith("RCV-COMP-LEGACY-")) {
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
                 "errorCode", "RCV_010",
                 "legacyCode", 69010,
@@ -843,7 +929,8 @@ public class E2ETestMockController {
         }
 
         // 504 - Timeout scenarios
-        if (receiptKey.startsWith("RCV-TIMEOUT-") || receiptKey.contains("TIMEOUT")) {
+        if (receiptKey.startsWith("RCV-TIMEOUT-") || receiptKey.contains("TIMEOUT") ||
+            receiptKey.startsWith("RCV-COMP-TIMEOUT-")) {
             return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(Map.of(
                 "errorCode", "RCV_020",
                 "legacyCode", 69020,
@@ -853,8 +940,10 @@ public class E2ETestMockController {
             ));
         }
 
-        // 500 - Database error scenarios
-        if (receiptKey.startsWith("RCV-DBERR-") || receiptKey.contains("DBERR")) {
+        // 500 - Database error scenarios (including compensation patterns)
+        if (receiptKey.startsWith("RCV-DBERR-") || receiptKey.contains("DBERR") ||
+            receiptKey.startsWith("RCV-COMP-DEADLOCK-") || receiptKey.startsWith("RCV-COMP-PARTIAL-") ||
+            receiptKey.startsWith("RCV-COMP-MANUAL-")) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                 "errorCode", "RCV_030",
                 "legacyCode", 69030,
@@ -864,8 +953,21 @@ public class E2ETestMockController {
             ));
         }
 
+        // 503 - Service unavailable (OOM, etc.)
+        if (receiptKey.startsWith("RCV-COMP-OOM-") || receiptKey.contains("OOM") ||
+            receiptKey.startsWith("RCV-COMP-SERVICE-")) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                "errorCode", "RCV_050",
+                "legacyCode", 69050,
+                "message", "Service unavailable for receipt: " + receiptKey,
+                "receiptKey", receiptKey,
+                "retryable", true
+            ));
+        }
+
         // 409 - Concurrent modification conflict
-        if (receiptKey.startsWith("RCV-CONC-") || receiptKey.contains("CONC")) {
+        if (receiptKey.startsWith("RCV-CONC-") || receiptKey.contains("CONC") ||
+            receiptKey.startsWith("RCV-COMP-CONC-")) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
                 "errorCode", "RCV_040",
                 "legacyCode", 69040,
@@ -875,8 +977,10 @@ public class E2ETestMockController {
             ));
         }
 
-        // 202 - Async/Temporal workflow processing
-        if (receiptKey.startsWith("RCV-TEMPORAL-") || receiptKey.startsWith("RCV-ASYNC-") || receiptKey.contains("TEMPORAL")) {
+        // 202 - Async/Temporal workflow processing (including compensation patterns)
+        if (receiptKey.startsWith("RCV-TEMPORAL-") || receiptKey.startsWith("RCV-ASYNC-") ||
+            receiptKey.contains("TEMPORAL") || receiptKey.startsWith("RCV-COMP-NETWORK-") ||
+            receiptKey.startsWith("RCV-COMP-FCANCEL-") || receiptKey.startsWith("RCV-COMP-CANCEL-")) {
             String workflowId = "WF-" + System.currentTimeMillis();
             return ResponseEntity.accepted().body(Map.of(
                 "receiptKey", receiptKey,
@@ -2455,12 +2559,12 @@ public class E2ETestMockController {
 
     @PostMapping("/saga/po-to-inventory")
     public ResponseEntity<Map<String, Object>> sagaPoToInventory(
-            @RequestBody Map<String, Object> request,
+            @RequestBody(required = false) Map<String, Object> request,
             @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestHeader(value = "X-Test-Fail-At-Step", required = false) String failAtStep) {
         log.info("[E2E Mock] Saga PO to inventory: {}, failAtStep={}", request, failAtStep);
 
-        String poKey = (String) request.get("poKey");
+        String poKey = request != null ? (String) request.get("poKey") : null;
 
         // Simulate failure at step
         if (failAtStep != null && !failAtStep.isBlank()) {
@@ -2472,19 +2576,73 @@ public class E2ETestMockController {
             ));
         }
 
-        if (poKey != null && poKey.contains("ERR")) {
-            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
-                "errorCode", "SAGA_002",
-                "message", "Saga failed for PO: " + poKey
-            ));
+        if (poKey != null) {
+            // 422 - Validation errors (including PO-COMP-* patterns that need 422)
+            if (poKey.contains("ERR") || poKey.startsWith("PO-COMP-RES-") ||
+                poKey.startsWith("PO-COMP-ALLOC-") || poKey.startsWith("PO-COMP-LEGACY-") ||
+                poKey.startsWith("PO-COMP-STATUS-") || poKey.startsWith("PO-COMP-HOLD-") ||
+                poKey.startsWith("PO-COMP-VALID-")) {
+                return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                    "errorCode", "SAGA_002",
+                    "message", "Saga failed for PO: " + poKey,
+                    "poKey", poKey,
+                    "compensated", true
+                ));
+            }
+
+            // 504 - Timeout
+            if (poKey.startsWith("PO-COMP-TIMEOUT-") || poKey.contains("TIMEOUT")) {
+                return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(Map.of(
+                    "errorCode", "SAGA_020",
+                    "message", "Saga timed out for PO: " + poKey,
+                    "poKey", poKey,
+                    "retryable", true
+                ));
+            }
+
+            // 202 - Async/Cancelled
+            if (poKey.startsWith("PO-COMP-CANCEL-") || poKey.startsWith("PO-ASYNC-") ||
+                poKey.startsWith("PO-TEMPORAL-") || poKey.startsWith("PO-COMP-NETWORK-") ||
+                poKey.startsWith("PO-COMP-FCANCEL-")) {
+                String sagaId = "SAGA-" + System.currentTimeMillis();
+                return ResponseEntity.accepted().body(Map.of(
+                    "sagaId", sagaId,
+                    "poKey", poKey,
+                    "status", "PROCESSING",
+                    "async", true,
+                    "statusUrl", "/api/v1/saga/" + sagaId + "/status"
+                ));
+            }
+
+            // 500 - Database errors
+            if (poKey.startsWith("PO-COMP-DEADLOCK-") || poKey.startsWith("PO-COMP-PARTIAL-") ||
+                poKey.startsWith("PO-COMP-MANUAL-") || poKey.contains("DBERR")) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "errorCode", "SAGA_030",
+                    "message", "Saga database error for PO: " + poKey,
+                    "poKey", poKey,
+                    "retryable", true
+                ));
+            }
+
+            // 503 - Service unavailable
+            if (poKey.startsWith("PO-COMP-OOM-") || poKey.contains("OOM") ||
+                poKey.startsWith("PO-COMP-SERVICE-")) {
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                    "errorCode", "SAGA_050",
+                    "message", "Saga service unavailable for PO: " + poKey,
+                    "poKey", poKey,
+                    "retryable", true
+                ));
+            }
         }
 
-        return ResponseEntity.ok(Map.of(
-            "sagaId", "SAGA-" + System.currentTimeMillis(),
-            "poKey", poKey,
-            "status", "COMPLETED",
-            "steps", List.of("VALIDATE", "CREATE_RECEIPT", "UPDATE_INVENTORY", "NOTIFY"),
-            "completedAt", LocalDateTime.now().toString()
-        ));
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("sagaId", "SAGA-" + System.currentTimeMillis());
+        response.put("poKey", poKey);
+        response.put("status", "COMPLETED");
+        response.put("steps", List.of("VALIDATE", "CREATE_RECEIPT", "UPDATE_INVENTORY", "NOTIFY"));
+        response.put("completedAt", LocalDateTime.now().toString());
+        return ResponseEntity.ok(response);
     }
 }
