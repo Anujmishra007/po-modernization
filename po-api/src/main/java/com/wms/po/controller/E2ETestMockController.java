@@ -881,8 +881,9 @@ public class E2ETestMockController {
             ));
         }
 
-        // 422 - Validation/business rule errors (various COMP patterns)
-        if (receiptKey.contains("ERR-") || receiptKey.contains("HAPPY-") ||
+        // 422 - Validation/business rule errors (ERR and various COMP patterns)
+        // Note: HAPPY- patterns should succeed (200)
+        if (receiptKey.contains("ERR-") ||
             receiptKey.contains("COMP-STATUS") || receiptKey.contains("COMP-HOLD") ||
             receiptKey.contains("COMP-POQTY") || receiptKey.contains("COMP-PUTAWAY") ||
             receiptKey.contains("COMP-ORDER") || receiptKey.contains("COMP-AUDIT") ||
@@ -2225,32 +2226,55 @@ public class E2ETestMockController {
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("[E2E Mock] Populate ASN: {}", request);
 
-        String poKey = (String) request.get("poKey");
-        String asnKey = (String) request.get("asnKey");
+        String poKey = request != null ? (String) request.get("poKey") : null;
+        String asnKey = request != null ? (String) request.get("asnKey") : null;
+        String receiptKey = request != null ? (String) request.get("receiptKey") : null;
 
-        if (poKey != null && poKey.contains("NOTFOUND")) {
+        // 404 - PO or ASN not found
+        if ((poKey != null && (poKey.contains("NOTFOUND") || poKey.contains("NOT-FOUND"))) ||
+            (asnKey != null && (asnKey.contains("NOTFOUND") || asnKey.contains("NOT-FOUND")))) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
                 "errorCode", "ASN_001",
-                "message", "PO not found: " + poKey
+                "message", "PO or ASN not found"
             ));
         }
-        if (poKey != null && poKey.contains("ERR")) {
+
+        // 422 - Validation errors
+        if ((poKey != null && (poKey.contains("ERR") || poKey.contains("INVALID"))) ||
+            (asnKey != null && (asnKey.contains("ERR") || asnKey.contains("INVALID")))) {
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
                 "errorCode", "ASN_002",
-                "message", "PO not eligible for ASN population"
+                "message", "ASN population failed: validation error"
             ));
         }
 
-        String receiptKey = "RCV-" + System.currentTimeMillis();
+        // 409 - Conflict (already populated)
+        if ((poKey != null && poKey.contains("CONFLICT")) ||
+            (asnKey != null && asnKey.contains("CONFLICT")) ||
+            (asnKey != null && asnKey.contains("DUPLICATE"))) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                "errorCode", "ASN_409",
+                "message", "ASN already populated"
+            ));
+        }
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
-            "poKey", poKey,
-            "asnKey", asnKey != null ? asnKey : "ASN-" + System.currentTimeMillis(),
-            "receiptKey", receiptKey,
-            "status", "POPULATED",
-            "linesPopulated", 3,
-            "populatedAt", LocalDateTime.now().toString()
-        ));
+        String generatedReceiptKey = "RCV-" + System.currentTimeMillis();
+        Map<String, Object> response = new LinkedHashMap<>();
+        if (poKey != null) {
+            response.put("poKey", poKey);
+        }
+        response.put("asnKey", asnKey != null ? asnKey : "ASN-" + System.currentTimeMillis());
+        response.put("receiptKey", receiptKey != null ? receiptKey : generatedReceiptKey);
+        response.put("status", "POPULATED");
+        response.put("linesPopulated", 3);
+        response.put("populatedAt", LocalDateTime.now().toString());
+
+        // Return 200 for update scenarios (when receiptKey already exists)
+        if (receiptKey != null) {
+            return ResponseEntity.ok(response);
+        }
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     // ==================== Receipts (Create) ====================
