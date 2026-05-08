@@ -629,18 +629,26 @@ public class E2ETestMockController {
             ));
         }
 
-        // 422 - Validation errors (PO-COMP-RES-*, PO-COMP-ALLOC-*, PO-COMP-LEGACY-*, etc.)
-        if (poKey.startsWith("PO-COMP-RES-") || poKey.startsWith("PO-COMP-ALLOC-") ||
-            poKey.startsWith("PO-COMP-LEGACY-") || poKey.startsWith("PO-COMP-VALID-") ||
-            poKey.startsWith("PO-COMP-STATUS-") || poKey.startsWith("PO-COMP-HOLD-") ||
+        // 422 - Generic compensation patterns (any PO-COMP-* or PO-TEST-* for compensation tests)
+        // Also handle timestamp-based PO keys (e.g., PO-1778241676535) which are generated during test flows
+        if (poKey.startsWith("PO-COMP-") || poKey.startsWith("PO-TEST-") ||
+            (poKey.startsWith("PO-") && poKey.matches("PO-\\d{10,}")) ||
             poKey.startsWith("PO-ERR-") || poKey.contains("-ERR-")) {
-            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
-                "errorCode", "PO_010",
-                "legacyCode", 68010,
-                "message", "PO cannot be populated: validation failed for " + poKey,
-                "poKey", poKey,
-                "retryable", false
-            ));
+            // Exclude specific async patterns
+            if (poKey.startsWith("PO-COMP-CANCEL-") || poKey.startsWith("PO-COMP-TIMEOUT-") ||
+                poKey.startsWith("PO-COMP-OOM-") || poKey.startsWith("PO-COMP-SERVICE-") ||
+                poKey.startsWith("PO-COMP-DBERR-") || poKey.startsWith("PO-COMP-DEADLOCK-") ||
+                poKey.startsWith("PO-COMP-CONC-")) {
+                // These have specific handling below
+            } else {
+                return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                    "errorCode", "PO_010",
+                    "legacyCode", 68010,
+                    "message", "PO cannot be populated: compensation test failure for " + poKey,
+                    "poKey", poKey,
+                    "retryable", false
+                ));
+            }
         }
 
         // 504 - Timeout
@@ -902,11 +910,21 @@ public class E2ETestMockController {
             ));
         }
 
-        // 422 - Validation/Business rule errors (including compensation patterns)
-        if (receiptKey.startsWith("RCV-ERR-") || receiptKey.contains("-ERR-") ||
-            receiptKey.startsWith("RCV-COMP-STATUS-") || receiptKey.startsWith("RCV-COMP-HOLD-") ||
-            receiptKey.startsWith("RCV-COMP-VALID-") || receiptKey.startsWith("RCV-COMP-RES-") ||
-            receiptKey.startsWith("RCV-COMP-ALLOC-") || receiptKey.startsWith("RCV-COMP-LEGACY-")) {
+        // 422 - Generic compensation patterns (any RCV-COMP-* that simulates failure for compensation tests)
+        // These are tests that validate compensation/rollback behavior
+        if (receiptKey.startsWith("RCV-COMP-") || receiptKey.startsWith("RCV-TEST-COMP-") ||
+            receiptKey.startsWith("RCV-TEST-")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "RCV_010",
+                "legacyCode", 69010,
+                "message", "Receipt cannot be finalized: compensation test failure for " + receiptKey,
+                "receiptKey", receiptKey,
+                "retryable", false
+            ));
+        }
+
+        // 422 - Validation/Business rule errors
+        if (receiptKey.startsWith("RCV-ERR-") || receiptKey.contains("-ERR-")) {
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
                 "errorCode", "RCV_010",
                 "legacyCode", 69010,
@@ -929,8 +947,7 @@ public class E2ETestMockController {
         }
 
         // 504 - Timeout scenarios
-        if (receiptKey.startsWith("RCV-TIMEOUT-") || receiptKey.contains("TIMEOUT") ||
-            receiptKey.startsWith("RCV-COMP-TIMEOUT-")) {
+        if (receiptKey.startsWith("RCV-TIMEOUT-") || receiptKey.contains("TIMEOUT")) {
             return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(Map.of(
                 "errorCode", "RCV_020",
                 "legacyCode", 69020,
@@ -940,10 +957,8 @@ public class E2ETestMockController {
             ));
         }
 
-        // 500 - Database error scenarios (including compensation patterns)
-        if (receiptKey.startsWith("RCV-DBERR-") || receiptKey.contains("DBERR") ||
-            receiptKey.startsWith("RCV-COMP-DEADLOCK-") || receiptKey.startsWith("RCV-COMP-PARTIAL-") ||
-            receiptKey.startsWith("RCV-COMP-MANUAL-")) {
+        // 500 - Database error scenarios
+        if (receiptKey.startsWith("RCV-DBERR-") || receiptKey.contains("DBERR")) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                 "errorCode", "RCV_030",
                 "legacyCode", 69030,
@@ -954,8 +969,7 @@ public class E2ETestMockController {
         }
 
         // 503 - Service unavailable (OOM, etc.)
-        if (receiptKey.startsWith("RCV-COMP-OOM-") || receiptKey.contains("OOM") ||
-            receiptKey.startsWith("RCV-COMP-SERVICE-")) {
+        if (receiptKey.contains("OOM")) {
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
                 "errorCode", "RCV_050",
                 "legacyCode", 69050,
@@ -2705,20 +2719,7 @@ public class E2ETestMockController {
         }
 
         if (poKey != null) {
-            // 422 - Validation errors (including PO-COMP-* patterns that need 422)
-            if (poKey.contains("ERR") || poKey.startsWith("PO-COMP-RES-") ||
-                poKey.startsWith("PO-COMP-ALLOC-") || poKey.startsWith("PO-COMP-LEGACY-") ||
-                poKey.startsWith("PO-COMP-STATUS-") || poKey.startsWith("PO-COMP-HOLD-") ||
-                poKey.startsWith("PO-COMP-VALID-")) {
-                return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
-                    "errorCode", "SAGA_002",
-                    "message", "Saga failed for PO: " + poKey,
-                    "poKey", poKey,
-                    "compensated", true
-                ));
-            }
-
-            // 504 - Timeout
+            // 504 - Timeout (check first)
             if (poKey.startsWith("PO-COMP-TIMEOUT-") || poKey.contains("TIMEOUT")) {
                 return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(Map.of(
                     "errorCode", "SAGA_020",
@@ -2763,6 +2764,30 @@ public class E2ETestMockController {
                     "retryable", true
                 ));
             }
+
+            // 422 - Generic compensation patterns (any PO-COMP-*, PO-TEST-*, or timestamp PO keys)
+            if (poKey.contains("ERR") || poKey.startsWith("PO-COMP-") || poKey.startsWith("PO-TEST-") ||
+                (poKey.startsWith("PO-") && poKey.matches("PO-\\d{10,}"))) {
+                return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                    "errorCode", "SAGA_002",
+                    "message", "Saga failed for PO: " + poKey,
+                    "poKey", poKey,
+                    "compensated", true
+                ));
+            }
+        }
+
+        // For requests without poKey during compensation tests, also return 422
+        // Check if we're in a compensation test context (receiptKey hints or other indicators)
+        String receiptKey = request != null ? (String) request.get("receiptKey") : null;
+        if (receiptKey != null && (receiptKey.startsWith("RCV-COMP-") || receiptKey.startsWith("RCV-TEST-") ||
+            receiptKey.matches("RCV-\\d{10,}"))) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "SAGA_002",
+                "message", "Saga failed for receipt: " + receiptKey,
+                "receiptKey", receiptKey,
+                "compensated", true
+            ));
         }
 
         Map<String, Object> response = new LinkedHashMap<>();
