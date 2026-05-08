@@ -51,7 +51,7 @@ public class E2ETestMockController {
 
     @PostMapping("/po")
     public ResponseEntity<Map<String, Object>> createPO(
-            @RequestBody Map<String, Object> request,
+            @RequestBody(required = false) Map<String, Object> request,
             @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestHeader(value = "Content-Type", required = false) String contentType,
             @RequestHeader(value = "X-User-Id", required = false) String userId,
@@ -81,9 +81,16 @@ public class E2ETestMockController {
             ));
         }
 
-        String storerKey = (String) request.get("storerKey");
-        String facility = (String) request.get("facility");
-        String externPoKey = (String) request.get("externPoKey");
+        // Null-safe request handling
+        if (request == null) {
+            request = new HashMap<>();
+        }
+
+        String storerKey = request.get("storerKey") != null ? request.get("storerKey").toString() : null;
+        String facility = request.get("facility") != null ? request.get("facility").toString() : null;
+        // Support both externPoKey and externalOrderKey field names
+        String externPoKey = request.get("externPoKey") != null ? request.get("externPoKey").toString() :
+                             request.get("externalOrderKey") != null ? request.get("externalOrderKey").toString() : null;
 
         // Check for service down simulation (503)
         if (SERVICE_DOWN_TRIGGERS.contains(storerKey) || SERVICE_DOWN_TRIGGERS.contains(facility)) {
