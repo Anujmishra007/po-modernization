@@ -2258,25 +2258,6 @@ public class E2ETestMockController {
         ));
     }
 
-    // F6-TC19: GET endpoint for interleaved assignment
-    @GetMapping("/tasks/interleaved-assignment")
-    public ResponseEntity<Map<String, Object>> getInterleavedAssignment(
-            @RequestParam(required = false) String userId,
-            @RequestParam(required = false) String facility) {
-        log.info("[E2E Mock] Get interleaved assignment: userId={}, facility={}", userId, facility);
-        // Randomly return either PUTAWAY or PICK task
-        String taskType = System.currentTimeMillis() % 2 == 0 ? "PUTAWAY" : "PICK";
-        Map<String, Object> nextTask = new LinkedHashMap<>();
-        nextTask.put("taskKey", "TASK-" + System.currentTimeMillis());
-        nextTask.put("taskType", taskType);
-        nextTask.put("fromLocation", "RECV-01");
-        nextTask.put("toLocation", "A-01-01");
-        nextTask.put("priority", 2);
-        if (facility != null) {
-            nextTask.put("facility", facility);
-        }
-        return ResponseEntity.ok(Map.of("nextTask", nextTask));
-    }
 
     @GetMapping("/tasks/metrics")
     public ResponseEntity<Map<String, Object>> getTaskMetrics() {
