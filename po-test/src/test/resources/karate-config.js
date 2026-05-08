@@ -123,10 +123,12 @@ function fn() {
       // F1: PO CREATION QUERIES
       // ═══════════════════════════════════════════════════════════
 
-      // SELECT * FROM dbo.orders WHERE orderkey = '...'
+      // SELECT * FROM dbo.orders WHERE orderkey = '...' or WHERE externorderkey LIKE '...'
+      // Handles both F1-TC01 (by orderkey) and F1-TC03 (by externorderkey)
       if (sqlLower.indexOf('select * from dbo.orders') >= 0 ||
           sqlLower.indexOf('select * from dbo.po ') >= 0) {
-        return [{
+        karate.log('[MockDB] Matched orders/po handler, returning 1 row');
+        var result = [{
           orderkey: 'PO-TEST-001',
           externorderkey: 'EXT-TEST-001',
           storerkey: config.testStorerKey,
@@ -135,13 +137,18 @@ function fn() {
           adddate: new Date().toISOString(),
           editdate: new Date().toISOString()
         }];
+        karate.log('[MockDB] orders result length:', result.length);
+        return result;
       }
 
       // SELECT * FROM dbo.orderdetail WHERE orderkey = '...'
       // Note: SELECT * queries always return single line (F1-TC01)
       // Multi-line tests use SELECT COUNT(*) which is handled separately (F1-TC02)
-      if (sqlLower.indexOf('select * from dbo.orderdetail') >= 0) {
-        return [{
+      // IMPORTANT: Must check orderdetail specifically, not just 'detail'
+      if (sqlLower.indexOf('select * from dbo.orderdetail') >= 0 &&
+          sqlLower.indexOf('receiptdetail') < 0) {
+        karate.log('[MockDB] Matched orderdetail handler, returning 1 row');
+        var result = [{
           orderkey: 'PO-TEST-001',
           orderlinenumber: 1,
           sku: 'TEST-SKU-001',
@@ -149,6 +156,8 @@ function fn() {
           qtyreceived: 0,
           status: '0'
         }];
+        karate.log('[MockDB] orderdetail result length:', result.length);
+        return result;
       }
 
       // ═══════════════════════════════════════════════════════════
