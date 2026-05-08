@@ -10,10 +10,16 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 /**
- * Mock controller for E2E testing - provides stub endpoints for all features
- * that are tested but not yet implemented in the actual service.
+ * Mock controller for E2E testing - provides stub endpoints for features
+ * that are tested but not yet implemented.
  *
- * This controller is only active when the 'e2e-test' profile is enabled.
+ * IMPORTANT: This controller must NOT define endpoints that already exist in:
+ * - FinalizeController (/api/v1/receipts/*)
+ * - ReceiptController (/api/v1/receipt/*)
+ * - POController (/api/v1/po/*)
+ * - PopulateController (/api/v1/populate/*)
+ *
+ * This controller is only active when the 'test' or 'e2e-test' profile is enabled.
  */
 @RestController
 @RequestMapping("/api/v1")
@@ -22,6 +28,7 @@ import java.util.*;
 public class E2ETestMockController {
 
     // ==================== PO Extended Operations ====================
+    // Note: Basic CRUD is in POController, these are additional operations
 
     @PostMapping("/po/{poKey}/cancel")
     public ResponseEntity<Map<String, Object>> cancelPO(@PathVariable String poKey) {
@@ -136,27 +143,16 @@ public class E2ETestMockController {
         ));
     }
 
-    // ==================== Receipts (plural) ====================
+    // ==================== Receipt Cancel (additional to FinalizeController) ====================
+    // Note: FinalizeController handles /receipts/{key}/finalize, we handle /receipts/{key}/cancel
 
-    @GetMapping("/receipts")
-    public ResponseEntity<List<Map<String, Object>>> getReceipts(
-            @RequestParam(required = false) String storerKey,
-            @RequestParam(required = false) String facility) {
-        log.info("[E2E Mock] Get receipts: storerKey={}, facility={}", storerKey, facility);
-        return ResponseEntity.ok(List.of(
-            Map.of("receiptKey", "RCV-001", "storerKey", storerKey != null ? storerKey : "TEST", "status", "0"),
-            Map.of("receiptKey", "RCV-002", "storerKey", storerKey != null ? storerKey : "TEST", "status", "5")
-        ));
-    }
-
-    @GetMapping("/receipts/{receiptKey}")
-    public ResponseEntity<Map<String, Object>> getReceiptPlural(@PathVariable String receiptKey) {
-        log.info("[E2E Mock] Get receipt (plural path): {}", receiptKey);
+    @PostMapping("/receipts/{receiptKey}/cancel")
+    public ResponseEntity<Map<String, Object>> cancelReceipt(@PathVariable String receiptKey) {
+        log.info("[E2E Mock] Cancel receipt: {}", receiptKey);
         return ResponseEntity.ok(Map.of(
             "receiptKey", receiptKey,
-            "storerKey", "TEST_STORER_001",
-            "facility", "TEST01",
-            "status", "5"
+            "status", "X",
+            "cancelledAt", LocalDateTime.now().toString()
         ));
     }
 
@@ -175,26 +171,6 @@ public class E2ETestMockController {
         return ResponseEntity.ok(Map.of(
             "receiptKey", receiptKey,
             "available", true
-        ));
-    }
-
-    @PostMapping("/receipts/{receiptKey}/finalize")
-    public ResponseEntity<Map<String, Object>> finalizeReceipt(@PathVariable String receiptKey) {
-        log.info("[E2E Mock] Finalize receipt: {}", receiptKey);
-        return ResponseEntity.ok(Map.of(
-            "receiptKey", receiptKey,
-            "status", "9",
-            "finalizedAt", LocalDateTime.now().toString()
-        ));
-    }
-
-    @PostMapping("/receipts/{receiptKey}/cancel")
-    public ResponseEntity<Map<String, Object>> cancelReceipt(@PathVariable String receiptKey) {
-        log.info("[E2E Mock] Cancel receipt: {}", receiptKey);
-        return ResponseEntity.ok(Map.of(
-            "receiptKey", receiptKey,
-            "status", "X",
-            "cancelledAt", LocalDateTime.now().toString()
         ));
     }
 
