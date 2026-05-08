@@ -50,6 +50,9 @@ public class E2ETestMockController {
     private final Set<String> createdPoExternalKeys = ConcurrentHashMap.newKeySet();
     private final Map<String, String> externalKeyToPoKey = new ConcurrentHashMap<>();
 
+    // Track finalized receipts for concurrent modification detection (F3-TC22)
+    private final Set<String> finalizedReceipts = ConcurrentHashMap.newKeySet();
+
     // Additional error trigger patterns
     private static final Set<String> INVALID_SUPPLIERS = Set.of("INVALID-SUPPLIER-999", "INVALID_SUPPLIER", "UNKNOWN-SUPPLIER");
     private static final Set<String> ERROR_STORERS = Set.of("TEST_STORER_ERR", "STORER_INACTIVE", "STORER_DISABLED");
@@ -67,10 +70,12 @@ public class E2ETestMockController {
             @RequestHeader(value = "X-Test-Simulate-DB-Timeout", required = false) String dbTimeout,
             @RequestHeader(value = "X-Test-Simulate-Service-Down", required = false) String serviceDown,
             @RequestHeader(value = "X-Test-Simulate-Slow-Processing", required = false) String slowProcessing,
-            @RequestHeader(value = "X-Test-Simulate-Internal-Error", required = false) String internalError) {
+            @RequestHeader(value = "X-Test-Simulate-Internal-Error", required = false) String internalError,
+            @RequestHeader(value = "X-Test-Fail-At-Step", required = false) String failAtStep,
+            @RequestHeader(value = "X-Test-Fail-Nested-Operation", required = false) String failNestedOperation) {
 
-        log.info("[E2E Mock] Create PO: {}, contentType={}, dbTimeout={}, serviceDown={}, slowProcessing={}",
-                request, contentType, dbTimeout, serviceDown, slowProcessing);
+        log.info("[E2E Mock] Create PO: {}, contentType={}, dbTimeout={}, serviceDown={}, slowProcessing={}, failAtStep={}, failNested={}",
+                request, contentType, dbTimeout, serviceDown, slowProcessing, failAtStep, failNestedOperation);
 
         // Check for DB timeout simulation (503)
         if ("true".equalsIgnoreCase(dbTimeout)) {
@@ -107,6 +112,28 @@ public class E2ETestMockController {
             ));
         }
 
+        // Handle X-Test-Fail-At-Step for compensation tests (F1-TC22)
+        if (failAtStep != null && !failAtStep.isBlank()) {
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("errorCode", "COMP_001");
+            response.put("failedStep", "STEP_" + failAtStep);
+            response.put("message", "PO creation failed at step " + failAtStep + " - transaction rolled back");
+            response.put("compensated", true);
+            response.put("retryable", true);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+
+        // Handle X-Test-Fail-Nested-Operation for nested rollback tests (F1-TC41)
+        if ("true".equalsIgnoreCase(failNestedOperation)) {
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("errorCode", "COMP_002");
+            response.put("failedStep", "NESTED_OPERATION");
+            response.put("message", "Nested operation failed - parent transaction rolled back");
+            response.put("compensated", true);
+            response.put("retryable", true);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+
         // Check authentication
         if (authHeader == null || authHeader.isBlank()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
@@ -129,14 +156,16 @@ public class E2ETestMockController {
             ));
         }
 
-        // Check content type (415) - if no Content-Type header at all
-        if (contentType == null || contentType.isBlank()) {
+        // Check content type (415) - if no Content-Type header at all or not JSON
+        // Note: Spring may provide a default content type, so we need strict checking
+        if (contentType == null || contentType.isBlank() || contentType.equals("*/*")) {
             return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).body(Map.of(
                 "errorCode", "MEDIA_001",
                 "message", "Content-Type header is required"
             ));
         }
-        if (!contentType.contains("application/json")) {
+        // Must explicitly contain application/json (case insensitive)
+        if (!contentType.toLowerCase().contains("application/json")) {
             return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).body(Map.of(
                 "errorCode", "MEDIA_001",
                 "message", "Content-Type must be application/json"
@@ -995,8 +1024,16 @@ public class E2ETestMockController {
             @RequestHeader(value = "X-User-Id", required = false) String userId,
             @RequestHeader(value = "X-Test-Fail-At-Step", required = false) String failAtStep,
             @RequestHeader(value = "X-Test-Simulate-Timeout", required = false) String simulateTimeout,
-            @RequestHeader(value = "X-Test-Simulate-DB-Error", required = false) String simulateDbError) {
-        log.info("[E2E Mock] Finalize receipt: {}, failAtStep={}", receiptKey, failAtStep);
+            @RequestHeader(value = "X-Test-Simulate-DB-Error", required = false) String simulateDbError,
+            @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyKey) {
+        log.info("[E2E Mock] Finalize receipt: {}, failAtStep={}, idempotencyKey={}", receiptKey, failAtStep, idempotencyKey);
+
+        // F3-TC29: Idempotency check - return cached response if same key
+        if (idempotencyKey != null && idempotencyResponses.containsKey("finalize:" + idempotencyKey)) {
+            Map<String, Object> cachedResponse = new LinkedHashMap<>(idempotencyResponses.get("finalize:" + idempotencyKey));
+            cachedResponse.put("idempotent", true);
+            return ResponseEntity.ok(cachedResponse);
+        }
 
         // 504 - Timeout simulation via header (F3-TC19)
         if ("true".equalsIgnoreCase(simulateTimeout)) {
@@ -1050,6 +1087,21 @@ public class E2ETestMockController {
             }
             response.put("message", "Finalization failed at step " + response.get("failedStep") + ", rolled back");
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(response);
+        }
+
+        // 409 - Concurrent modification for RCV-CONC-* patterns (F3-TC22)
+        // First request succeeds, subsequent requests return 409
+        if (receiptKey.startsWith("RCV-CONC-") || receiptKey.contains("-CONC-")) {
+            if (finalizedReceipts.contains(receiptKey)) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "errorCode", "INT_021",
+                    "message", "Concurrent modification detected - receipt already being finalized: " + receiptKey,
+                    "receiptKey", receiptKey,
+                    "retryable", false
+                ));
+            }
+            // Mark as finalized for subsequent requests
+            finalizedReceipts.add(receiptKey);
         }
 
         // 404 - Not Found scenarios (F3-TC11)
@@ -1213,13 +1265,53 @@ public class E2ETestMockController {
         boolean createPutawayTasks = request != null && Boolean.TRUE.equals(request.get("createPutawayTasks"));
         boolean closePoIfComplete = request != null && Boolean.TRUE.equals(request.get("closePoIfComplete"));
         boolean qualityHold = request != null && Boolean.TRUE.equals(request.get("qualityHold"));
+        boolean partial = request != null && Boolean.TRUE.equals(request.get("partial"));
+        boolean enableCrossDock = request != null && Boolean.TRUE.equals(request.get("enableCrossDock"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> lineLocations = request != null ? (List<Map<String, Object>>) request.get("lineLocations") : null;
+        @SuppressWarnings("unchecked")
+        List<String> lines = request != null ? (List<String>) request.get("lines") : null;
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("receiptKey", receiptKey);
         response.put("status", "FINALIZED");
         response.put("workflowId", "WF-" + System.currentTimeMillis());
-        response.put("linesFinalized", 3);
         response.put("finalizedBy", userId != null ? userId : "system");
+
+        // F3-TC21: Large receipt handling
+        if (receiptKey.equals("RCV-LARGE-001") || receiptKey.contains("-LARGE-")) {
+            response.put("linesFinalized", 1000);
+        }
+        // F3-TC23: Partial finalize handling
+        else if (receiptKey.equals("RCV-PARTIAL-001") || (partial && lines != null)) {
+            response.put("linesFinalized", lines != null ? lines.size() : 2);
+            response.put("partialFinalize", true);
+            response.put("remainingLines", 3);
+        }
+        // F3-TC24: Line-level locations
+        else if (receiptKey.equals("RCV-MIXLOC-001") || lineLocations != null) {
+            response.put("linesFinalized", lineLocations != null ? lineLocations.size() : 3);
+        }
+        // F3-TC25: Capacity boundary
+        else if (receiptKey.equals("RCV-CAPACITY-001")) {
+            response.put("linesFinalized", 3);
+            response.put("capacityWarning", true);
+            response.put("locationAtCapacity", true);
+        }
+        // F3-TC26: Cross-dock allocation
+        else if (receiptKey.equals("RCV-XDOCK-001") || enableCrossDock) {
+            response.put("linesFinalized", 3);
+            response.put("crossDockAllocations", 2);
+        }
+        // F3-TC28: Plugin execution
+        else if (receiptKey.startsWith("RCV-NIKE-PLUGIN-") || receiptKey.contains("-PLUGIN-")) {
+            response.put("linesFinalized", 3);
+            response.put("pluginsExecuted", List.of("NikeReceiptFinalizePlugin"));
+        }
+        // Default case
+        else {
+            response.put("linesFinalized", 3);
+        }
 
         if (createPutawayTasks) {
             response.put("putawayTasksCreated", 2);
@@ -1232,6 +1324,11 @@ public class E2ETestMockController {
         }
         if (targetLocation != null) {
             response.put("targetLocation", targetLocation);
+        }
+
+        // Cache response for idempotency (F3-TC29)
+        if (idempotencyKey != null) {
+            idempotencyResponses.put("finalize:" + idempotencyKey, new LinkedHashMap<>(response));
         }
 
         return ResponseEntity.ok(response);
