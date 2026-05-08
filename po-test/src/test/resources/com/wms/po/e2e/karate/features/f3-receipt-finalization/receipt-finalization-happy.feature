@@ -43,8 +43,9 @@ Feature: F3 - Receipt Finalization Happy Path Tests
 
     # Verify inventory posted to LOTxLOCxID
     * def invResult = db.query("SELECT * FROM dbo.lotxlocxid WHERE receiptkey = '" + receiptKey + "'")
-    * assert invResult.size() >= 1
-    * assert invResult.get(0).get('qty') > 0
+    * match karate.sizeOf(invResult) >= 1
+    * def invRow = karate.toMap(invResult[0])
+    * assert invRow.qty > 0
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC02: Finalize multi-line receipt
@@ -66,7 +67,8 @@ Feature: F3 - Receipt Finalization Happy Path Tests
 
     # Verify all lines finalized
     * def lineStatuses = db.query("SELECT DISTINCT status FROM dbo.receiptdetail WHERE receiptkey = '" + receiptKey + "'")
-    * match lineStatuses.get(0).get('status') == '9'
+    * def statRow = karate.toMap(lineStatuses[0])
+    * match statRow.status == '9'
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC03: Finalize receipt via RDT API
@@ -92,7 +94,8 @@ Feature: F3 - Receipt Finalization Happy Path Tests
 
     # Verify audit trail
     * def audit = db.query("SELECT * FROM dbo.receiptaudit WHERE receiptkey = '" + receiptKey + "' AND action = 'FINALIZE'")
-    * match audit.get(0).get('userid') == userId
+    * def auditRow = karate.toMap(audit[0])
+    * match auditRow.userid == userId
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC04: Finalize triggers putaway task creation
@@ -114,8 +117,9 @@ Feature: F3 - Receipt Finalization Happy Path Tests
 
     # Verify putaway tasks in DB
     * def tasks = db.query("SELECT * FROM dbo.task WHERE fromkey = '" + receiptKey + "' AND tasktype = 'PUTAWAY'")
-    * assert tasks.size() >= 1
-    * match tasks.get(0).get('status') == '0'
+    * match karate.sizeOf(tasks) >= 1
+    * def taskRow = karate.toMap(tasks[0])
+    * match taskRow.status == '0'
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC05: Finalize receipt with lottable tracking
@@ -135,9 +139,10 @@ Feature: F3 - Receipt Finalization Happy Path Tests
 
     # Verify lottables in inventory
     * def invResult = db.query("SELECT lottable01, lottable02, lottable03 FROM dbo.lotxlocxid WHERE receiptkey = '" + receiptKey + "'")
-    * match invResult.get(0).get('lottable01') == '#present'
-    * match invResult.get(0).get('lottable02') == '#present'
-    * match invResult.get(0).get('lottable03') == '#present'
+    * def invLotRow = karate.toMap(invResult[0])
+    * match invLotRow.lottable01 == '#present'
+    * match invLotRow.lottable02 == '#present'
+    * match invLotRow.lottable03 == '#present'
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC06: Finalize updates PO received quantities
@@ -199,11 +204,12 @@ Feature: F3 - Receipt Finalization Happy Path Tests
 
     # Verify trigger processed finalization
     * def invResult = db.query("SELECT * FROM dbo.lotxlocxid WHERE receiptkey = '" + receiptKey + "'")
-    * assert invResult.size() >= 1
+    * match karate.sizeOf(invResult) >= 1
 
     # Verify audit log shows trigger
     * def audit = db.query("SELECT * FROM dbo.receiptaudit WHERE receiptkey = '" + receiptKey + "' AND action = 'FINALIZE'")
-    * match audit.get(0).get('source') == 'TRIGGER'
+    * def auditRow2 = karate.toMap(audit[0])
+    * match auditRow2.source == 'TRIGGER'
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC09: Finalize closes PO when fully received
@@ -246,5 +252,6 @@ Feature: F3 - Receipt Finalization Happy Path Tests
 
     # Verify hold on inventory
     * def holdResult = db.query("SELECT holdcode FROM dbo.lotxlocxid WHERE receiptkey = '" + receiptKey + "'")
-    * match holdResult.get(0).get('holdcode') == 'QC_PENDING'
+    * def holdRow = karate.toMap(holdResult[0])
+    * match holdRow.holdcode == 'QC_PENDING'
 

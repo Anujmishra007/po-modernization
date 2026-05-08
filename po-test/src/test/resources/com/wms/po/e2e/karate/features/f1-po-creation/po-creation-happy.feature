@@ -37,13 +37,15 @@ Feature: F1 - PO Creation Happy Path Tests
     # Verify in database (dual-write validation)
     * def createdPoKey = response.poKey
     * def dbResult = db.query("SELECT * FROM dbo.orders WHERE orderkey = '" + createdPoKey + "'")
-    * match dbResult.get(0).get('storerkey') == testStorerKey
-    * match dbResult.get(0).get('status') == '0'
+    * def firstRow = karate.toMap(dbResult[0])
+    * match firstRow.storerkey == testStorerKey
+    * match firstRow.status == '0'
 
     # Verify PO detail
     * def detailResult = db.query("SELECT * FROM dbo.orderdetail WHERE orderkey = '" + createdPoKey + "'")
-    * assert detailResult.size() == 1
-    * match detailResult.get(0).get('qtyordered') == 100
+    * match karate.sizeOf(detailResult) == 1
+    * def detailRow = karate.toMap(detailResult[0])
+    * match detailRow.qtyordered == 100
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC02: Create multi-line PO (50 lines)
@@ -91,8 +93,9 @@ Feature: F1 - PO Creation Happy Path Tests
 
     # Verify PO created from EDI
     * def poResult = db.query("SELECT * FROM dbo.orders WHERE externorderkey LIKE 'EDI-" + uniqueId + "%'")
-    * assert poResult.size() == 1
-    * match poResult.get(0).get('status') == '0'
+    * match karate.sizeOf(poResult) == 1
+    * def poRow = karate.toMap(poResult[0])
+    * match poRow.status == '0'
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC04: Create PO via batch job

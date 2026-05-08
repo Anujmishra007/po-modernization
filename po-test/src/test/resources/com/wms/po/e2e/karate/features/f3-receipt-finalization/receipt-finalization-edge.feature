@@ -140,8 +140,9 @@ Feature: F3 - Receipt Finalization Edge Cases
 
     # Verify allocation created
     * def alloc = db.query("SELECT * FROM dbo.allocation WHERE sourcekey = '" + receiptKey + "'")
-    * assert alloc.size() >= 1
-    * match alloc.get(0).get('alloctype') == 'XDOCK'
+    * match karate.sizeOf(alloc) >= 1
+    * def allocRow = karate.toMap(alloc[0])
+    * match allocRow.alloctype == 'XDOCK'
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC27: Finalize via RDT with scan verification
@@ -188,8 +189,9 @@ Feature: F3 - Receipt Finalization Edge Cases
 
     # Verify plugin audit
     * def pluginAudit = db.query("SELECT * FROM dbo.pluginaudit WHERE entitykey = '" + receiptKey + "'")
-    * match pluginAudit.get(0).get('pluginname') == 'NikeReceiptFinalizePlugin'
-    * match pluginAudit.get(0).get('status') == 'SUCCESS'
+    * def pluginRow = karate.toMap(pluginAudit[0])
+    * match pluginRow.pluginname == 'NikeReceiptFinalizePlugin'
+    * match pluginRow.status == 'SUCCESS'
 
   # ─────────────────────────────────────────────────────────────
   # F3-TC29: Finalize idempotency test

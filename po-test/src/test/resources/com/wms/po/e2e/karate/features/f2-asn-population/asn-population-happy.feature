@@ -44,13 +44,14 @@ Feature: F2 - ASN Population Happy Path Tests
 
     # Verify receipt was created from ASN
     * def receiptResult = db.query("SELECT * FROM dbo.receipt WHERE externreceiptkey LIKE 'ASN-" + uniqueId + "%'")
-    * assert receiptResult.size() == 1
-    * match receiptResult.get(0).get('status') == '0'
+    * match karate.sizeOf(receiptResult) == 1
+    * def rcptRow = karate.toMap(receiptResult[0])
+    * match rcptRow.status == '0'
 
     # Verify receipt details match ASN lines
-    * def receiptKey = receiptResult.get(0).get('receiptkey')
+    * def receiptKey = rcptRow.receiptkey
     * def detailResult = db.query("SELECT * FROM dbo.receiptdetail WHERE receiptkey = '" + receiptKey + "'")
-    * assert detailResult.size() == 3
+    * match karate.sizeOf(detailResult) == 3
 
   # ─────────────────────────────────────────────────────────────
   # F2-TC02: Nike ASN with lottable tracking
@@ -76,9 +77,10 @@ Feature: F2 - ASN Population Happy Path Tests
 
     # Verify lottable fields populated
     * def lottableResult = db.query("SELECT lottable01, lottable02, lottable03 FROM dbo.receiptdetail WHERE receiptkey LIKE 'RCV-NIKE-%' ORDER BY adddate DESC LIMIT 1")
-    * match lottableResult.get(0).get('lottable01') == '#present'
-    * match lottableResult.get(0).get('lottable02') == '#present'
-    * match lottableResult.get(0).get('lottable03') == '#present'
+    * def lotRow = karate.toMap(lottableResult[0])
+    * match lotRow.lottable01 == '#present'
+    * match lotRow.lottable02 == '#present'
+    * match lotRow.lottable03 == '#present'
 
   # ─────────────────────────────────────────────────────────────
   # F2-TC03: H&M fast-fashion ASN (high volume)
