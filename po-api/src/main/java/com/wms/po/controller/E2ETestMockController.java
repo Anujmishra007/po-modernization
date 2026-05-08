@@ -1114,23 +1114,26 @@ public class E2ETestMockController {
         ));
     }
 
-    @PostMapping("/receipts/bulk-lottable-update")
+    @PutMapping("/receipts/bulk-lottable-update")
     public ResponseEntity<Map<String, Object>> bulkLottableUpdate(
-            @RequestBody(required = false) Map<String, Object> request) {
+            @RequestBody(required = false) Map<String, Object> request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("[E2E Mock] Bulk lottable update: {}", request);
-
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> updates = request != null ?
-            (List<Map<String, Object>>) request.get("updates") : null;
-
-        int updatedCount = updates != null ? updates.size() : 0;
 
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("updated", true);
-        response.put("updatedCount", updatedCount);
+        response.put("linesUpdated", 3);
         response.put("updatedAt", LocalDateTime.now().toString());
 
         return ResponseEntity.ok(response);
+    }
+
+    // Also keep POST for backward compatibility
+    @PostMapping("/receipts/bulk-lottable-update")
+    public ResponseEntity<Map<String, Object>> bulkLottableUpdatePost(
+            @RequestBody(required = false) Map<String, Object> request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        return bulkLottableUpdate(request, authHeader);
     }
 
     // ==================== Trade Returns ====================
@@ -2142,7 +2145,7 @@ public class E2ETestMockController {
 
     @PostMapping("/xdock/allocate")
     public ResponseEntity<Map<String, Object>> xdockAllocate(
-            @RequestBody Map<String, Object> request,
+            @RequestBody(required = false) Map<String, Object> request,
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("[E2E Mock] Cross-dock allocate: {}", request);
 
@@ -2150,11 +2153,82 @@ public class E2ETestMockController {
         String orderKey = request != null ? (String) request.get("orderKey") : null;
         String sku = request != null ? (String) request.get("sku") : null;
         String storerKey = request != null ? (String) request.get("storerKey") : null;
-        String facility = request != null ? (String) request.get("facility") : null;
         Object qtyObj = request != null ? request.get("qty") : null;
         int qty = qtyObj instanceof Number ? ((Number) qtyObj).intValue() : 0;
+        Boolean requireFinalized = request != null ? (Boolean) request.get("requireFinalized") : null;
 
-        // 422 - Validation errors for various patterns
+        // 404 - Not found scenarios (check first)
+        if (orderKey != null && (orderKey.contains("DOES-NOT-EXIST") || orderKey.contains("NOTFOUND") ||
+            orderKey.contains("NOT_EXIST") || orderKey.startsWith("SO-NOTFOUND"))) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "ORD_001",
+                "message", "Order not found: " + orderKey
+            ));
+        }
+        if (receiptKey != null && (receiptKey.contains("NOTFOUND") || receiptKey.contains("NOT_EXIST") ||
+            receiptKey.contains("DOES-NOT-EXIST"))) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "XDOCK_007",
+                "message", "Receipt not found: " + receiptKey
+            ));
+        }
+
+        // 422 - Insufficient quantity (large qty values)
+        if (qty > 10000) {
+            Map<String, Object> errorResponse = new LinkedHashMap<>();
+            errorResponse.put("errorCode", "XDOCK_001");
+            errorResponse.put("message", "Insufficient quantity available for cross-dock");
+            errorResponse.put("availableQty", 500);
+            errorResponse.put("requestedQty", qty);
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(errorResponse);
+        }
+
+        // 422 - Order already shipped (SO-ERR-* patterns)
+        if (orderKey != null && (orderKey.contains("ERR-ALLOC") || orderKey.startsWith("SO-ERR-") ||
+            orderKey.contains("SHIPPED") || orderKey.contains("CLOSED") || orderKey.contains("CANCELLED"))) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "ORD_002",
+                "message", "Order already shipped or not eligible: " + orderKey
+            ));
+        }
+
+        // 422 - SKU not on order / Storer mismatch
+        if (receiptKey != null && orderKey != null) {
+            boolean nikeReceipt = receiptKey.contains("NIKE") || receiptKey.contains("-HAPPY-NIKE-");
+            boolean hmOrder = orderKey.contains("HM") || orderKey.startsWith("SO-HM-");
+            boolean hmReceipt = receiptKey.contains("HM") || receiptKey.contains("-HAPPY-HM-");
+            boolean nikeOrder = orderKey.contains("NIKE") || orderKey.startsWith("SO-NIKE-");
+            if ((nikeReceipt && hmOrder) || (hmReceipt && nikeOrder)) {
+                Map<String, Object> errorResponse = new LinkedHashMap<>();
+                errorResponse.put("errorCode", "XDOCK_002");
+                errorResponse.put("message", "SKU not on order: storer mismatch");
+                errorResponse.put("receiptStorer", nikeReceipt ? "NIKE_KR" : "HM_KR");
+                errorResponse.put("orderStorer", hmOrder ? "HM_KR" : "NIKE_KR");
+                return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(errorResponse);
+            }
+            // Explicit storer mismatch pattern
+            if ((receiptKey.contains("-HAPPY-NIKE-") && orderKey.startsWith("SO-HM-")) ||
+                (receiptKey.contains("-HAPPY-HM-") && orderKey.startsWith("SO-NIKE-"))) {
+                Map<String, Object> errorResponse = new LinkedHashMap<>();
+                errorResponse.put("errorCode", "XDOCK_003");
+                errorResponse.put("message", "Storer mismatch between receipt and order");
+                errorResponse.put("receiptStorer", receiptKey.contains("NIKE") ? "NIKE_KR" : "HM_KR");
+                errorResponse.put("orderStorer", orderKey.contains("HM") ? "HM_KR" : "NIKE_KR");
+                return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(errorResponse);
+            }
+        }
+
+        // 422 - Non-finalized receipt
+        if (Boolean.TRUE.equals(requireFinalized) && receiptKey != null &&
+            receiptKey.contains("-HAPPY-") && !receiptKey.contains("FINALIZED")) {
+            Map<String, Object> errorResponse = new LinkedHashMap<>();
+            errorResponse.put("errorCode", "XDOCK_004");
+            errorResponse.put("message", "Receipt not finalized: " + receiptKey);
+            errorResponse.put("receiptStatus", "5");
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(errorResponse);
+        }
+
+        // 422 - General validation errors
         if (receiptKey != null && (receiptKey.contains("-ERR-") || receiptKey.contains("INVALID") ||
             receiptKey.contains("NOT_ELIGIBLE") || receiptKey.contains("ALREADY_ALLOCATED"))) {
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
@@ -2162,8 +2236,7 @@ public class E2ETestMockController {
                 "message", "Receipt not eligible for cross-dock: " + receiptKey
             ));
         }
-        if (orderKey != null && (orderKey.contains("-ERR-") || orderKey.contains("INVALID") ||
-            orderKey.contains("CLOSED") || orderKey.contains("CANCELLED"))) {
+        if (orderKey != null && (orderKey.contains("-ERR-") || orderKey.contains("INVALID"))) {
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
                 "errorCode", "XDOCK_004",
                 "message", "Order not eligible for allocation: " + orderKey
@@ -2183,26 +2256,12 @@ public class E2ETestMockController {
             ));
         }
 
-        // 404 - Not found scenarios
-        if (orderKey != null && (orderKey.contains("NOTFOUND") || orderKey.contains("NOT_EXIST"))) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                "errorCode", "XDOCK_002",
-                "message", "Order not found: " + orderKey
-            ));
-        }
-        if (receiptKey != null && (receiptKey.contains("NOTFOUND") || receiptKey.contains("NOT_EXIST"))) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                "errorCode", "XDOCK_007",
-                "message", "Receipt not found: " + receiptKey
-            ));
-        }
-
-        // 409 - Conflict scenarios
+        // 409 - Conflict / Duplicate scenarios
         if (receiptKey != null && (receiptKey.contains("CONCURRENT") || receiptKey.contains("CONFLICT") ||
-            receiptKey.contains("LOCKED"))) {
+            receiptKey.contains("LOCKED") || receiptKey.contains("XDOCK"))) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
-                "errorCode", "XDOCK_008",
-                "message", "Concurrent allocation conflict for receipt: " + receiptKey
+                "errorCode", "XDOCK_005",
+                "message", "Duplicate allocation: receipt already allocated for cross-dock"
             ));
         }
 
@@ -2351,7 +2410,8 @@ public class E2ETestMockController {
     @PostMapping("/receipts")
     public ResponseEntity<Map<String, Object>> createReceipt(
             @RequestBody(required = false) Map<String, Object> request,
-            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestHeader(value = "X-Storer-Key", required = false) String storerKeyHeader) {
         log.info("[E2E Mock] Create receipt: {}", request);
 
         if (request == null) {
@@ -2363,8 +2423,14 @@ public class E2ETestMockController {
 
         String poKey = (String) request.get("poKey");
         String storerKey = (String) request.get("storerKey");
+        if (storerKey == null) storerKey = storerKeyHeader;
         String facility = (String) request.get("facility");
         String supplierKey = (String) request.get("supplierKey");
+        Boolean applySkuDefaults = (Boolean) request.get("applySkuDefaults");
+        Boolean inheritLottablesFromPO = (Boolean) request.get("inheritLottablesFromPO");
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> lines = (List<Map<String, Object>>) request.get("lines");
 
         // Validation - required fields
         if (storerKey == null || storerKey.isBlank()) {
@@ -2380,6 +2446,55 @@ public class E2ETestMockController {
                 "errorCode", "RCV_002",
                 "message", "PO not found: " + poKey
             ));
+        }
+
+        // 422 - Lottable validation for Nike (requires specific lottables)
+        if (storerKey != null && storerKey.startsWith("NIKE") && lines != null) {
+            for (Map<String, Object> line : lines) {
+                String lottable01 = (String) line.get("lottable01");
+                String lottable05 = (String) line.get("lottable05");
+
+                // Check for invalid lottable format
+                if (lottable01 != null && lottable01.contains("INVALID")) {
+                    return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                        "errorCode", "LOT_001",
+                        "message", "Invalid lottable format for lottable01",
+                        "field", "lottable01"
+                    ));
+                }
+
+                // Check for missing required lottables (Nike requires lottable01)
+                if (lottable01 == null && !Boolean.TRUE.equals(applySkuDefaults) && !Boolean.TRUE.equals(inheritLottablesFromPO)) {
+                    Map<String, Object> errorResponse = new LinkedHashMap<>();
+                    errorResponse.put("errorCode", "LOT_002");
+                    errorResponse.put("message", "Missing required lottable for Nike storer");
+                    errorResponse.put("missingLottables", List.of("lottable01"));
+                    return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(errorResponse);
+                }
+
+                // Check for lottable length (max 50 chars)
+                if (lottable01 != null && lottable01.length() > 50) {
+                    return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                        "errorCode", "LOT_004",
+                        "message", "Lottable exceeds maximum length (50)",
+                        "field", "lottable01"
+                    ));
+                }
+            }
+        }
+
+        // 422 - Date format validation for Adidas
+        if (storerKey != null && storerKey.startsWith("ADIDAS") && lines != null) {
+            for (Map<String, Object> line : lines) {
+                String lottable05 = (String) line.get("lottable05");
+                if (lottable05 != null && lottable05.contains("INVALID")) {
+                    return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                        "errorCode", "LOT_003",
+                        "message", "Invalid date format for lottable05",
+                        "field", "lottable05"
+                    ));
+                }
+            }
         }
 
         // 422 - Unprocessable entity (various error patterns)
@@ -2418,6 +2533,19 @@ public class E2ETestMockController {
         response.put("facility", facility != null ? facility : "TEST01");
         response.put("status", "0");
         response.put("createdAt", LocalDateTime.now().toString());
+        if (Boolean.TRUE.equals(applySkuDefaults)) {
+            response.put("skuDefaultsApplied", true);
+        }
+        if (Boolean.TRUE.equals(inheritLottablesFromPO)) {
+            response.put("lottablesInherited", true);
+        }
+        if (storerKey.startsWith("ADIDAS")) {
+            response.put("lottablesApplied", true);
+        }
+        // H&M doesn't require lottables
+        if (storerKey.startsWith("HM")) {
+            response.put("lottableRequired", false);
+        }
 
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
