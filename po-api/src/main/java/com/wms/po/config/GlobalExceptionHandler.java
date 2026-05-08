@@ -6,6 +6,7 @@ import com.wms.po.domain.exception.ValidationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -81,6 +82,25 @@ public class GlobalExceptionHandler {
             fieldErrors.put(fieldError.getField(), fieldError.getDefaultMessage());
         }
         error.put("fieldErrors", fieldErrors);
+        error.put("retryable", false);
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    }
+
+    /**
+     * Handle JSON parse errors (HttpMessageNotReadableException)
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleHttpMessageNotReadable(HttpMessageNotReadableException ex) {
+        log.warn("JSON parse error: {}", ex.getMessage());
+
+        Map<String, Object> error = new HashMap<>();
+        error.put("timestamp", LocalDateTime.now());
+        error.put("status", HttpStatus.BAD_REQUEST.value());
+        error.put("errorCode", "VAL_000");
+        error.put("legacyCode", 69000);
+        error.put("error", "Bad Request");
+        error.put("message", "Invalid JSON payload - " + (ex.getCause() != null ? ex.getCause().getMessage() : ex.getMessage()));
         error.put("retryable", false);
 
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);

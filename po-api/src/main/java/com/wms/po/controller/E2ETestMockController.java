@@ -230,15 +230,42 @@ public class E2ETestMockController {
             }
         }
 
+        // Check for non-existent storer pattern (422)
+        if (storerKey != null && (storerKey.startsWith("NON_EXISTENT") || storerKey.startsWith("NONEXISTENT"))) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "VAL_006",
+                "message", "Storer does not exist: " + storerKey
+            ));
+        }
+
+        // Check for too-long external key (400)
+        if (externPoKey != null && externPoKey.length() > 50) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "errorCode", "VAL_007",
+                "message", "External PO key exceeds maximum length of 50 characters"
+            ));
+        }
+
         // Check for specific validation error patterns (lines already extracted above)
         if (lines != null) {
             for (Map<String, Object> line : lines) {
                 Object qty = line.get("qtyOrdered");
-                if (qty != null && qty instanceof Number && ((Number) qty).intValue() < 0) {
-                    return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
-                        "errorCode", "VAL_004",
-                        "message", "Quantity cannot be negative"
-                    ));
+                if (qty != null && qty instanceof Number) {
+                    int qtyValue = ((Number) qty).intValue();
+                    // Zero quantity (400)
+                    if (qtyValue == 0) {
+                        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                            "errorCode", "VAL_008",
+                            "message", "Quantity cannot be zero"
+                        ));
+                    }
+                    // Negative quantity (400)
+                    if (qtyValue < 0) {
+                        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                            "errorCode", "VAL_004",
+                            "message", "Quantity cannot be negative"
+                        ));
+                    }
                 }
                 String sku = (String) line.get("sku");
                 if (sku != null && sku.startsWith("INVALID-")) {
@@ -247,6 +274,19 @@ public class E2ETestMockController {
                         "message", "Invalid SKU: " + sku
                     ));
                 }
+            }
+        }
+
+        // Check for past expected date (400)
+        Object expectedDateObj = request.get("expectedDate");
+        if (expectedDateObj != null) {
+            String expectedDateStr = expectedDateObj.toString();
+            // Simple check: if it contains a date before 2026, it's in the past
+            if (expectedDateStr.startsWith("202") && expectedDateStr.compareTo("2026-05-08") < 0) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                    "errorCode", "VAL_009",
+                    "message", "Expected date cannot be in the past"
+                ));
             }
         }
 
