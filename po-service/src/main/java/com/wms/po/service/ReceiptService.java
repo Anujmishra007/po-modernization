@@ -41,27 +41,26 @@ public class ReceiptService {
 
         try {
             String sql = """
-                SELECT RECEIPTKEY, STORERKEY, FACILITY, EXTERNRECEIPTKEY,
-                       STATUS, TYPE, CARRIERKEY, TRAILERNUMBER,
-                       RECEIPTDATE, ADDDATE, ADDWHO
-                FROM dbo.receipt WHERE RECEIPTKEY = ?
+                SELECT receiptkey, storerkey, facility, externreceiptkey,
+                       status, type, receiptdate, adddate, addwho
+                FROM dbo.receipt WHERE receiptkey = ?
                 """;
 
             List<ReceiptResponse> results = jdbcTemplate.query(sql, (rs, rowNum) ->
                 ReceiptResponse.builder()
-                    .receiptKey(rs.getString("RECEIPTKEY"))
-                    .storerKey(rs.getString("STORERKEY"))
-                    .facility(rs.getString("FACILITY"))
-                    .externReceiptKey(rs.getString("EXTERNRECEIPTKEY"))
-                    .status(rs.getString("STATUS"))
-                    .type(rs.getString("TYPE"))
-                    .carrierKey(rs.getString("CARRIERKEY"))
-                    .trailerNumber(rs.getString("TRAILERNUMBER"))
-                    .receiptDate(rs.getTimestamp("RECEIPTDATE") != null ?
-                        rs.getTimestamp("RECEIPTDATE").toLocalDateTime() : null)
-                    .addDate(rs.getTimestamp("ADDDATE") != null ?
-                        rs.getTimestamp("ADDDATE").toLocalDateTime() : null)
-                    .addWho(rs.getString("ADDWHO"))
+                    .receiptKey(rs.getString("receiptkey"))
+                    .storerKey(rs.getString("storerkey"))
+                    .facility(rs.getString("facility"))
+                    .externReceiptKey(rs.getString("externreceiptkey"))
+                    .status(rs.getString("status"))
+                    .type(rs.getString("type"))
+                    .carrierKey(null)
+                    .trailerNumber(null)
+                    .receiptDate(rs.getTimestamp("receiptdate") != null ?
+                        rs.getTimestamp("receiptdate").toLocalDateTime() : null)
+                    .addDate(rs.getTimestamp("adddate") != null ?
+                        rs.getTimestamp("adddate").toLocalDateTime() : null)
+                    .addWho(rs.getString("addwho"))
                     .build(),
                 receiptKey);
 
@@ -109,28 +108,27 @@ public class ReceiptService {
 
         try {
             String sql = """
-                SELECT RECEIPTKEY, STORERKEY, FACILITY, EXTERNRECEIPTKEY,
-                       STATUS, TYPE, CARRIERKEY, TRAILERNUMBER,
-                       RECEIPTDATE, ADDDATE, ADDWHO
-                FROM dbo.receipt WHERE STORERKEY = ? AND FACILITY = ?
-                ORDER BY ADDDATE DESC
+                SELECT receiptkey, storerkey, facility, externreceiptkey,
+                       status, type, receiptdate, adddate, addwho
+                FROM dbo.receipt WHERE storerkey = ? AND facility = ?
+                ORDER BY adddate DESC
                 """;
 
             return jdbcTemplate.query(sql, (rs, rowNum) ->
                 ReceiptResponse.builder()
-                    .receiptKey(rs.getString("RECEIPTKEY"))
-                    .storerKey(rs.getString("STORERKEY"))
-                    .facility(rs.getString("FACILITY"))
-                    .externReceiptKey(rs.getString("EXTERNRECEIPTKEY"))
-                    .status(rs.getString("STATUS"))
-                    .type(rs.getString("TYPE"))
-                    .carrierKey(rs.getString("CARRIERKEY"))
-                    .trailerNumber(rs.getString("TRAILERNUMBER"))
-                    .receiptDate(rs.getTimestamp("RECEIPTDATE") != null ?
-                        rs.getTimestamp("RECEIPTDATE").toLocalDateTime() : null)
-                    .addDate(rs.getTimestamp("ADDDATE") != null ?
-                        rs.getTimestamp("ADDDATE").toLocalDateTime() : null)
-                    .addWho(rs.getString("ADDWHO"))
+                    .receiptKey(rs.getString("receiptkey"))
+                    .storerKey(rs.getString("storerkey"))
+                    .facility(rs.getString("facility"))
+                    .externReceiptKey(rs.getString("externreceiptkey"))
+                    .status(rs.getString("status"))
+                    .type(rs.getString("type"))
+                    .carrierKey(null)
+                    .trailerNumber(null)
+                    .receiptDate(rs.getTimestamp("receiptdate") != null ?
+                        rs.getTimestamp("receiptdate").toLocalDateTime() : null)
+                    .addDate(rs.getTimestamp("adddate") != null ?
+                        rs.getTimestamp("adddate").toLocalDateTime() : null)
+                    .addWho(rs.getString("addwho"))
                     .build(),
                 storerKey, facility);
 
@@ -166,30 +164,29 @@ public class ReceiptService {
 
         try {
             String sql = """
-                SELECT r.RECEIPTKEY, r.STORERKEY, r.FACILITY, r.EXTERNRECEIPTKEY,
-                       r.STATUS, r.TYPE, r.CARRIERKEY, r.TRAILERNUMBER,
-                       r.RECEIPTDATE, r.ADDDATE, r.ADDWHO
+                SELECT r.receiptkey, r.storerkey, r.facility, r.externreceiptkey,
+                       r.status, r.type, r.receiptdate, r.adddate, r.addwho
                 FROM dbo.receipt r
-                INNER JOIN dbo.receiptpo rp ON r.RECEIPTKEY = rp.RECEIPTKEY
-                WHERE rp.POKEY = ?
-                ORDER BY r.ADDDATE DESC
+                INNER JOIN dbo.receiptpo rp ON r.receiptkey = rp.receiptkey
+                WHERE rp.pokey = ?
+                ORDER BY r.adddate DESC
                 """;
 
             return jdbcTemplate.query(sql, (rs, rowNum) ->
                 ReceiptResponse.builder()
-                    .receiptKey(rs.getString("RECEIPTKEY"))
-                    .storerKey(rs.getString("STORERKEY"))
-                    .facility(rs.getString("FACILITY"))
-                    .externReceiptKey(rs.getString("EXTERNRECEIPTKEY"))
-                    .status(rs.getString("STATUS"))
-                    .type(rs.getString("TYPE"))
-                    .carrierKey(rs.getString("CARRIERKEY"))
-                    .trailerNumber(rs.getString("TRAILERNUMBER"))
-                    .receiptDate(rs.getTimestamp("RECEIPTDATE") != null ?
-                        rs.getTimestamp("RECEIPTDATE").toLocalDateTime() : null)
-                    .addDate(rs.getTimestamp("ADDDATE") != null ?
-                        rs.getTimestamp("ADDDATE").toLocalDateTime() : null)
-                    .addWho(rs.getString("ADDWHO"))
+                    .receiptKey(rs.getString("receiptkey"))
+                    .storerKey(rs.getString("storerkey"))
+                    .facility(rs.getString("facility"))
+                    .externReceiptKey(rs.getString("externreceiptkey"))
+                    .status(rs.getString("status"))
+                    .type(rs.getString("type"))
+                    .carrierKey(null)
+                    .trailerNumber(null)
+                    .receiptDate(rs.getTimestamp("receiptdate") != null ?
+                        rs.getTimestamp("receiptdate").toLocalDateTime() : null)
+                    .addDate(rs.getTimestamp("adddate") != null ?
+                        rs.getTimestamp("adddate").toLocalDateTime() : null)
+                    .addWho(rs.getString("addwho"))
                     .build(),
                 poKey);
 
@@ -218,8 +215,8 @@ public class ReceiptService {
             log.info("Creating receipt {} for {} POs", receiptKey, poKeys.size());
 
             String sql = """
-                INSERT INTO dbo.receipt (RECEIPTKEY, STORERKEY, FACILITY, STATUS, TYPE,
-                    ADDDATE, ADDWHO, EDITDATE, EDITWHO)
+                INSERT INTO dbo.receipt (receiptkey, storerkey, facility, status, type,
+                    adddate, addwho, editdate, editwho)
                 VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP, ?)
                 """;
 
@@ -281,8 +278,8 @@ public class ReceiptService {
 
         try {
             String sql = """
-                UPDATE dbo.receipt SET STATUS = ?, EDITDATE = CURRENT_TIMESTAMP, EDITWHO = ?
-                WHERE RECEIPTKEY = ?
+                UPDATE dbo.receipt SET status = ?, editdate = CURRENT_TIMESTAMP, editwho = ?
+                WHERE receiptkey = ?
                 """;
 
             int rowsUpdated = jdbcTemplate.update(sql, status, userId, receiptKey);
@@ -327,15 +324,15 @@ public class ReceiptService {
 
         try {
             // Delete receipt details first
-            int detailsDeleted = jdbcTemplate.update("DELETE FROM dbo.receiptdetail WHERE RECEIPTKEY = ?", receiptKey);
+            int detailsDeleted = jdbcTemplate.update("DELETE FROM dbo.receiptdetail WHERE receiptkey = ?", receiptKey);
             log.debug("Deleted {} detail records for receipt: {}", detailsDeleted, receiptKey);
 
             // Delete PO links
-            int linksDeleted = jdbcTemplate.update("DELETE FROM dbo.receiptpo WHERE RECEIPTKEY = ?", receiptKey);
+            int linksDeleted = jdbcTemplate.update("DELETE FROM dbo.receiptpo WHERE receiptkey = ?", receiptKey);
             log.debug("Deleted {} PO links for receipt: {}", linksDeleted, receiptKey);
 
             // Delete receipt
-            int receiptDeleted = jdbcTemplate.update("DELETE FROM dbo.receipt WHERE RECEIPTKEY = ?", receiptKey);
+            int receiptDeleted = jdbcTemplate.update("DELETE FROM dbo.receipt WHERE receiptkey = ?", receiptKey);
             if (receiptDeleted == 0) {
                 log.error("Receipt not found during delete: {} (legacy error 68900)", receiptKey);
                 throw BusinessException.receiptNotFound(receiptKey);
@@ -384,7 +381,7 @@ public class ReceiptService {
 
         try {
             String sql = """
-                INSERT INTO dbo.receiptPO (RECEIPTKEY, POKEY, ADDDATE, ADDWHO)
+                INSERT INTO dbo.receiptpo (receiptkey, pokey, adddate, addwho)
                 VALUES (?, ?, CURRENT_TIMESTAMP, ?)
                 """;
 

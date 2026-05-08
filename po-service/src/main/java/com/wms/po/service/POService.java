@@ -359,8 +359,8 @@ public class POService {
 
         try {
             String sql = """
-                UPDATE ORDERS SET STATUS = ?, EDITDATE = GETDATE(), EDITWHO = ?
-                WHERE POKEY = ?
+                UPDATE dbo.po SET status = ?, editdate = CURRENT_TIMESTAMP, editwho = ?
+                WHERE pokey = ?
                 """;
 
             int rowsUpdated = jdbcTemplate.update(sql, status, userId, poKey);

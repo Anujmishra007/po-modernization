@@ -289,7 +289,7 @@ public class POPersistenceService {
 
         try {
             String sql = """
-                SELECT pokey, storerkey, facility, status FROM po
+                SELECT pokey, storerkey, facility, status FROM dbo.po
                 WHERE facility = ? AND status = '0'
                 """;
 
