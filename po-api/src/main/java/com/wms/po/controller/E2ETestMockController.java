@@ -629,6 +629,60 @@ public class E2ETestMockController {
             @PathVariable String poKey,
             @RequestBody(required = false) Map<String, Object> request) {
         log.info("[E2E Mock] Populate PO: {}", poKey);
+
+        // 404 - PO not found
+        if (poKey.contains("NOT-FOUND") || poKey.contains("NOTFOUND") || poKey.contains("DOES-NOT-EXIST")) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "PO_001",
+                "message", "PO not found: " + poKey
+            ));
+        }
+
+        // 409 - Conflict (already populated or concurrent modification)
+        if (poKey.contains("CONFLICT") || poKey.equals("PO-TEST-001")) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                "errorCode", "PO_409",
+                "message", "PO already populated or being modified: " + poKey
+            ));
+        }
+
+        // 504 - Timeout
+        if (poKey.contains("TIMEOUT")) {
+            return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(Map.of(
+                "errorCode", "PO_504",
+                "message", "Population timed out",
+                "retryable", true
+            ));
+        }
+
+        // 422 - Business rule validation errors
+        if (poKey.contains("COMP-") && !poKey.contains("CANCEL") && !poKey.contains("NETWORK")) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "PO_422",
+                "message", "Cannot populate PO: business rule violation",
+                "poKey", poKey
+            ));
+        }
+
+        // 202 - Accepted for async processing
+        if (poKey.contains("CANCEL") || poKey.contains("ASYNC")) {
+            String workflowId = "WF-" + System.currentTimeMillis();
+            return ResponseEntity.accepted().body(Map.of(
+                "workflowId", workflowId,
+                "poKey", poKey,
+                "status", "PROCESSING"
+            ));
+        }
+
+        // 500 - Internal error
+        if (poKey.contains("ERROR") || poKey.contains("INTERNAL") || poKey.contains("DB-")) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "errorCode", "PO_500",
+                "message", "Internal error during population",
+                "retryable", true
+            ));
+        }
+
         String receiptKey = "RCV-" + System.currentTimeMillis();
 
         // Calculate line count from request if present
@@ -827,18 +881,25 @@ public class E2ETestMockController {
             ));
         }
 
-        // 422 - Validation/business rule errors
-        if (receiptKey.contains("ERR-") || receiptKey.contains("HAPPY-")) {
+        // 422 - Validation/business rule errors (various COMP patterns)
+        if (receiptKey.contains("ERR-") || receiptKey.contains("HAPPY-") ||
+            receiptKey.contains("COMP-STATUS") || receiptKey.contains("COMP-HOLD") ||
+            receiptKey.contains("COMP-POQTY") || receiptKey.contains("COMP-PUTAWAY") ||
+            receiptKey.contains("COMP-ORDER") || receiptKey.contains("COMP-AUDIT") ||
+            receiptKey.contains("COMP-XDOCK") || receiptKey.contains("COMP-PLUGIN") ||
+            receiptKey.contains("COMP-LOTTABLE") || receiptKey.contains("COMP-ALLOC") ||
+            receiptKey.contains("COMP-RES") || receiptKey.contains("COMP-LEGACY") ||
+            receiptKey.contains("COMP-IDEMP")) {
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
                 "errorCode", "RCV_022",
                 "message", "Receipt cannot be finalized: validation failed",
                 "receiptKey", receiptKey,
-                "reason", receiptKey.contains("HAPPY-") ? "Receipt not in correct state" : "Business rule violation"
+                "reason", "Business rule violation"
             ));
         }
 
         // 504 - Gateway timeout (simulating Temporal timeout)
-        if (receiptKey.contains("TIMEOUT")) {
+        if (receiptKey.contains("TIMEOUT") || receiptKey.contains("COMP-TIMEOUT")) {
             return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(Map.of(
                 "errorCode", "RCV_504",
                 "message", "Finalization timed out",
@@ -847,8 +908,20 @@ public class E2ETestMockController {
             ));
         }
 
+        // 503 - Service unavailable (OOM, resource exhaustion)
+        if (receiptKey.contains("COMP-OOM") || receiptKey.contains("SERVICE-DOWN")) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                "errorCode", "RCV_503",
+                "message", "Service temporarily unavailable",
+                "receiptKey", receiptKey,
+                "retryable", true
+            ));
+        }
+
         // 500 - Database/internal error
-        if (receiptKey.contains("DBERR") || receiptKey.contains("INTERNAL")) {
+        if (receiptKey.contains("DBERR") || receiptKey.contains("INTERNAL") ||
+            receiptKey.contains("COMP-DEADLOCK") || receiptKey.contains("COMP-PARTIAL") ||
+            receiptKey.contains("COMP-MANUAL")) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                 "errorCode", "RCV_500",
                 "message", "Internal error during finalization",
@@ -868,7 +941,9 @@ public class E2ETestMockController {
         }
 
         // 202 - Accepted for async processing (Temporal workflow)
-        if (receiptKey.contains("TEMPORAL") || receiptKey.contains("ASYNC")) {
+        if (receiptKey.contains("TEMPORAL") || receiptKey.contains("ASYNC") ||
+            receiptKey.contains("COMP-FCANCEL") || receiptKey.contains("COMP-NETWORK") ||
+            receiptKey.contains("COMP-CANCEL")) {
             String workflowId = "WF-" + System.currentTimeMillis();
             return ResponseEntity.accepted().body(Map.of(
                 "workflowId", workflowId,
