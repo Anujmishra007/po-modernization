@@ -108,6 +108,11 @@ function fn() {
   // Returns expected values based on SQL query patterns
   // Comprehensive mock for F1-F10 test scenarios
   // ═══════════════════════════════════════════════════════════
+  // State tracking for F3-TC06 (qtyreceived changes)
+  var mockDbState = {
+    podetailQueryCount: 0
+  };
+
   var mockDb = {
     // Mock query that returns expected values based on SQL patterns
     query: function(sql) {
@@ -274,14 +279,18 @@ function fn() {
       }
 
       // PO detail with quantities (F2-TC06, F3-TC06)
+      // F3-TC06 tests afterQty > beforeQty, so we increment on each call
       if (sqlLower.indexOf('select qtyordered') >= 0 || sqlLower.indexOf('select qtyreceived') >= 0 ||
           sqlLower.indexOf('from dbo.podetail') >= 0) {
+        mockDbState.podetailQueryCount++;
+        // First call returns 50 (before finalize), subsequent calls return 60 (after finalize)
+        var qtyReceived = mockDbState.podetailQueryCount === 1 ? 50 : 60;
         return [{
           pokey: 'PO-HAPPY-001',
           polinenumber: '00001',
           sku: 'NK-AIRMAX90-BLK',
           qtyordered: 100,
-          qtyreceived: 60
+          qtyreceived: qtyReceived
         }];
       }
 
