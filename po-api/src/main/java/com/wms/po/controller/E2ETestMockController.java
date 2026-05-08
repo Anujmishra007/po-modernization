@@ -912,8 +912,8 @@ public class E2ETestMockController {
 
         // 422 - Generic compensation patterns (any RCV-COMP-* that simulates failure for compensation tests)
         // These are tests that validate compensation/rollback behavior
-        if (receiptKey.startsWith("RCV-COMP-") || receiptKey.startsWith("RCV-TEST-COMP-") ||
-            receiptKey.startsWith("RCV-TEST-")) {
+        // Note: RCV-HAPPY-* patterns should succeed (200), not error (422)
+        if (receiptKey.startsWith("RCV-COMP-") || receiptKey.startsWith("RCV-TEST-COMP-")) {
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
                 "errorCode", "RCV_010",
                 "legacyCode", 69010,
@@ -930,18 +930,6 @@ public class E2ETestMockController {
                 "legacyCode", 69010,
                 "message", "Receipt cannot be finalized: validation failed for " + receiptKey,
                 "receiptKey", receiptKey,
-                "retryable", false
-            ));
-        }
-
-        // 422 - Already finalized (RCV-HAPPY-* re-finalization attempts)
-        if (receiptKey.startsWith("RCV-HAPPY-")) {
-            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
-                "errorCode", "RCV_011",
-                "legacyCode", 69011,
-                "message", "Receipt already finalized: " + receiptKey,
-                "receiptKey", receiptKey,
-                "currentStatus", "FINALIZED",
                 "retryable", false
             ));
         }
@@ -979,9 +967,10 @@ public class E2ETestMockController {
             ));
         }
 
-        // 409 - Concurrent modification conflict
-        if (receiptKey.startsWith("RCV-CONC-") || receiptKey.contains("CONC") ||
-            receiptKey.startsWith("RCV-COMP-CONC-")) {
+        // 409 - Concurrent modification conflict (only for explicit CONFLICT or COMP-CONC patterns)
+        // Note: RCV-CONC-* by itself should succeed for first finalization
+        if (receiptKey.contains("CONFLICT") || receiptKey.startsWith("RCV-COMP-CONC-") ||
+            receiptKey.contains("-LOCKED-")) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
                 "errorCode", "RCV_040",
                 "legacyCode", 69040,
