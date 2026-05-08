@@ -4,15 +4,20 @@ import com.wms.po.dto.ReceiptResponse;
 import com.wms.po.service.ReceiptService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * Receipt Controller - disabled during E2E tests where mock controller handles requests.
+ */
 @RestController
 @RequestMapping("/api/v1/receipt")
 @RequiredArgsConstructor
 @Slf4j
+@Profile("!test & !e2e-test")
 public class ReceiptController {
 
     private final ReceiptService receiptService;

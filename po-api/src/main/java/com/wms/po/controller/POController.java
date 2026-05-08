@@ -5,16 +5,21 @@ import com.wms.po.service.POService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * PO Controller - disabled during E2E tests where mock controller handles requests.
+ */
 @RestController
 @RequestMapping("/api/v1/po")
 @RequiredArgsConstructor
 @Slf4j
+@Profile("!test & !e2e-test")
 public class POController {
 
     private final POService poService;

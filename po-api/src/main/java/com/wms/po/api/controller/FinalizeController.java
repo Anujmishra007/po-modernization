@@ -8,6 +8,7 @@ import com.wms.po.workflow.FinalizeReceiptWorkflow;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,6 +16,7 @@ import java.util.List;
 
 /**
  * REST Controller for Receipt Finalization operations.
+ * Disabled during E2E tests where mock controller handles requests.
  *
  * Provides endpoints to:
  * - Finalize receipts (sync and async)
@@ -25,6 +27,7 @@ import java.util.List;
 @RequestMapping("/api/v1/receipts")
 @RequiredArgsConstructor
 @Slf4j
+@Profile("!test & !e2e-test")
 public class FinalizeController {
 
     private final ReceiptFinalizationService finalizationService;

@@ -13,11 +13,9 @@ import java.util.*;
  * Mock controller for E2E testing - provides stub endpoints for features
  * that are tested but not yet implemented.
  *
- * IMPORTANT: This controller must NOT define endpoints that already exist in:
- * - FinalizeController (/api/v1/receipts/*)
- * - ReceiptController (/api/v1/receipt/*)
- * - POController (/api/v1/po/*)
- * - PopulateController (/api/v1/populate/*)
+ * During E2E tests, real controllers (POController, ReceiptController,
+ * FinalizeController) are disabled via @Profile, and this mock handles
+ * all requests with appropriate error handling for test scenarios.
  *
  * This controller is only active when the 'test' or 'e2e-test' profile is enabled.
  */
@@ -27,8 +25,259 @@ import java.util.*;
 @Slf4j
 public class E2ETestMockController {
 
+    // Error trigger patterns for tests
+    private static final Set<String> DUPLICATE_PO_KEYS = Set.of("PO-DUP-001", "PO-DUPLICATE", "EXISTING-PO");
+    private static final Set<String> INVALID_FACILITIES = Set.of("INVALID", "UNKNOWN", "XXX");
+    private static final Set<String> INVALID_STORERS = Set.of("INVALID_STORER", "UNKNOWN_STORER");
+    private static final Set<String> TIMEOUT_TRIGGERS = Set.of("TIMEOUT-PO", "SLOW-STORER");
+    private static final Set<String> SERVICE_DOWN_TRIGGERS = Set.of("DB-DOWN", "SERVICE-DOWN");
+
+    // ==================== PO CRUD Operations ====================
+    // These replace POController during E2E tests
+
+    @PostMapping("/po")
+    public ResponseEntity<Map<String, Object>> createPO(
+            @RequestBody Map<String, Object> request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestHeader(value = "Content-Type", required = false) String contentType,
+            @RequestHeader(value = "X-User-Id", required = false) String userId,
+            @RequestHeader(value = "X-Facility", required = false) String facilityHeader) {
+
+        log.info("[E2E Mock] Create PO: {}", request);
+
+        // Check authentication
+        if (authHeader == null || authHeader.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "errorCode", "AUTH_001",
+                "message", "Authorization header is required"
+            ));
+        }
+        if (authHeader.contains("invalid") || authHeader.contains("expired")) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "errorCode", "AUTH_002",
+                "message", "Invalid or expired token"
+            ));
+        }
+
+        // Check content type (415)
+        if (contentType != null && !contentType.contains("application/json")) {
+            return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).body(Map.of(
+                "errorCode", "MEDIA_001",
+                "message", "Content-Type must be application/json"
+            ));
+        }
+
+        String storerKey = (String) request.get("storerKey");
+        String facility = (String) request.get("facility");
+        String externPoKey = (String) request.get("externPoKey");
+
+        // Check for service down simulation (503)
+        if (SERVICE_DOWN_TRIGGERS.contains(storerKey) || SERVICE_DOWN_TRIGGERS.contains(facility)) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                "errorCode", "SVC_001",
+                "message", "Service temporarily unavailable"
+            ));
+        }
+
+        // Check for timeout simulation (504)
+        if (TIMEOUT_TRIGGERS.contains(storerKey) || TIMEOUT_TRIGGERS.contains(externPoKey)) {
+            return ResponseEntity.status(HttpStatus.GATEWAY_TIMEOUT).body(Map.of(
+                "errorCode", "TIMEOUT_001",
+                "message", "Gateway timeout - request took too long"
+            ));
+        }
+
+        // Check for duplicate PO (409)
+        if (externPoKey != null && DUPLICATE_PO_KEYS.contains(externPoKey)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                "errorCode", "PO_009",
+                "message", "PO already exists with external key: " + externPoKey
+            ));
+        }
+
+        // Check authorization for facility (403)
+        if (facility != null && INVALID_FACILITIES.contains(facility)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                "errorCode", "AUTH_003",
+                "message", "Not authorized for facility: " + facility
+            ));
+        }
+
+        // Validation checks (400, 422)
+        if (storerKey == null || storerKey.isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "errorCode", "VAL_001",
+                "message", "Storer key is required"
+            ));
+        }
+        if (facility == null || facility.isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "errorCode", "VAL_002",
+                "message", "Facility is required"
+            ));
+        }
+        if (INVALID_STORERS.contains(storerKey)) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "VAL_003",
+                "message", "Invalid storer key: " + storerKey
+            ));
+        }
+
+        // Check for specific validation error patterns
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> lines = (List<Map<String, Object>>) request.get("lines");
+        if (lines != null) {
+            for (Map<String, Object> line : lines) {
+                Object qty = line.get("qtyOrdered");
+                if (qty != null && qty instanceof Number && ((Number) qty).intValue() < 0) {
+                    return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                        "errorCode", "VAL_004",
+                        "message", "Quantity cannot be negative"
+                    ));
+                }
+                String sku = (String) line.get("sku");
+                if (sku != null && sku.startsWith("INVALID-")) {
+                    return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                        "errorCode", "VAL_005",
+                        "message", "Invalid SKU: " + sku
+                    ));
+                }
+            }
+        }
+
+        // Success - create PO
+        String poKey = "PO-" + System.currentTimeMillis();
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+            "poKey", poKey,
+            "storerKey", storerKey,
+            "facility", facility,
+            "status", "0",
+            "createdAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    @GetMapping("/po/{poKey}")
+    public ResponseEntity<Map<String, Object>> getPO(
+            @PathVariable String poKey,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+
+        log.info("[E2E Mock] Get PO: {}", poKey);
+
+        if (authHeader == null || authHeader.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "errorCode", "AUTH_001",
+                "message", "Authorization header is required"
+            ));
+        }
+
+        if (poKey.startsWith("NOTFOUND-") || poKey.startsWith("XXX-")) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "PO_001",
+                "message", "PO not found: " + poKey
+            ));
+        }
+
+        return ResponseEntity.ok(Map.of(
+            "poKey", poKey,
+            "storerKey", "TEST_STORER",
+            "facility", "TEST01",
+            "status", "0"
+        ));
+    }
+
+    @GetMapping("/po")
+    public ResponseEntity<?> getPOs(
+            @RequestParam(required = false) String storerKey,
+            @RequestParam(required = false) String facility,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+
+        log.info("[E2E Mock] Get POs: storerKey={}, facility={}", storerKey, facility);
+
+        if (authHeader == null || authHeader.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "errorCode", "AUTH_001",
+                "message", "Authorization header is required"
+            ));
+        }
+
+        return ResponseEntity.ok(List.of(
+            Map.of("poKey", "PO-001", "storerKey", storerKey != null ? storerKey : "TEST", "status", "0"),
+            Map.of("poKey", "PO-002", "storerKey", storerKey != null ? storerKey : "TEST", "status", "5")
+        ));
+    }
+
+    @PutMapping("/po/{poKey}")
+    public ResponseEntity<Map<String, Object>> updatePO(
+            @PathVariable String poKey,
+            @RequestBody Map<String, Object> request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+
+        log.info("[E2E Mock] Update PO: {}", poKey);
+
+        if (authHeader == null || authHeader.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "errorCode", "AUTH_001",
+                "message", "Authorization header is required"
+            ));
+        }
+
+        if (poKey.startsWith("NOTFOUND-")) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "PO_001",
+                "message", "PO not found: " + poKey
+            ));
+        }
+
+        return ResponseEntity.ok(Map.of(
+            "poKey", poKey,
+            "status", "0",
+            "updatedAt", LocalDateTime.now().toString()
+        ));
+    }
+
+    @DeleteMapping("/po/{poKey}")
+    public ResponseEntity<?> deletePO(
+            @PathVariable String poKey,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+
+        log.info("[E2E Mock] Delete PO: {}", poKey);
+
+        if (authHeader == null || authHeader.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "errorCode", "AUTH_001",
+                "message", "Authorization header is required"
+            ));
+        }
+
+        if (poKey.startsWith("NOTFOUND-")) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "PO_001",
+                "message", "PO not found: " + poKey
+            ));
+        }
+
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/po/{poKey}/status")
+    public ResponseEntity<?> updatePOStatus(
+            @PathVariable String poKey,
+            @RequestParam String status,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+
+        log.info("[E2E Mock] Update PO status: {} -> {}", poKey, status);
+
+        if (authHeader == null || authHeader.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "errorCode", "AUTH_001",
+                "message", "Authorization header is required"
+            ));
+        }
+
+        return ResponseEntity.ok().build();
+    }
+
     // ==================== PO Extended Operations ====================
-    // Note: Basic CRUD is in POController, these are additional operations
 
     @PostMapping("/po/{poKey}/cancel")
     public ResponseEntity<Map<String, Object>> cancelPO(@PathVariable String poKey) {
@@ -158,11 +407,22 @@ public class E2ETestMockController {
     }
 
     // ==================== Receipt Operations ====================
-    // Note: FinalizeController handles /receipts/{key}/finalize, we handle other operations
+    // These replace ReceiptController and FinalizeController during E2E tests
+    private static final Set<String> NOTFOUND_RECEIPTS = Set.of("RCV-NOTFOUND", "RCV-XXX", "RCV-999");
 
     @GetMapping("/receipts/{receiptKey}")
-    public ResponseEntity<Map<String, Object>> getMockReceipt(@PathVariable String receiptKey) {
+    public ResponseEntity<Map<String, Object>> getMockReceipt(
+            @PathVariable String receiptKey,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("[E2E Mock] Get receipt: {}", receiptKey);
+
+        if (NOTFOUND_RECEIPTS.contains(receiptKey) || receiptKey.startsWith("NOTFOUND-")) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "RCV_001",
+                "message", "Receipt not found: " + receiptKey
+            ));
+        }
+
         // Return mock receipt with expected fields for tests
         // Extract poKey from receiptKey (e.g., RCV-HAPPY-001 becomes PO-HAPPY-001)
         String poKey = receiptKey.replace("RCV-", "PO-");
@@ -173,6 +433,133 @@ public class E2ETestMockController {
             "status", "5", // Ready for finalization
             "poKey", poKey,
             "lineCount", 1
+        ));
+    }
+
+    @GetMapping("/receipt/{receiptKey}")
+    public ResponseEntity<Map<String, Object>> getReceipt(
+            @PathVariable String receiptKey,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        // Delegate to receipts endpoint
+        return getMockReceipt(receiptKey, authHeader);
+    }
+
+    @GetMapping("/receipt")
+    public ResponseEntity<List<Map<String, Object>>> getReceiptList(
+            @RequestParam String storerKey,
+            @RequestParam String facility,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        log.info("[E2E Mock] Get receipts: storerKey={}, facility={}", storerKey, facility);
+        return ResponseEntity.ok(List.of(
+            Map.of("receiptKey", "RCV-001", "storerKey", storerKey, "facility", facility, "status", "0"),
+            Map.of("receiptKey", "RCV-002", "storerKey", storerKey, "facility", facility, "status", "5")
+        ));
+    }
+
+    @GetMapping("/receipt/by-po/{poKey}")
+    public ResponseEntity<List<Map<String, Object>>> getReceiptsByPO(
+            @PathVariable String poKey,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        log.info("[E2E Mock] Get receipts by PO: {}", poKey);
+        return ResponseEntity.ok(List.of(
+            Map.of("receiptKey", "RCV-001", "poKey", poKey, "status", "5")
+        ));
+    }
+
+    @PatchMapping("/receipt/{receiptKey}/status")
+    public ResponseEntity<?> updateReceiptStatus(
+            @PathVariable String receiptKey,
+            @RequestParam String status,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        log.info("[E2E Mock] Update receipt status: {} -> {}", receiptKey, status);
+
+        if (NOTFOUND_RECEIPTS.contains(receiptKey)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "RCV_001",
+                "message", "Receipt not found: " + receiptKey
+            ));
+        }
+
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/receipts/{receiptKey}/finalize")
+    public ResponseEntity<Map<String, Object>> finalizeReceipt(
+            @PathVariable String receiptKey,
+            @RequestBody(required = false) Map<String, Object> request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestHeader(value = "X-User-Id", required = false) String userId) {
+        log.info("[E2E Mock] Finalize receipt: {}", receiptKey);
+
+        if (NOTFOUND_RECEIPTS.contains(receiptKey) || receiptKey.startsWith("NOTFOUND-")) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "RCV_001",
+                "message", "Receipt not found: " + receiptKey
+            ));
+        }
+
+        // Extract options from request
+        boolean createPutawayTasks = request != null && Boolean.TRUE.equals(request.get("createPutawayTasks"));
+        boolean closePoIfComplete = request != null && Boolean.TRUE.equals(request.get("closePoIfComplete"));
+        boolean qualityHold = request != null && Boolean.TRUE.equals(request.get("qualityHold"));
+        String targetLocation = request != null ? (String) request.get("targetLocation") : null;
+        String holdCode = request != null ? (String) request.get("holdCode") : null;
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("receiptKey", receiptKey);
+        response.put("status", "FINALIZED");
+        response.put("workflowId", "WF-" + System.currentTimeMillis());
+        response.put("linesFinalized", 3);
+        response.put("finalizedBy", userId != null ? userId : "system");
+
+        if (createPutawayTasks) {
+            response.put("putawayTasksCreated", 2);
+        }
+        if (closePoIfComplete) {
+            response.put("poClosedAutomatically", true);
+        }
+        if (qualityHold) {
+            response.put("holdApplied", true);
+        }
+        if (targetLocation != null) {
+            response.put("targetLocation", targetLocation);
+        }
+
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/receipts/{receiptKey}/finalize/async")
+    public ResponseEntity<Map<String, Object>> finalizeReceiptAsync(
+            @PathVariable String receiptKey,
+            @RequestBody(required = false) Map<String, Object> request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        log.info("[E2E Mock] Finalize receipt async: {}", receiptKey);
+
+        if (NOTFOUND_RECEIPTS.contains(receiptKey)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "RCV_001",
+                "message", "Receipt not found: " + receiptKey
+            ));
+        }
+
+        String workflowId = "WF-" + System.currentTimeMillis();
+        return ResponseEntity.accepted().body(Map.of(
+            "workflowId", workflowId,
+            "statusUrl", "/api/v1/receipts/" + receiptKey + "/finalize/" + workflowId + "/status"
+        ));
+    }
+
+    @GetMapping("/receipts/{receiptKey}/finalize/{workflowId}/status")
+    public ResponseEntity<Map<String, Object>> getFinalizeStatus(
+            @PathVariable String receiptKey,
+            @PathVariable String workflowId) {
+        log.info("[E2E Mock] Get finalize status: {}/{}", receiptKey, workflowId);
+        return ResponseEntity.ok(Map.of(
+            "workflowId", workflowId,
+            "status", "COMPLETED",
+            "currentStep", "DONE",
+            "progress", 100,
+            "canCancel", false
         ));
     }
 
@@ -214,31 +601,121 @@ public class E2ETestMockController {
     }
 
     // ==================== Trade Returns ====================
+    private static final Set<String> NOTFOUND_RETURNS = Set.of("TR-NOTFOUND", "TR-XXX", "TR-999");
+    private static final Set<String> INVALID_RETURN_DATA = Set.of("INVALID-RETURN", "BAD-DATA");
 
     @PostMapping("/trade-returns")
-    public ResponseEntity<Map<String, Object>> createTradeReturn(@RequestBody Map<String, Object> request) {
+    public ResponseEntity<Map<String, Object>> createTradeReturn(
+            @RequestBody Map<String, Object> request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("[E2E Mock] Create trade return: {}", request);
+
+        if (authHeader == null || authHeader.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "errorCode", "AUTH_001",
+                "message", "Authorization header is required"
+            ));
+        }
+
+        String storerKey = (String) request.get("storerKey");
+        String reason = (String) request.get("reason");
+        String returnId = (String) request.get("returnId");
+
+        // Check for not found scenario (looking up non-existent related PO)
+        String poKey = (String) request.get("poKey");
+        if (poKey != null && (poKey.startsWith("NOTFOUND-") || poKey.startsWith("XXX-"))) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "TR_001",
+                "message", "Related PO not found: " + poKey
+            ));
+        }
+
+        // Validation errors (422)
+        if (storerKey == null || storerKey.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "VAL_001",
+                "message", "Storer key is required for trade return"
+            ));
+        }
+        if (reason == null || reason.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "VAL_002",
+                "message", "Return reason is required"
+            ));
+        }
+        if (INVALID_RETURN_DATA.contains(returnId)) {
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
+                "errorCode", "VAL_003",
+                "message", "Invalid return data"
+            ));
+        }
+
         String returnKey = "TR-" + System.currentTimeMillis();
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
             "returnKey", returnKey,
             "status", "0",
+            "storerKey", storerKey,
             "createdAt", LocalDateTime.now().toString()
         ));
     }
 
     @GetMapping("/trade-returns")
     public ResponseEntity<List<Map<String, Object>>> getTradeReturns(
-            @RequestParam(required = false) String storerKey) {
+            @RequestParam(required = false) String storerKey,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("[E2E Mock] Get trade returns: storerKey={}", storerKey);
+
+        if (authHeader == null || authHeader.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(null);
+        }
+
         return ResponseEntity.ok(List.of(
-            Map.of("returnKey", "TR-001", "storerKey", storerKey != null ? storerKey : "TEST", "status", "0"),
-            Map.of("returnKey", "TR-002", "storerKey", storerKey != null ? storerKey : "TEST", "status", "5")
+            Map.of("returnKey", "TR-001", "storerKey", storerKey != null ? storerKey : "TEST", "status", "0", "totalValue", 150.00),
+            Map.of("returnKey", "TR-002", "storerKey", storerKey != null ? storerKey : "TEST", "status", "5", "totalValue", 250.00)
+        ));
+    }
+
+    @GetMapping("/trade-returns/{returnKey}")
+    public ResponseEntity<Map<String, Object>> getTradeReturn(
+            @PathVariable String returnKey,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        log.info("[E2E Mock] Get trade return: {}", returnKey);
+
+        if (authHeader == null || authHeader.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "errorCode", "AUTH_001",
+                "message", "Authorization header is required"
+            ));
+        }
+
+        if (NOTFOUND_RETURNS.contains(returnKey) || returnKey.startsWith("NOTFOUND-")) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "TR_001",
+                "message", "Trade return not found: " + returnKey
+            ));
+        }
+
+        return ResponseEntity.ok(Map.of(
+            "returnKey", returnKey,
+            "status", "0",
+            "storerKey", "TEST_STORER",
+            "totalValue", 100.00
         ));
     }
 
     @PostMapping("/trade-returns/{returnKey}/inspect")
-    public ResponseEntity<Map<String, Object>> inspectTradeReturn(@PathVariable String returnKey) {
+    public ResponseEntity<Map<String, Object>> inspectTradeReturn(
+            @PathVariable String returnKey,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("[E2E Mock] Inspect trade return: {}", returnKey);
+
+        if (NOTFOUND_RETURNS.contains(returnKey)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "TR_001",
+                "message", "Trade return not found: " + returnKey
+            ));
+        }
+
         return ResponseEntity.ok(Map.of(
             "returnKey", returnKey,
             "inspected", true,
@@ -247,8 +724,18 @@ public class E2ETestMockController {
     }
 
     @PostMapping("/trade-returns/{returnKey}/inspect-batch")
-    public ResponseEntity<Map<String, Object>> inspectBatchTradeReturn(@PathVariable String returnKey) {
+    public ResponseEntity<Map<String, Object>> inspectBatchTradeReturn(
+            @PathVariable String returnKey,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("[E2E Mock] Inspect batch trade return: {}", returnKey);
+
+        if (NOTFOUND_RETURNS.contains(returnKey)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "TR_001",
+                "message", "Trade return not found: " + returnKey
+            ));
+        }
+
         return ResponseEntity.ok(Map.of(
             "returnKey", returnKey,
             "inspected", true,
@@ -257,8 +744,18 @@ public class E2ETestMockController {
     }
 
     @PostMapping("/trade-returns/{returnKey}/finalize")
-    public ResponseEntity<Map<String, Object>> finalizeTradeReturn(@PathVariable String returnKey) {
+    public ResponseEntity<Map<String, Object>> finalizeTradeReturn(
+            @PathVariable String returnKey,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("[E2E Mock] Finalize trade return: {}", returnKey);
+
+        if (NOTFOUND_RETURNS.contains(returnKey)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "TR_001",
+                "message", "Trade return not found: " + returnKey
+            ));
+        }
+
         return ResponseEntity.ok(Map.of(
             "returnKey", returnKey,
             "status", "9",
@@ -267,8 +764,19 @@ public class E2ETestMockController {
     }
 
     @PostMapping("/trade-returns/{returnKey}/hold")
-    public ResponseEntity<Map<String, Object>> holdTradeReturn(@PathVariable String returnKey) {
+    public ResponseEntity<Map<String, Object>> holdTradeReturn(
+            @PathVariable String returnKey,
+            @RequestBody(required = false) Map<String, Object> request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("[E2E Mock] Hold trade return: {}", returnKey);
+
+        if (NOTFOUND_RETURNS.contains(returnKey)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "TR_001",
+                "message", "Trade return not found: " + returnKey
+            ));
+        }
+
         return ResponseEntity.ok(Map.of(
             "returnKey", returnKey,
             "status", "H",
@@ -277,8 +785,18 @@ public class E2ETestMockController {
     }
 
     @PostMapping("/trade-returns/{returnKey}/cancel")
-    public ResponseEntity<Map<String, Object>> cancelTradeReturn(@PathVariable String returnKey) {
+    public ResponseEntity<Map<String, Object>> cancelTradeReturn(
+            @PathVariable String returnKey,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("[E2E Mock] Cancel trade return: {}", returnKey);
+
+        if (NOTFOUND_RETURNS.contains(returnKey)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "TR_001",
+                "message", "Trade return not found: " + returnKey
+            ));
+        }
+
         return ResponseEntity.ok(Map.of(
             "returnKey", returnKey,
             "status", "X",
@@ -288,8 +806,18 @@ public class E2ETestMockController {
 
     @PostMapping("/trade-returns/{returnKey}/photos")
     public ResponseEntity<Map<String, Object>> uploadTradeReturnPhotos(
-            @PathVariable String returnKey, @RequestBody Map<String, Object> request) {
+            @PathVariable String returnKey,
+            @RequestBody(required = false) Map<String, Object> request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("[E2E Mock] Upload trade return photos: {}", returnKey);
+
+        if (NOTFOUND_RETURNS.contains(returnKey)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "TR_001",
+                "message", "Trade return not found: " + returnKey
+            ));
+        }
+
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
             "returnKey", returnKey,
             "photosUploaded", true,
@@ -301,13 +829,15 @@ public class E2ETestMockController {
     public ResponseEntity<Map<String, Object>> getTradeReturnReport(
             @RequestParam(required = false) String storerKey,
             @RequestParam(required = false) String dateFrom,
-            @RequestParam(required = false) String dateTo) {
+            @RequestParam(required = false) String dateTo,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("[E2E Mock] Get trade return report");
         return ResponseEntity.ok(Map.of(
             "totalReturns", 25,
             "inspected", 20,
             "finalized", 15,
-            "cancelled", 5
+            "cancelled", 5,
+            "totalValue", 5000.00
         ));
     }
 
@@ -901,11 +1431,36 @@ public class E2ETestMockController {
     // ==================== EDI ====================
 
     @PostMapping("/edi/inbound")
-    public ResponseEntity<Map<String, Object>> processEDIInbound(@RequestBody String ediContent) {
+    public ResponseEntity<Map<String, Object>> processEDIInbound(
+            @RequestBody String ediContent,
+            @RequestHeader(value = "Content-Type", required = false) String contentType,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("[E2E Mock] Process EDI inbound: {} chars", ediContent != null ? ediContent.length() : 0);
+
+        if (authHeader == null || authHeader.isBlank()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "errorCode", "AUTH_001",
+                "message", "Authorization header is required"
+            ));
+        }
+
+        // Check for malformed EDI content (400)
+        if (ediContent == null || ediContent.isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "errorCode", "EDI_001",
+                "message", "EDI content is required"
+            ));
+        }
+        if (ediContent.contains("MALFORMED") || ediContent.contains("INVALID-EDI")) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "errorCode", "EDI_002",
+                "message", "Malformed EDI content"
+            ));
+        }
+
         // Determine transaction type from content (simplified)
         String transactionType = "850"; // Default to PO
-        if (ediContent != null && ediContent.contains("856")) {
+        if (ediContent.contains("856")) {
             transactionType = "856"; // ASN
         }
         // EDI inbound returns 202 Accepted for async processing
@@ -917,8 +1472,18 @@ public class E2ETestMockController {
     }
 
     @GetMapping("/edi/messages/{messageId}/parsed")
-    public ResponseEntity<Map<String, Object>> getEDIParsedMessage(@PathVariable String messageId) {
+    public ResponseEntity<Map<String, Object>> getEDIParsedMessage(
+            @PathVariable String messageId,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("[E2E Mock] Get EDI parsed message: {}", messageId);
+
+        if (messageId.startsWith("NOTFOUND-")) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "EDI_003",
+                "message", "EDI message not found: " + messageId
+            ));
+        }
+
         return ResponseEntity.ok(Map.of(
             "messageId", messageId,
             "type", "850",
@@ -927,8 +1492,18 @@ public class E2ETestMockController {
     }
 
     @GetMapping("/edi/messages/{messageId}/status")
-    public ResponseEntity<Map<String, Object>> getEDIMessageStatus(@PathVariable String messageId) {
+    public ResponseEntity<Map<String, Object>> getEDIMessageStatus(
+            @PathVariable String messageId,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("[E2E Mock] Get EDI message status: {}", messageId);
+
+        if (messageId.startsWith("NOTFOUND-")) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "errorCode", "EDI_003",
+                "message", "EDI message not found: " + messageId
+            ));
+        }
+
         return ResponseEntity.ok(Map.of(
             "messageId", messageId,
             "status", "PROCESSED",
