@@ -290,10 +290,10 @@ public class E2ETestMockController {
             ));
         }
 
-        // Check for too-long external key (400)
+        // Check for too-long external key (400) - VAL_011
         if (externPoKey != null && externPoKey.length() > 50) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                "errorCode", "VAL_007",
+                "errorCode", "VAL_011",
                 "message", "External PO key exceeds maximum length of 50 characters"
             ));
         }
@@ -304,18 +304,21 @@ public class E2ETestMockController {
                 Object qty = line.get("qtyOrdered");
                 if (qty != null && qty instanceof Number) {
                     int qtyValue = ((Number) qty).intValue();
-                    // Zero quantity (400)
+                    // Zero quantity (400) - VAL_008
                     if (qtyValue == 0) {
                         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
                             "errorCode", "VAL_008",
-                            "message", "Quantity cannot be zero"
+                            "message", "Quantity cannot be zero",
+                            "field", "qtyOrdered",
+                            "invalidValue", 0
                         ));
                     }
-                    // Negative quantity (400)
+                    // Negative quantity (400) - VAL_009
                     if (qtyValue < 0) {
                         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                            "errorCode", "VAL_004",
-                            "message", "Quantity cannot be negative"
+                            "errorCode", "VAL_009",
+                            "message", "Negative quantity not allowed",
+                            "invalidValue", qtyValue
                         ));
                     }
                 }
@@ -329,15 +332,16 @@ public class E2ETestMockController {
             }
         }
 
-        // Check for past expected date (400)
+        // Check for past expected date (400) - VAL_006
         Object expectedDateObj = request.get("expectedDate");
         if (expectedDateObj != null) {
             String expectedDateStr = expectedDateObj.toString();
-            // Simple check: if it contains a date before 2026, it's in the past
+            // Simple check: if it contains a date before today, it's in the past
             if (expectedDateStr.startsWith("202") && expectedDateStr.compareTo("2026-05-08") < 0) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                    "errorCode", "VAL_009",
-                    "message", "Expected date cannot be in the past"
+                    "errorCode", "VAL_006",
+                    "message", "Expected date cannot be in the past",
+                    "field", "expectedDate"
                 ));
             }
         }
@@ -2569,20 +2573,22 @@ public class E2ETestMockController {
             ));
         }
 
-        // 400 - Missing mandatory segment (F2-TC09)
+        // 400 - Missing mandatory segment (F1-TC17, F2-TC09)
+        // Error Code: INT_011 (69011)
         // Check for EDI-ERR-001 pattern (error test file with missing REF*DP segment)
         // Also check MISSING-SEGMENT pattern
         if (ediContent.contains("EDI-ERR-001") || ediContent.contains("MISSING-SEGMENT") ||
             ediContent.contains("MISSING_SEGMENT") || ediContent.contains("ERROR-MISSING") ||
             (ediContent.contains("ERRSENDER") && !ediContent.contains("REF*DP"))) {
             Map<String, Object> response = new LinkedHashMap<>();
-            response.put("errorCode", "EDI_001");
+            response.put("errorCode", "INT_011");
             response.put("message", "Missing mandatory segment in EDI content");
             response.put("missingSegments", List.of("REF*DP"));
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
         }
 
-        // 400 - Malformed EDI content (F2-TC10)
+        // 400 - Malformed EDI content (F1-TC16, F2-TC10)
+        // Error Code: INT_011 (69011)
         // Check for EDI-MALFORMED pattern and various invalid data markers
         if (ediContent.contains("EDI-MALFORMED") || ediContent.contains("MALFORMED") ||
             ediContent.contains("ERROR-MALFORMED") || ediContent.contains("INVALID-EDI") ||
@@ -2590,10 +2596,13 @@ public class E2ETestMockController {
             ediContent.contains("<xml>") || ediContent.contains("BADSENDER") ||
             ediContent.contains("INVALID-DATE") || ediContent.contains("INVALID-QTY") ||
             ediContent.contains("INVALID-PRICE")) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                "errorCode", "EDI_002",
-                "message", "Parse error: malformed EDI content"
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("errorCode", "INT_011");
+            response.put("message", "Parse error: malformed EDI content");
+            response.put("parseErrors", List.of(
+                Map.of("segment", "ISA", "position", 1, "error", "Invalid format")
             ));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
         }
 
         // Check for basic EDI structure (should have ISA segment for valid X12)

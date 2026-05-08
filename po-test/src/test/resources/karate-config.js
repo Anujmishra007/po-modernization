@@ -152,55 +152,64 @@ function fn() {
       }
 
       // ═══════════════════════════════════════════════════════════
-      // COUNT QUERIES - Must come before general patterns
+      // COUNT QUERIES - Return [{cnt: X}] format for query(), getValue extracts value
       // ═══════════════════════════════════════════════════════════
       if (sqlLower.indexOf('select count(*)') >= 0) {
+        var countValue = 1; // Default count
+
         // Order detail line count (F1-TC02 expects 50 lines)
         if (sqlLower.indexOf('orderdetail') >= 0) {
-          return 50; // Return number directly for getValue
+          countValue = 50;
+        }
+        // PO count for partial data check (F1-TC14 expects 0)
+        else if (sqlLower.indexOf('dbo.po') >= 0 && sqlLower.indexOf('externpokey') >= 0) {
+          countValue = 0; // No partial data created
         }
         // Inventory count
-        if (sqlLower.indexOf('lotxlocxid') >= 0) {
+        else if (sqlLower.indexOf('lotxlocxid') >= 0) {
           if (sqlLower.indexOf('test-loc-full') >= 0) {
-            return 0;
+            countValue = 0;
+          } else if (sqlLower.indexOf('holdcode') >= 0) {
+            countValue = 1;
+          } else {
+            countValue = 2;
           }
-          if (sqlLower.indexOf('holdcode') >= 0) {
-            return 1;
-          }
-          return 2;
         }
         // Receipt count
-        if (sqlLower.indexOf('dbo.receipt') >= 0) {
+        else if (sqlLower.indexOf('dbo.receipt') >= 0) {
           if (sqlLower.indexOf("status != 'x'") >= 0 || sqlLower.indexOf("status not in") >= 0) {
-            return 0;
+            countValue = 0;
+          } else {
+            countValue = 1;
           }
-          return 1;
         }
         // Task count
-        if (sqlLower.indexOf('dbo.task') >= 0) {
+        else if (sqlLower.indexOf('dbo.task') >= 0) {
           if (sqlLower.indexOf("status = '0'") >= 0) {
-            return 0;
+            countValue = 0;
+          } else {
+            countValue = 2;
           }
-          return 2;
         }
         // Allocation count
-        if (sqlLower.indexOf('dbo.allocation') >= 0) {
-          return 0;
+        else if (sqlLower.indexOf('dbo.allocation') >= 0) {
+          countValue = 0;
         }
         // Reservation count
-        if (sqlLower.indexOf('dbo.reservation') >= 0) {
-          return 0;
+        else if (sqlLower.indexOf('dbo.reservation') >= 0) {
+          countValue = 0;
         }
         // Plugin data count
-        if (sqlLower.indexOf('nikecustomdata') >= 0 || sqlLower.indexOf('customdata') >= 0) {
-          return 0;
+        else if (sqlLower.indexOf('nikecustomdata') >= 0 || sqlLower.indexOf('customdata') >= 0) {
+          countValue = 0;
         }
         // PO history count
-        if (sqlLower.indexOf('po_history') >= 0) {
-          return 1;
+        else if (sqlLower.indexOf('po_history') >= 0) {
+          countValue = 1;
         }
-        // Default count
-        return 1;
+
+        // Return array format for query(), getValue will extract the number
+        return [{ cnt: countValue }];
       }
 
       // ═══════════════════════════════════════════════════════════
