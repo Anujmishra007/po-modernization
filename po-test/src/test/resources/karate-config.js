@@ -301,19 +301,36 @@ function fn() {
         return toJavaList([{ status: '0' }]);
       }
 
-      // Receipt status queries
+      // Receipt status queries (consolidated handler for F10 compensation tests)
       if (sqlLower.indexOf('select status from dbo.receipt') >= 0) {
-        // F10: Compensation test receipts should NOT be finalized
-        if (sqlLower.indexOf('rcv-test-comp') >= 0 || sqlLower.indexOf('rcv-test-timeout') >= 0 ||
-            sqlLower.indexOf('rcv-comp-') >= 0) {
-          return toJavaList([{ status: '5' }]); // Not finalized
+        // Extract receipt key from query for pattern matching
+        var receiptKeyMatch = sql.match(/receiptkey\s*=\s*'([^']+)'/i);
+        var queryReceiptKey = receiptKeyMatch ? receiptKeyMatch[1] : '';
+        var rcvKeyLower = queryReceiptKey.toLowerCase();
+
+        karate.log('[MockDB] Receipt status query for:', queryReceiptKey);
+
+        // COMP-27: Dynamically created receipts (RCV-{timestamp}) are from compensation tests
+        // After cascade compensation, receipt status is 'X'
+        if (queryReceiptKey.match(/^RCV-\d{10,}$/)) {
+          karate.log('[MockDB] Returning X status for dynamic receipt:', queryReceiptKey);
+          return toJavaList([{ status: 'X', receiptkey: queryReceiptKey }]);
         }
+
         // Finalized receipts
-        if (sqlLower.indexOf('rcv-finalize') >= 0 ||
-            sqlLower.indexOf('rcv-happy') >= 0) {
-          return toJavaList([{ status: '9' }]);
+        if (rcvKeyLower.indexOf('rcv-finalize') >= 0 || rcvKeyLower.indexOf('rcv-happy') >= 0 ||
+            rcvKeyLower.indexOf('rcv-finalized') >= 0) {
+          return toJavaList([{ status: '9', receiptkey: queryReceiptKey }]);
         }
-        return toJavaList([{ status: '5' }]);
+
+        // F10: Compensation test receipts that should NOT be finalized
+        if (rcvKeyLower.indexOf('rcv-test-comp') >= 0 || rcvKeyLower.indexOf('rcv-test-timeout') >= 0 ||
+            rcvKeyLower.indexOf('rcv-comp-') >= 0) {
+          return toJavaList([{ status: '5', receiptkey: queryReceiptKey }]); // Not finalized
+        }
+
+        // Default: Ready for finalization
+        return toJavaList([{ status: '5', receiptkey: queryReceiptKey }]);
       }
 
       // ═══════════════════════════════════════════════════════════
@@ -354,36 +371,7 @@ function fn() {
         return toJavaList([{ status: '9' }]);
       }
 
-      // Receipt status query (COMP-27: cascade compensation)
-      // For compensation tests, receipt status should be 'X' (cancelled/compensated)
-      if (sqlLower.indexOf('select status from dbo.receipt') >= 0 ||
-          sqlLower.indexOf('select * from dbo.receipt') >= 0) {
-        // Extract receipt key from query
-        var receiptKeyMatch = sql.match(/receiptkey\s*=\s*'([^']+)'/i);
-        var queryReceiptKey = receiptKeyMatch ? receiptKeyMatch[1] : 'unknown';
-
-        // Check for known good receipts that should have specific status
-        if (queryReceiptKey === 'RCV-FINALIZE-001' || queryReceiptKey === 'RCV-NIKE-001') {
-          return toJavaList([{ status: '5', receiptkey: queryReceiptKey }]);
-        }
-        if (queryReceiptKey === 'RCV-FINALIZED-001') {
-          return toJavaList([{ status: '9', receiptkey: queryReceiptKey }]);
-        }
-
-        // COMP-27: Dynamically created receipts (RCV-{timestamp}) are from compensation tests
-        // After cascade compensation, receipt status is 'X'
-        if (queryReceiptKey.match(/^RCV-\d+$/)) {
-          return toJavaList([{ status: 'X', receiptkey: queryReceiptKey }]);
-        }
-
-        // Compensation patterns
-        if (queryReceiptKey.indexOf('CASCADE') >= 0 || queryReceiptKey.indexOf('COMP') >= 0) {
-          return toJavaList([{ status: 'X', receiptkey: queryReceiptKey }]);
-        }
-
-        // Default: receipt is finalized (status '9')
-        return toJavaList([{ status: '9', receiptkey: queryReceiptKey }]);
-      }
+      // Note: Receipt status query handling is consolidated above at lines 305-330
 
       // Carton header (F2-TC05)
       if (sqlLower.indexOf('select * from dbo.cartonheader') >= 0) {
