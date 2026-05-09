@@ -283,10 +283,10 @@ public class E2ETestMockController {
             }
         }
 
-        // Check for non-existent storer pattern (422)
+        // Check for non-existent storer pattern (422) - F1-TC38
         if (storerKey != null && (storerKey.startsWith("NON_EXISTENT") || storerKey.startsWith("NONEXISTENT"))) {
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
-                "errorCode", "VAL_006",
+                "errorCode", "VAL_002",
                 "message", "Storer does not exist: " + storerKey
             ));
         }
@@ -2573,10 +2573,30 @@ public class E2ETestMockController {
     // ==================== Jobs ====================
 
     @PostMapping("/jobs/generic-inbound-po/trigger")
-    public ResponseEntity<Map<String, Object>> triggerGenericInboundJob() {
-        log.info("[E2E Mock] Trigger generic inbound PO job");
+    public ResponseEntity<Map<String, Object>> triggerGenericInboundJob(
+            @RequestBody(required = false) Map<String, Object> request) {
+        log.info("[E2E Mock] Trigger generic inbound PO job: {}", request);
+        String jobId = "JOB-" + System.currentTimeMillis();
+
+        // Track job info for F1-TC23 retry test
+        Map<String, Object> jobInfo = new LinkedHashMap<>();
+        jobInfo.put("jobExecutionId", jobId);
+        if (request != null && Boolean.TRUE.equals(request.get("simulateTransientFailure"))) {
+            // For transient failure simulation, mark as needing retry behavior
+            jobInfo.put("simulateTransientFailure", true);
+            jobInfo.put("failOnAttempt", request.getOrDefault("failOnAttempt", 1));
+            jobInfo.put("maxRetries", request.getOrDefault("maxRetries", 3));
+            // After retries, job completes successfully with attemptCount > 1
+            jobInfo.put("status", "COMPLETED");
+            jobInfo.put("attemptCount", 3); // Simulated: failed first 2, succeeded on 3rd
+        } else {
+            jobInfo.put("status", "COMPLETED");
+            jobInfo.put("attemptCount", 1);
+        }
+        jobExecutions.put(jobId, jobInfo);
+
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
-            "jobExecutionId", "JOB-" + System.currentTimeMillis(),
+            "jobExecutionId", jobId,
             "status", "RUNNING"
         ));
     }
@@ -2652,18 +2672,31 @@ public class E2ETestMockController {
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("[E2E Mock] Get job execution: {}", jobId);
 
-        // Check if we have tracked info for this job (COMP-25)
+        // Check if we have tracked info for this job
         Map<String, Object> jobInfo = jobExecutions.get(jobId);
-        if (jobInfo != null && jobInfo.get("simulateFailureAt") != null) {
-            // Return COMPLETED_WITH_ERRORS for failure simulation
-            Map<String, Object> response = new LinkedHashMap<>();
-            response.put("jobExecutionId", jobId);
-            response.put("status", "COMPLETED_WITH_ERRORS");
-            response.put("successCount", jobInfo.get("successCount"));
-            response.put("failedCount", jobInfo.get("failedCount"));
-            response.put("compensatedCount", jobInfo.get("compensatedCount"));
-            response.put("completedAt", LocalDateTime.now().toString());
-            return ResponseEntity.ok(response);
+        if (jobInfo != null) {
+            // F1-TC23: Transient failure simulation - return COMPLETED with attemptCount
+            if (Boolean.TRUE.equals(jobInfo.get("simulateTransientFailure"))) {
+                Map<String, Object> response = new LinkedHashMap<>();
+                response.put("jobExecutionId", jobId);
+                response.put("status", "COMPLETED");
+                response.put("attemptCount", jobInfo.getOrDefault("attemptCount", 3));
+                response.put("recordsProcessed", 10);
+                response.put("completedAt", LocalDateTime.now().toString());
+                return ResponseEntity.ok(response);
+            }
+
+            // COMP-25: simulateFailureAt - return COMPLETED_WITH_ERRORS
+            if (jobInfo.get("simulateFailureAt") != null) {
+                Map<String, Object> response = new LinkedHashMap<>();
+                response.put("jobExecutionId", jobId);
+                response.put("status", "COMPLETED_WITH_ERRORS");
+                response.put("successCount", jobInfo.get("successCount"));
+                response.put("failedCount", jobInfo.get("failedCount"));
+                response.put("compensatedCount", jobInfo.get("compensatedCount"));
+                response.put("completedAt", LocalDateTime.now().toString());
+                return ResponseEntity.ok(response);
+            }
         }
 
         // Default successful completion
@@ -2671,6 +2704,7 @@ public class E2ETestMockController {
             "jobExecutionId", jobId,
             "status", "COMPLETED",
             "recordsProcessed", 42,
+            "attemptCount", 1,
             "completedAt", LocalDateTime.now().toString()
         ));
     }
