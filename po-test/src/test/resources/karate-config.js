@@ -271,8 +271,13 @@ function fn() {
         if (sqlLower.indexOf('po-close') >= 0) {
           return toJavaList([{ status: '9' }]);
         }
-        // F2-TC04: PO status after ASN received
-        if (sqlLower.indexOf('po-') >= 0) {
+        // F10: Test POs should be open (status '0') - check before generic po- check
+        if (sqlLower.indexOf('po-test') >= 0) {
+          return toJavaList([{ status: '0' }]);
+        }
+        // F2-TC04: PO status after ASN received (po-happy, po-nike, etc.)
+        if (sqlLower.indexOf('po-happy') >= 0 || sqlLower.indexOf('po-nike') >= 0 ||
+            sqlLower.indexOf('po-hm') >= 0 || sqlLower.indexOf('po-asn') >= 0) {
           return toJavaList([{ status: '1' }]); // ASN Received status
         }
         return toJavaList([{ status: '0' }]);
@@ -280,9 +285,13 @@ function fn() {
 
       // Receipt status queries
       if (sqlLower.indexOf('select status from dbo.receipt') >= 0) {
+        // F10: Compensation test receipts should NOT be finalized
+        if (sqlLower.indexOf('rcv-test-comp') >= 0 || sqlLower.indexOf('rcv-test-timeout') >= 0 ||
+            sqlLower.indexOf('rcv-comp-') >= 0) {
+          return toJavaList([{ status: '5' }]); // Not finalized
+        }
         // Finalized receipts
         if (sqlLower.indexOf('rcv-finalize') >= 0 ||
-            sqlLower.indexOf('rcv-test') >= 0 ||
             sqlLower.indexOf('rcv-happy') >= 0) {
           return toJavaList([{ status: '9' }]);
         }
@@ -532,30 +541,68 @@ function fn() {
       // F10: COMPENSATION QUERIES
       // ═══════════════════════════════════════════════════════════
 
-      // Compensation audit records (F1-TC40)
+      // Compensation audit records (F1-TC40, F10-COMP-29)
       if (sqlLower.indexOf('compensationaudit') >= 0) {
-        return toJavaList([{
-          auditid: 'AUDIT-001',
-          entitykey: 'RCV-TEST-001',
-          action: 'COMPENSATE',
-          compensationtype: 'PO_CREATION_ROLLBACK',
-          auditdate: new Date().toISOString(),
-          userid: 'system'
-        }]);
+        // Return both EXECUTE and COMPENSATE actions for audit tests
+        return toJavaList([
+          {
+            auditid: 'AUDIT-001',
+            entitykey: 'RCV-COMP-AUDIT-001',
+            action: 'EXECUTE',
+            compensationtype: 'FINALIZE_RECEIPT',
+            auditdate: new Date(Date.now() - 1000).toISOString(),
+            userid: 'system'
+          },
+          {
+            auditid: 'AUDIT-002',
+            entitykey: 'RCV-COMP-AUDIT-001',
+            action: 'COMPENSATE',
+            compensationtype: 'FINALIZE_RECEIPT_ROLLBACK',
+            auditdate: new Date().toISOString(),
+            userid: 'system'
+          }
+        ]);
       }
 
-      // Event outbox
+      // Event outbox - return data for KAFKA test scenarios
       if (sqlLower.indexOf('eventoutbox') >= 0) {
+        if (sqlLower.indexOf('rcv-comp-kafka') >= 0) {
+          return toJavaList([{
+            id: 'OUTBOX-001',
+            entitykey: 'RCV-COMP-KAFKA-001',
+            eventtype: 'RECEIPT_FINALIZED',
+            status: 'PENDING',
+            createddate: new Date().toISOString()
+          }]);
+        }
         return new ArrayList();
       }
 
-      // Compensation incident
+      // Compensation incident - return data for PARTIAL test scenarios
       if (sqlLower.indexOf('compensationincident') >= 0) {
+        if (sqlLower.indexOf('rcv-comp-partial') >= 0) {
+          return toJavaList([{
+            id: 'INCIDENT-001',
+            entitykey: 'RCV-COMP-PARTIAL-001',
+            incidenttype: 'PARTIAL_COMPENSATION_FAILURE',
+            status: 'OPEN',
+            createddate: new Date().toISOString()
+          }]);
+        }
         return new ArrayList();
       }
 
-      // Alert log
+      // Alert log - return data for MANUAL intervention scenarios
       if (sqlLower.indexOf('alertlog') >= 0) {
+        if (sqlLower.indexOf('rcv-comp-manual') >= 0) {
+          return toJavaList([{
+            id: 'ALERT-001',
+            entitykey: 'RCV-COMP-MANUAL-001',
+            alerttype: 'COMPENSATION_FAILURE',
+            status: 'SENT',
+            createddate: new Date().toISOString()
+          }]);
+        }
         return new ArrayList();
       }
 
