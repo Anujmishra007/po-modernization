@@ -395,6 +395,29 @@ function fn() {
         }]);
       }
 
+      // PO audit fields for trigger tests (F1-TC18)
+      if ((sqlLower.indexOf('adddate') >= 0 || sqlLower.indexOf('addwho') >= 0) &&
+          sqlLower.indexOf('dbo.po') >= 0) {
+        return toJavaList([{
+          adddate: new Date().toISOString(),
+          addwho: 'system',
+          editdate: new Date().toISOString(),
+          editwho: 'system'
+        }]);
+      }
+
+      // Plugin audit records (F3-TC28)
+      if (sqlLower.indexOf('pluginaudit') >= 0) {
+        return toJavaList([{
+          auditid: 'PLUGINAUDIT-001',
+          entitykey: 'RCV-NIKE-001',
+          pluginname: 'NikeReceiptFinalizePlugin',
+          status: 'SUCCESS',
+          executiontime: 125,
+          auditdate: new Date().toISOString()
+        }]);
+      }
+
       // ═══════════════════════════════════════════════════════════
       // F3: RECEIPT FINALIZATION QUERIES
       // ═══════════════════════════════════════════════════════════
