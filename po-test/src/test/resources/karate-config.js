@@ -205,9 +205,13 @@ function fn() {
         else if (sqlLower.indexOf('dbo.po') >= 0 && sqlLower.indexOf('externpokey') >= 0) {
           countValue = 0; // No partial data created
         }
-        // F9: Archived POs removed from active table
-        else if (sqlLower.indexOf('dbo.po') >= 0 && sqlLower.indexOf('po-archive') >= 0) {
+        // F9: Archived POs removed from active table (but not po_history)
+        else if (sqlLower.indexOf('dbo.po') >= 0 && sqlLower.indexOf('po-archive') >= 0 && sqlLower.indexOf('po_history') < 0) {
           countValue = 0; // Archived POs no longer in active table
+        }
+        // PO history count (must check before generic dbo.po)
+        else if (sqlLower.indexOf('po_history') >= 0) {
+          countValue = 1;
         }
         // Inventory count
         else if (sqlLower.indexOf('lotxlocxid') >= 0) {
@@ -246,10 +250,6 @@ function fn() {
         // Plugin data count
         else if (sqlLower.indexOf('nikecustomdata') >= 0 || sqlLower.indexOf('customdata') >= 0) {
           countValue = 0;
-        }
-        // PO history count
-        else if (sqlLower.indexOf('po_history') >= 0) {
-          countValue = 1;
         }
 
         // Return array format for query(), getValue will extract the number

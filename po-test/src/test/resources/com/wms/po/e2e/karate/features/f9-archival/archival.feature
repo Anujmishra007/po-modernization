@@ -84,8 +84,8 @@ Feature: F9 - PO Archival Flow Tests
     When method post
     Then status 200
     And match response.archivedEntities.po == 1
-    And match response.archivedEntities.receipts >= 1
-    And match response.archivedEntities.receiptDetails >= 1
+    And assert response.archivedEntities.receipts >= 1
+    And assert response.archivedEntities.receiptDetails >= 1
 
   # ─────────────────────────────────────────────────────────────
   # F9-TC04: Cannot archive open PO
