@@ -486,16 +486,20 @@ function fn() {
 
         // F3-TC06: PO-HAPPY-001 tests afterQty > beforeQty (no SKU in query)
         // First query (beforeQty) returns 50, second query (afterQty) returns 100
+        // IMPORTANT: For getValue to work, return qtyreceived as FIRST key if that's what's queried
         if (queryPoKey === 'PO-HAPPY-001') {
           var qtyReceived = queryCount === 1 ? 50 : 100;
           karate.log('[MockDB] F3-TC06 returning qtyreceived=', qtyReceived, 'for count', queryCount);
-          return toJavaList([{
-            pokey: 'PO-HAPPY-001',
-            polinenumber: '00001',
-            sku: 'NK-AIRMAX90-BLK',
-            qtyordered: 100,
-            qtyreceived: qtyReceived
-          }]);
+          // Use LinkedHashMap to preserve key order - qtyreceived MUST be first for getValue to work
+          var row = new LinkedHashMap();
+          row.put('qtyreceived', qtyReceived);  // First for getValue
+          row.put('pokey', 'PO-HAPPY-001');
+          row.put('polinenumber', '00001');
+          row.put('sku', 'NK-AIRMAX90-BLK');
+          row.put('qtyordered', 100);
+          var list = new ArrayList();
+          list.add(row);
+          return list;
         }
 
         // Default: return 60 for partial shipment scenarios
