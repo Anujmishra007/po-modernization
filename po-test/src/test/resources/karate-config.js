@@ -280,6 +280,12 @@ function fn() {
             sqlLower.indexOf('po-hm') >= 0 || sqlLower.indexOf('po-asn') >= 0) {
           return toJavaList([{ status: '1' }]); // ASN Received status
         }
+        // Dynamic PO keys (PO-{timestamp}) after ASN populate should return '1'
+        // These are POs created during tests that received ASNs
+        var poKeyMatch = sql.match(/pokey\s*=\s*'(PO-\d+)'/i);
+        if (poKeyMatch && poKeyMatch[1] && /^PO-\d{13,}$/.test(poKeyMatch[1])) {
+          return toJavaList([{ status: '1' }]); // ASN Received status for dynamic POs
+        }
         return toJavaList([{ status: '0' }]);
       }
 

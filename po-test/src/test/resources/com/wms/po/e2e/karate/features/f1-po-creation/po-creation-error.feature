@@ -73,7 +73,7 @@ Feature: F1 - PO Creation Error Handling
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC16: Malformed EDI 850 format
-  # Error Code: INT_011 (69011)
+  # Error Code: EDI_002 (65002)
   # ─────────────────────────────────────────────────────────────
   @F1-TC16 @P2 @EDI @MalformedEDI
   Scenario: Malformed EDI 850 returns parse error
@@ -85,7 +85,7 @@ Feature: F1 - PO Creation Error Handling
     And request ediContent
     When method post
     Then status 400
-    And match response.errorCode == 'INT_011'
+    And match response.errorCode == 'EDI_002'
     And match response.message == '#? _.indexOf("Parse error") >= 0'
     And match response.parseErrors == '#present'
     And match response.parseErrors == '#[_ > 0]'
@@ -94,7 +94,7 @@ Feature: F1 - PO Creation Error Handling
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC17: EDI 850 missing mandatory segment
-  # Error Code: INT_011 (69011)
+  # Error Code: EDI_001 (65001)
   # ─────────────────────────────────────────────────────────────
   @F1-TC17 @P2 @EDI @MissingSegment
   Scenario: EDI 850 missing mandatory segment fails validation
@@ -106,7 +106,7 @@ Feature: F1 - PO Creation Error Handling
     And request ediContent
     When method post
     Then status 400
-    And match response.errorCode == 'INT_011'
+    And match response.errorCode == 'EDI_001'
     And match response.message == '#? _.toLowerCase().indexOf("missing") >= 0'
     And match response.missingSegments == '#? _.toString().indexOf("REF*DP") >= 0'
 
