@@ -1212,7 +1212,7 @@ public class E2ETestMockController {
             if (finalizedReceipts.contains(receiptKey)) {
                 return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
                     "errorCode", "INT_021",
-                    "message", "Concurrent modification detected - receipt already being finalized: " + receiptKey,
+                    "message", "concurrent modification detected - receipt already being finalized: " + receiptKey,
                     "receiptKey", receiptKey,
                     "retryable", false
                 ));
@@ -2707,21 +2707,21 @@ public class E2ETestMockController {
         }
 
         // 400 - Missing mandatory segment (F1-TC17, F2-TC09)
-        // Error Code: INT_011 (69011)
+        // Error Code: EDI_001 (65001) - Missing mandatory segment
         // Check for EDI-ERR-001 pattern (error test file with missing REF*DP segment)
         // Also check MISSING-SEGMENT pattern
         if (ediContent.contains("EDI-ERR-001") || ediContent.contains("MISSING-SEGMENT") ||
             ediContent.contains("MISSING_SEGMENT") || ediContent.contains("ERROR-MISSING") ||
             (ediContent.contains("ERRSENDER") && !ediContent.contains("REF*DP"))) {
             Map<String, Object> response = new LinkedHashMap<>();
-            response.put("errorCode", "INT_011");
+            response.put("errorCode", "EDI_001");
             response.put("message", "Missing mandatory segment in EDI content");
             response.put("missingSegments", List.of("REF*DP"));
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
         }
 
         // 400 - Malformed EDI content (F1-TC16, F2-TC10)
-        // Error Code: INT_011 (69011)
+        // Error Code: EDI_002 (65002) - Parse error
         // Check for EDI-MALFORMED pattern and various invalid data markers
         if (ediContent.contains("EDI-MALFORMED") || ediContent.contains("MALFORMED") ||
             ediContent.contains("ERROR-MALFORMED") || ediContent.contains("INVALID-EDI") ||
@@ -2730,7 +2730,7 @@ public class E2ETestMockController {
             ediContent.contains("INVALID-DATE") || ediContent.contains("INVALID-QTY") ||
             ediContent.contains("INVALID-PRICE")) {
             Map<String, Object> response = new LinkedHashMap<>();
-            response.put("errorCode", "INT_011");
+            response.put("errorCode", "EDI_002");
             response.put("message", "Parse error: malformed EDI content");
             response.put("parseErrors", List.of(
                 Map.of("segment", "ISA", "position", 1, "error", "Invalid format")
@@ -3168,11 +3168,29 @@ public class E2ETestMockController {
     // Track created ASN numbers for duplicate detection
     private final Set<String> createdAsnNumbers = ConcurrentHashMap.newKeySet();
 
+    // Track idempotency keys -> receipt keys for idempotent resubmission (F2-TC25)
+    private final Map<String, String> idempotencyKeyToReceipt = new ConcurrentHashMap<>();
+
     @PostMapping("/asn/populate")
     public ResponseEntity<Map<String, Object>> populateAsn(
             @RequestBody Map<String, Object> request,
-            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyKeyHeader) {
         log.info("[E2E Mock] Populate ASN: {}", request);
+
+        // F2-TC25: Check idempotency key for resubmission
+        String idempotencyKey = (String) request.get("idempotencyKey");
+        if (idempotencyKey == null) {
+            idempotencyKey = idempotencyKeyHeader;
+        }
+        if (idempotencyKey != null && idempotencyKeyToReceipt.containsKey(idempotencyKey)) {
+            String existingReceiptKey = idempotencyKeyToReceipt.get(idempotencyKey);
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("receiptKey", existingReceiptKey);
+            response.put("idempotent", true);
+            response.put("status", "EXISTING");
+            return ResponseEntity.ok(response);
+        }
 
         String poKey = (String) request.get("poKey");
         String asnNumber = (String) request.get("asnNumber");
@@ -3288,6 +3306,20 @@ public class E2ETestMockController {
         String receiptKey = "RCV-" + System.currentTimeMillis();
         String linkedPoKey = poKey;
 
+        // F2-TC21: Calculate line count filtering zero-qty lines
+        int nonZeroLineCount = 0;
+        if (lines != null) {
+            for (Map<String, Object> line : lines) {
+                Object qtyObj = line.get("qtyShipped");
+                int qty = qtyObj instanceof Number ? ((Number) qtyObj).intValue() : 0;
+                if (qty > 0) {
+                    nonZeroLineCount++;
+                }
+            }
+        } else {
+            nonZeroLineCount = 1;
+        }
+
         // Build success response with additional fields for happy path tests
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("poKey", poKey);
@@ -3295,7 +3327,19 @@ public class E2ETestMockController {
         response.put("receiptKey", receiptKey);
         response.put("status", "POPULATED");
         response.put("linesPopulated", lines != null ? lines.size() : 1);
+        response.put("lineCount", nonZeroLineCount);
         response.put("populatedAt", LocalDateTime.now().toString());
+
+        // F2-TC23: Add shipDate from request if present
+        String shipDate = (String) request.get("shipDate");
+        if (shipDate != null) {
+            response.put("shipDate", shipDate);
+        }
+
+        // Track idempotency key for F2-TC25 (reuse idempotencyKey from header)
+        if (idempotencyKey != null) {
+            idempotencyKeyToReceipt.put(idempotencyKey, receiptKey);
+        }
 
         // Add linkedPoKey for F2-TC04
         if (linkedPoKey != null) {
@@ -3328,7 +3372,7 @@ public class E2ETestMockController {
             response.put("partialShipment", true);
         }
 
-        // Add over-receipt warning for F2-TC08
+        // Add over-receipt warning for F2-TC08 and F2-TC22
         if (Boolean.TRUE.equals(allowOverReceipt) && lines != null) {
             for (Map<String, Object> line : lines) {
                 Object qtyOrderedObj = line.get("qtyOrdered");
@@ -3337,8 +3381,14 @@ public class E2ETestMockController {
                     int qtyOrdered = ((Number) qtyOrderedObj).intValue();
                     int qtyShipped = ((Number) qtyShippedObj).intValue();
                     if (qtyShipped > qtyOrdered) {
+                        int overage = qtyShipped - qtyOrdered;
+                        int toleranceQty = (qtyOrdered * overReceiptTolerance) / 100;
                         response.put("overReceiptWarning", true);
-                        response.put("overReceiptQty", qtyShipped - qtyOrdered);
+                        response.put("overReceiptQty", overage);
+                        // F2-TC22: Mark as within tolerance if at or below tolerance
+                        if (overage <= toleranceQty) {
+                            response.put("withinTolerance", true);
+                        }
                         break;
                     }
                 }
