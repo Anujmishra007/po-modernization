@@ -147,7 +147,7 @@ Feature: F7 - Trade Return Flow Tests
 
     # Verify inventory created
     * def inv = db.query("SELECT * FROM dbo.lotxlocxid WHERE returnkey = '" + returnKey + "'")
-    * match inv.length >= 1
+    * assert karate.sizeOf(inv) >= 1
 
   # ─────────────────────────────────────────────────────────────
   # F7-TC06: Trade return with credit memo

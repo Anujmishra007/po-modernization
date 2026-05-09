@@ -247,7 +247,7 @@ Feature: F8 - PO/Receipt Cancellation Flow Tests
 
     # Verify audit
     * def audit = db.query("SELECT * FROM dbo.poaudit WHERE pokey = '" + poKey + "' AND action = 'CANCEL'")
-    * match audit.length >= 1
+    * assert karate.sizeOf(audit) >= 1
 
   @F8-TC14 @P3 @ASN
   Scenario: Cancel PO with pending ASN

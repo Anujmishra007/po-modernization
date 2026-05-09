@@ -148,7 +148,7 @@ Feature: F4 - Cross-Dock Allocation Happy Path Tests
     # Verify FIFO order (oldest order first)
     * def firstOrderDate = response.allocations[0].orderDate
     * def secondOrderDate = response.allocations[1].orderDate
-    * match firstOrderDate <= secondOrderDate
+    * assert firstOrderDate <= secondOrderDate
 
   # ─────────────────────────────────────────────────────────────
   # F4-TC06: Cross-dock via XDock linkage table
@@ -227,5 +227,5 @@ Feature: F4 - Cross-Dock Allocation Happy Path Tests
 
     # Verify allocations created
     * def allocs = db.query("SELECT * FROM dbo.allocation WHERE sourcekey = '" + receiptKey + "' AND alloctype = 'XDOCK'")
-    * match allocs.length >= 1
+    * assert karate.sizeOf(allocs) >= 1
 

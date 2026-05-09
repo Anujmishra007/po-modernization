@@ -33,7 +33,7 @@ Feature: F6 - Putaway Task Flow Tests
 
     # Verify tasks in DB
     * def tasks = db.query("SELECT * FROM dbo.task WHERE fromkey = '" + receiptKey + "' AND tasktype = 'PUTAWAY'")
-    * match tasks.length >= 1
+    * assert karate.sizeOf(tasks) >= 1
     * match tasks[0].status == '0'
 
   # ─────────────────────────────────────────────────────────────
@@ -267,7 +267,7 @@ Feature: F6 - Putaway Task Flow Tests
     When method get
     Then status 200
     # High priority tasks (1-3) should be assigned first
-    And match response.priority <= 3
+    And assert response.priority <= 3
 
   # ─────────────────────────────────────────────────────────────
   # F6-TC11 to F6-TC20: Additional putaway scenarios
@@ -381,7 +381,7 @@ Feature: F6 - Putaway Task Flow Tests
     # First task should have earliest creation date
     * def firstTaskDate = response.tasks[0].createdDate
     * def secondTaskDate = response.tasks[1].createdDate
-    * match firstTaskDate <= secondTaskDate
+    * assert firstTaskDate <= secondTaskDate
 
   @F6-TC19 @P3 @Interleave
   Scenario: Interleaved putaway with picking
