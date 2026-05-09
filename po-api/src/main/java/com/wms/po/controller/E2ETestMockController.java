@@ -948,6 +948,7 @@ public class E2ETestMockController {
         return ResponseEntity.ok(Map.of(
             "poKey", poKey,
             "archived", true,
+            "archiveDate", LocalDateTime.now().minusDays(30).toString(),
             "archivedAt", LocalDateTime.now().minusDays(30).toString(),
             "history", List.of(
                 Map.of("action", "CREATED", "timestamp", LocalDateTime.now().minusDays(60).toString()),

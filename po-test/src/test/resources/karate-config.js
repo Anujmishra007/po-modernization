@@ -205,6 +205,10 @@ function fn() {
         else if (sqlLower.indexOf('dbo.po') >= 0 && sqlLower.indexOf('externpokey') >= 0) {
           countValue = 0; // No partial data created
         }
+        // F9: Archived POs removed from active table
+        else if (sqlLower.indexOf('dbo.po') >= 0 && sqlLower.indexOf('po-archive') >= 0) {
+          countValue = 0; // Archived POs no longer in active table
+        }
         // Inventory count
         else if (sqlLower.indexOf('lotxlocxid') >= 0) {
           if (sqlLower.indexOf('test-loc-full') >= 0) {
@@ -259,6 +263,10 @@ function fn() {
       // PO/Order status queries
       if (sqlLower.indexOf('select status from dbo.orders') >= 0 ||
           sqlLower.indexOf('select status from dbo.po') >= 0) {
+        // F8: Cancelled POs return status '5'
+        if (sqlLower.indexOf('po-cancel') >= 0) {
+          return toJavaList([{ status: '5' }]);
+        }
         // F3-TC09: PO closed after full receipt
         if (sqlLower.indexOf('po-close') >= 0) {
           return toJavaList([{ status: '9' }]);
