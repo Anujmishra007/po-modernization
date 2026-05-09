@@ -336,10 +336,36 @@ function fn() {
         // - After cascade compensation: return '0' (rolled back)
         var poKeyMatch = sql.match(/pokey\s*=\s*'(PO-\d+)'/i);
         if (poKeyMatch && poKeyMatch[1] && /^PO-\d{13,}$/.test(poKeyMatch[1])) {
-          // COMP-27: For cascade compensation tests, the PO is rolled back to '0'
-          // We return '0' for dynamic POs since cascade compensation is the more common test scenario
-          // Tests that need '1' should use explicit happy path PO keys like PO-HAPPY-001
-          return toJavaList([{ status: '0' }]); // Compensated/rolled back status for dynamic POs
+          var dynamicPoKey = poKeyMatch[1];
+          // COMP-27: Check if this PO was cascade-compensated using HTTP call
+          try {
+            var Http = Java.type('java.net.URL');
+            var url = new Http(config.baseUrl + '/api/v1/e2e/state/po/' + dynamicPoKey + '/cascade-compensated');
+            var conn = url.openConnection();
+            conn.setRequestMethod('GET');
+            conn.setConnectTimeout(1000);
+            conn.setReadTimeout(1000);
+
+            if (conn.getResponseCode() === 200) {
+              var reader = new java.io.BufferedReader(new java.io.InputStreamReader(conn.getInputStream()));
+              var response = '';
+              var line;
+              while ((line = reader.readLine()) !== null) {
+                response += line;
+              }
+              reader.close();
+
+              // Parse JSON response
+              if (response.indexOf('"cascadeCompensated":true') >= 0) {
+                karate.log('[MockDB] PO', dynamicPoKey, 'was cascade-compensated, returning status 0');
+                return toJavaList([{ status: '0' }]); // Rolled back status
+              }
+            }
+          } catch (e) {
+            karate.log('[MockDB] Failed to check cascade status for', dynamicPoKey, ':', e);
+          }
+          // F2 tests: Dynamic POs from ASN populate should return '1' (ASN Received)
+          return toJavaList([{ status: '1' }]); // ASN Received status for dynamic POs
         }
         return toJavaList([{ status: '0' }]);
       }

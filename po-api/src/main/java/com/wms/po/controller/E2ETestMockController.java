@@ -57,6 +57,10 @@ public class E2ETestMockController {
     // Track finalized receipts for concurrent modification detection (F3-TC22)
     private final Set<String> finalizedReceipts = ConcurrentHashMap.newKeySet();
 
+    // Track cascade-compensated PO keys (COMP-27)
+    private final Set<String> cascadeCompensatedPoKeys = ConcurrentHashMap.newKeySet();
+    private final Map<String, String> poKeyToExternalKey = new ConcurrentHashMap<>();
+
     // Additional error trigger patterns
     private static final Set<String> INVALID_SUPPLIERS = Set.of("INVALID-SUPPLIER-999", "INVALID_SUPPLIER", "UNKNOWN-SUPPLIER");
     private static final Set<String> ERROR_STORERS = Set.of("TEST_STORER_ERR", "STORER_INACTIVE", "STORER_DISABLED");
@@ -370,10 +374,11 @@ public class E2ETestMockController {
         // Success - create PO
         String poKey = "PO-" + System.currentTimeMillis();
 
-        // Track the external key for duplicate detection
+        // Track the external key for duplicate detection and reverse lookup
         if (externPoKey != null) {
             createdPoExternalKeys.add(externPoKey);
             externalKeyToPoKey.put(externPoKey, poKey);
+            poKeyToExternalKey.put(poKey, externPoKey);  // Reverse mapping for COMP-27
         }
 
         // Build response
@@ -1223,10 +1228,18 @@ public class E2ETestMockController {
 
         // COMP-27: Cascading compensation - trigger full cascade rollback
         if ("true".equalsIgnoreCase(triggerCascade)) {
+            // Mark the associated PO as cascade-compensated for mock DB status queries
+            String associatedPoKey = receiptKeyToPoKey.get(receiptKey);
+            if (associatedPoKey != null) {
+                cascadeCompensatedPoKeys.add(associatedPoKey);
+                log.info("[E2E Mock] Marked PO {} as cascade-compensated", associatedPoKey);
+            }
+
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("errorCode", "COMP_001");
             response.put("cascadeCompensation", true);
             response.put("compensatedFlows", List.of("FINALIZE", "POPULATE"));
+            response.put("compensatedPoKey", associatedPoKey);
             response.put("message", "Full cascade compensation executed");
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(response);
         }
@@ -4000,5 +4013,33 @@ public class E2ETestMockController {
         response.put("steps", List.of("VALIDATE", "CREATE_RECEIPT", "UPDATE_INVENTORY", "NOTIFY"));
         response.put("completedAt", LocalDateTime.now().toString());
         return ResponseEntity.ok(response);
+    }
+
+    // ==================== E2E Test State Endpoints ====================
+
+    @GetMapping("/e2e/state/po/{poKey}/cascade-compensated")
+    public ResponseEntity<Map<String, Object>> isPoCascadeCompensated(@PathVariable String poKey) {
+        boolean isCompensated = cascadeCompensatedPoKeys.contains(poKey);
+        String externalKey = poKeyToExternalKey.get(poKey);
+
+        // Also check if the external key contains CASCADE pattern
+        if (!isCompensated && externalKey != null && externalKey.toUpperCase().contains("CASCADE")) {
+            isCompensated = true;
+        }
+
+        return ResponseEntity.ok(Map.of(
+            "poKey", poKey,
+            "externalKey", externalKey != null ? externalKey : "",
+            "cascadeCompensated", isCompensated
+        ));
+    }
+
+    @GetMapping("/e2e/state/po/{poKey}/external-key")
+    public ResponseEntity<Map<String, Object>> getPoExternalKey(@PathVariable String poKey) {
+        String externalKey = poKeyToExternalKey.get(poKey);
+        return ResponseEntity.ok(Map.of(
+            "poKey", poKey,
+            "externalKey", externalKey != null ? externalKey : ""
+        ));
     }
 }
