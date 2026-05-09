@@ -177,5 +177,5 @@ Feature: F4 - Cross-Dock Allocation Edge Cases
 
     # Verify no allocations persisted
     * def allocs = db.query("SELECT * FROM dbo.allocation WHERE sourcekey = '" + receiptKey + "'")
-    * match allocs.length == 0
+    * assert karate.sizeOf(allocs) == 0
 

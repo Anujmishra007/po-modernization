@@ -357,7 +357,7 @@ Feature: F6 - Putaway Task Flow Tests
     When method get
     Then status 200
     And assert karate.sizeOf(response.events) >= 1
-    And match response.events contains { action: 'CREATED' }
+    And match response.events[*].action contains 'CREATED'
 
   @F6-TC17 @P3 @Metrics
   Scenario: Putaway performance metrics

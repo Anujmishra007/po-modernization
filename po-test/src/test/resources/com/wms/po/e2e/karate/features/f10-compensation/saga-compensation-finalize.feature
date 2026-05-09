@@ -178,7 +178,7 @@ Feature: F10 - Finalize Flow Compensation Tests
 
     # Check audit trail
     * def auditResult = db.query("SELECT * FROM dbo.compensationaudit WHERE entitykey = '" + receiptKey + "' ORDER BY auditdate")
-    * match auditResult.length >= 2
+    * assert karate.sizeOf(auditResult) >= 2
 
     # Should have both EXECUTE and COMPENSATE actions
     * def actions = karate.map(auditResult, function(x) { return x.action })

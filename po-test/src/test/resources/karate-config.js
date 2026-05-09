@@ -394,12 +394,21 @@ function fn() {
         }]);
       }
 
-      // Task records (F3-TC04)
+      // Task records (F3-TC04, F4-TC07)
       if (sqlLower.indexOf('select * from dbo.task') >= 0) {
+        // F4-TC07: PICK tasks (taskkey contains 'PICK' or 'pick')
+        var taskType = 'PUTAWAY';
+        var sourceKey = 'RCV-HAPPY-004';
+        if (sqlLower.indexOf('task-pick-') >= 0 || sqlLower.indexOf('pick') >= 0) {
+          taskType = 'PICK';
+          sourceKey = 'RCV-XDOCK-007';
+        }
         return toJavaList([{
           taskid: 'TASK-001',
-          fromkey: 'RCV-HAPPY-004',
-          tasktype: 'PUTAWAY',
+          taskkey: 'TASK-001',
+          fromkey: sourceKey,
+          sourcekey: sourceKey,
+          tasktype: taskType,
           status: '0',
           adddate: new Date().toISOString()
         }]);

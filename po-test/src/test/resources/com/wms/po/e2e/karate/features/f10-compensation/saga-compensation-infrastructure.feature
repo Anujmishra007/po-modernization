@@ -59,7 +59,7 @@ Feature: F10 - Infrastructure Failure Compensation Tests
 
     # Verify event in outbox table
     * def outboxCheck = db.query("SELECT * FROM dbo.eventoutbox WHERE entitykey = '" + receiptKey + "' AND status = 'PENDING'")
-    * match outboxCheck.length >= 1
+    * assert karate.sizeOf(outboxCheck) >= 1
 
   # ─────────────────────────────────────────────────────────────
   # COMP-19: Partial compensation failure
@@ -85,7 +85,7 @@ Feature: F10 - Infrastructure Failure Compensation Tests
 
     # Verify incident created
     * def incidentCheck = db.query("SELECT * FROM dbo.compensationincident WHERE entitykey = '" + receiptKey + "' AND status = 'OPEN'")
-    * match incidentCheck.length >= 1
+    * assert karate.sizeOf(incidentCheck) >= 1
 
   # ─────────────────────────────────────────────────────────────
   # COMP-30: Manual intervention alert triggered
@@ -108,7 +108,7 @@ Feature: F10 - Infrastructure Failure Compensation Tests
 
     # Verify alert sent (check alert log)
     * def alertCheck = db.query("SELECT * FROM dbo.alertlog WHERE entitykey = '" + receiptKey + "' AND alerttype = 'COMPENSATION_FAILURE'")
-    * match alertCheck.length >= 1
+    * assert karate.sizeOf(alertCheck) >= 1
 
   # ─────────────────────────────────────────────────────────────
   # COMP-31: Network partition during workflow
