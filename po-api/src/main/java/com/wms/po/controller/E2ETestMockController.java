@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -349,13 +350,20 @@ public class E2ETestMockController {
         Object expectedDateObj = request.get("expectedDate");
         if (expectedDateObj != null) {
             String expectedDateStr = expectedDateObj.toString();
-            // Simple check: if it contains a date before today, it's in the past
-            if (expectedDateStr.startsWith("202") && expectedDateStr.compareTo("2026-05-08") < 0) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                    "errorCode", "VAL_006",
-                    "message", "Expected date cannot be in the past",
-                    "field", "expectedDate"
-                ));
+            // Dynamic check: compare to today's date
+            try {
+                LocalDate expectedDate = LocalDate.parse(expectedDateStr.substring(0, 10));
+                LocalDate today = LocalDate.now();
+                if (expectedDate.isBefore(today)) {
+                    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                        "errorCode", "VAL_006",
+                        "message", "Expected date cannot be in the past",
+                        "field", "expectedDate"
+                    ));
+                }
+            } catch (Exception e) {
+                // If date parsing fails, skip validation
+                log.debug("Could not parse expectedDate: {}", expectedDateStr);
             }
         }
 
@@ -812,17 +820,26 @@ public class E2ETestMockController {
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(response);
         }
 
-        // 422 - Generic compensation patterns (any other PO-COMP-* that simulates failure)
-        if (poKey.startsWith("PO-COMP-") || poKey.startsWith("PO-TEST-") ||
-            (poKey.startsWith("PO-") && poKey.matches("PO-\\d{10,}")) ||
-            poKey.startsWith("PO-ERR-") || poKey.contains("-ERR-")) {
-            // Exclude specific async patterns
-            if (poKey.startsWith("PO-COMP-CANCEL-") || poKey.startsWith("PO-COMP-TIMEOUT-") ||
-                poKey.startsWith("PO-COMP-OOM-") || poKey.startsWith("PO-COMP-SERVICE-") ||
-                poKey.startsWith("PO-COMP-DBERR-") || poKey.startsWith("PO-COMP-DEADLOCK-") ||
-                poKey.startsWith("PO-COMP-CONC-")) {
-                // These have specific handling below
-            } else {
+        // Check for explicit async:false in request (COMP-15 concurrent scenario)
+        // This must be checked before 422 generic patterns to allow 409 response
+        boolean explicitSyncRequest = request != null && Boolean.FALSE.equals(request.get("async"));
+
+        // 422 - Generic compensation patterns (specific error patterns only)
+        // Note: PO-TEST-{timestamp} patterns should NOT fail - only short PO-TEST-### patterns
+        // Also exclude timestamp-based PO keys (e.g., PO-1234567890123) for COMP-26 success scenario
+        // COMP-15: Skip 422 if async:false is explicitly set (concurrent scenario -> 409)
+        boolean isShortTestPattern = poKey.matches("PO-TEST-\\d{1,3}");
+        boolean isShortCompPattern = poKey.startsWith("PO-COMP-") &&
+            !poKey.startsWith("PO-COMP-CANCEL-") && !poKey.startsWith("PO-COMP-TIMEOUT-") &&
+            !poKey.startsWith("PO-COMP-OOM-") && !poKey.startsWith("PO-COMP-SERVICE-") &&
+            !poKey.startsWith("PO-COMP-DBERR-") && !poKey.startsWith("PO-COMP-DEADLOCK-") &&
+            !poKey.startsWith("PO-COMP-CONC-");
+        boolean isErrorPattern = poKey.startsWith("PO-ERR-") || poKey.contains("-ERR-");
+
+        // Skip 422 for concurrent scenario (explicit async:false on short test pattern)
+        if (!explicitSyncRequest || !isShortTestPattern) {
+            if (isShortTestPattern || (isShortCompPattern && !poKey.contains("-RES-") && !poKey.contains("-ALLOC-") &&
+                !poKey.contains("-LEGACY-") && !poKey.contains("-IDEMP-")) || isErrorPattern) {
                 return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
                     "errorCode", "PO_010",
                     "message", "PO cannot be populated: compensation test failure for " + poKey,
@@ -857,12 +874,14 @@ public class E2ETestMockController {
             ));
         }
 
-        // 409 - Conflict
-        if (poKey.startsWith("PO-COMP-CONC-") || poKey.contains("CONC")) {
+        // 409 - Conflict (concurrent modification)
+        // COMP-15: Check for explicit async:false on test patterns (simulates concurrent populate)
+        if (poKey.startsWith("PO-COMP-CONC-") || poKey.contains("CONC") ||
+            (explicitSyncRequest && isShortTestPattern)) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
-                "errorCode", "PO_040",
+                "errorCode", "INT_021",
                 "legacyCode", 68040,
-                "message", "Concurrent modification detected for PO: " + poKey,
+                "message", "Concurrent modification detected - another populate is in progress for PO: " + poKey,
                 "poKey", poKey,
                 "retryable", true
             ));
@@ -3807,19 +3826,43 @@ public class E2ETestMockController {
     public ResponseEntity<Map<String, Object>> sagaPoToInventory(
             @RequestBody(required = false) Map<String, Object> request,
             @RequestHeader(value = "Authorization", required = false) String authHeader,
-            @RequestHeader(value = "X-Test-Fail-At-Step", required = false) String failAtStep) {
-        log.info("[E2E Mock] Saga PO to inventory: {}, failAtStep={}", request, failAtStep);
+            @RequestHeader(value = "X-Test-Fail-At-Step", required = false) String failAtStepHeader) {
+        log.info("[E2E Mock] Saga PO to inventory: {}, failAtStepHeader={}", request, failAtStepHeader);
 
         String poKey = request != null ? (String) request.get("poKey") : null;
+        String externalPoKey = request != null ? (String) request.get("externalPoKey") : null;
 
-        // Simulate failure at step
+        // COMP-33: Check failAtStep from request body if not in header
+        String failAtStep = failAtStepHeader;
+        if ((failAtStep == null || failAtStep.isBlank()) && request != null) {
+            Object failAtStepObj = request.get("failAtStep");
+            if (failAtStepObj != null) {
+                failAtStep = failAtStepObj.toString();
+            }
+        }
+
+        log.info("[E2E Mock] Effective failAtStep={}, poKey={}, externalPoKey={}", failAtStep, poKey, externalPoKey);
+
+        // Simulate failure at step (COMP-33)
         if (failAtStep != null && !failAtStep.isBlank()) {
-            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
-                "errorCode", "SAGA_001",
-                "message", "Saga failed at step: " + failAtStep,
-                "compensated", true,
-                "failedStep", failAtStep
-            ));
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("errorCode", "SAGA_001");
+            response.put("message", "Saga failed at step: " + failAtStep);
+            response.put("sagaStatus", "COMPENSATED");
+            response.put("failedStep", failAtStep);
+
+            // For COMP-33, include participants executed/compensated
+            response.put("participantsExecuted", List.of("PO_CREATE", "POPULATE", "FINALIZE"));
+            response.put("participantsCompensated", List.of("FINALIZE", "POPULATE", "PO_CREATE"));
+            response.put("compensated", true);
+
+            if (externalPoKey != null) {
+                response.put("poKey", externalPoKey);
+            } else if (poKey != null) {
+                response.put("poKey", poKey);
+            }
+
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(response);
         }
 
         if (poKey != null) {

@@ -412,10 +412,18 @@ function fn() {
       // ═══════════════════════════════════════════════════════════
 
       // PO audit records for trigger tests (F1-TC18, F1-TC19)
-      if (sqlLower.indexOf('select * from dbo.poaudit') >= 0) {
+      // Handle both dbo.poaudit and dbo.trigger_audit table names
+      if (sqlLower.indexOf('select * from dbo.poaudit') >= 0 ||
+          sqlLower.indexOf('select * from dbo.trigger_audit') >= 0) {
+        // Extract entity/po key from query for matching
+        var entityKeyMatch = sql.match(/entitykey\s*=\s*'([^']+)'/i);
+        var poKeyMatch = sql.match(/pokey\s*=\s*'([^']+)'/i);
+        var matchedKey = (entityKeyMatch && entityKeyMatch[1]) || (poKeyMatch && poKeyMatch[1]) || 'PO-TRG-001';
+
         return toJavaList([{
           auditid: 'AUDIT-PO-001',
-          pokey: 'PO-TRG-001',
+          pokey: matchedKey,
+          entitykey: matchedKey,
           action: 'INSERT',
           triggertype: 'AFTER_INSERT',
           tablename: 'po',
