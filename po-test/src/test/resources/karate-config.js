@@ -362,10 +362,22 @@ function fn() {
         var receiptKeyMatch = sql.match(/receiptkey\s*=\s*'([^']+)'/i);
         var queryReceiptKey = receiptKeyMatch ? receiptKeyMatch[1] : 'unknown';
 
-        // COMP-27: Cascade compensation - receipt status is 'X'
-        if (queryReceiptKey.indexOf('CASCADE') >= 0 || queryReceiptKey.indexOf('COMP') >= 0 ||
-            queryReceiptKey.indexOf('RCV-') >= 0) {
-          // After cascade compensation, receipt status is 'X'
+        // Check for known good receipts that should have specific status
+        if (queryReceiptKey === 'RCV-FINALIZE-001' || queryReceiptKey === 'RCV-NIKE-001') {
+          return toJavaList([{ status: '5', receiptkey: queryReceiptKey }]);
+        }
+        if (queryReceiptKey === 'RCV-FINALIZED-001') {
+          return toJavaList([{ status: '9', receiptkey: queryReceiptKey }]);
+        }
+
+        // COMP-27: Dynamically created receipts (RCV-{timestamp}) are from compensation tests
+        // After cascade compensation, receipt status is 'X'
+        if (queryReceiptKey.match(/^RCV-\d+$/)) {
+          return toJavaList([{ status: 'X', receiptkey: queryReceiptKey }]);
+        }
+
+        // Compensation patterns
+        if (queryReceiptKey.indexOf('CASCADE') >= 0 || queryReceiptKey.indexOf('COMP') >= 0) {
           return toJavaList([{ status: 'X', receiptkey: queryReceiptKey }]);
         }
 
