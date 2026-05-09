@@ -715,8 +715,8 @@ public class E2ETestMockController {
             @RequestHeader(value = "X-Test-Fail-At-Step", required = false) String failAtStep,
             @RequestHeader(value = "X-Test-Simulate-Timeout", required = false) String simulateTimeout,
             @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyKey) {
-        log.info("[E2E Mock] Populate PO: {}, failAtStep={}, simulateTimeout={}, idempKey={}",
-                poKey, failAtStep, simulateTimeout, idempotencyKey);
+        log.info("[E2E Mock] Populate PO: {}, failAtStep={}, simulateTimeout={}, idempKey={}, request={}",
+                poKey, failAtStep, simulateTimeout, idempotencyKey, request);
 
         // Check for idempotent retry (COMP-07)
         if (idempotencyKey != null && idempotencyResponses.containsKey(idempotencyKey)) {
@@ -822,7 +822,11 @@ public class E2ETestMockController {
 
         // Check for explicit async:false in request (COMP-15 concurrent scenario)
         // This must be checked before 422 generic patterns to allow 409 response
-        boolean explicitSyncRequest = request != null && Boolean.FALSE.equals(request.get("async"));
+        // Handle both Boolean false and String "false" to be robust to JSON parsing variations
+        Object asyncValue = request != null ? request.get("async") : null;
+        boolean explicitSyncRequest = Boolean.FALSE.equals(asyncValue) ||
+            (asyncValue != null && "false".equalsIgnoreCase(String.valueOf(asyncValue)));
+        log.debug("[E2E Mock] Populate - asyncValue={}, explicitSyncRequest={}", asyncValue, explicitSyncRequest);
 
         // 422 - Generic compensation patterns (specific error patterns only)
         // Note: PO-TEST-{timestamp} patterns should NOT fail - only short PO-TEST-### patterns
@@ -3831,21 +3835,35 @@ public class E2ETestMockController {
             @RequestBody(required = false) Map<String, Object> request,
             @RequestHeader(value = "Authorization", required = false) String authHeader,
             @RequestHeader(value = "X-Test-Fail-At-Step", required = false) String failAtStepHeader) {
-        log.info("[E2E Mock] Saga PO to inventory: {}, failAtStepHeader={}", request, failAtStepHeader);
+        log.info("[E2E Mock] Saga PO to inventory: request={}, failAtStepHeader={}", request, failAtStepHeader);
 
         String poKey = request != null ? (String) request.get("poKey") : null;
         String externalPoKey = request != null ? (String) request.get("externalPoKey") : null;
 
         // COMP-33: Check failAtStep from request body if not in header
+        // Also check for variations: failAtStep, failStep, fail_at_step
         String failAtStep = failAtStepHeader;
         if ((failAtStep == null || failAtStep.isBlank()) && request != null) {
             Object failAtStepObj = request.get("failAtStep");
+            // Try alternate keys if primary not found
+            if (failAtStepObj == null) {
+                failAtStepObj = request.get("fail_at_step");
+            }
+            if (failAtStepObj == null) {
+                failAtStepObj = request.get("failStep");
+            }
             if (failAtStepObj != null) {
                 failAtStep = failAtStepObj.toString();
             }
         }
 
-        log.info("[E2E Mock] Effective failAtStep={}, poKey={}, externalPoKey={}", failAtStep, poKey, externalPoKey);
+        // Use externalPoKey as fallback for poKey if not set
+        if (poKey == null && externalPoKey != null) {
+            poKey = externalPoKey;
+        }
+
+        log.info("[E2E Mock] Saga - effective failAtStep={}, poKey={}, externalPoKey={}, requestKeys={}",
+                failAtStep, poKey, externalPoKey, request != null ? request.keySet() : "null");
 
         // Simulate failure at step (COMP-33)
         if (failAtStep != null && !failAtStep.isBlank()) {
