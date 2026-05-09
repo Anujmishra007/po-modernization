@@ -417,6 +417,54 @@ function fn() {
       }
 
       // ═══════════════════════════════════════════════════════════
+      // F4: CROSS-DOCK ALLOCATION QUERIES
+      // ═══════════════════════════════════════════════════════════
+
+      // Allocation records (F4-TC01)
+      if (sqlLower.indexOf('select * from dbo.allocation') >= 0) {
+        return toJavaList([{
+          allocationkey: 'ALLOC-001',
+          receiptkey: 'RCV-XDOCK-001',
+          orderkey: 'XDOCK-SO-001',
+          sku: 'NK-AIRMAX90-BLK',
+          qty: 50,
+          status: '1',
+          alloctype: 'XDOCK'
+        }]);
+      }
+
+      // Receipt xdockflag (F4-TC02)
+      if (sqlLower.indexOf('select xdockflag from dbo.receipt') >= 0) {
+        return toJavaList([{ xdockflag: '1' }]);
+      }
+
+      // XDock linkage status (F4-TC06)
+      if (sqlLower.indexOf('select status from dbo.xdocklinkage') >= 0) {
+        return toJavaList([{ status: '1' }]);
+      }
+
+      // Carton header for xdock (F4-TC07)
+      if (sqlLower.indexOf('cartonheader') >= 0) {
+        return toJavaList([
+          { cartonid: 'CTN-001', receiptkey: 'RCV-ASN-001', weight: 25.5 },
+          { cartonid: 'CTN-002', receiptkey: 'RCV-ASN-001', weight: 30.0 }
+        ]);
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // F6: PUTAWAY TASK QUERIES
+      // ═══════════════════════════════════════════════════════════
+
+      // Task assignment status (F6-TC03)
+      if (sqlLower.indexOf('select assignedto') >= 0 && sqlLower.indexOf('dbo.task') >= 0) {
+        return toJavaList([{
+          taskkey: 'TASK-PUTAWAY-001',
+          assignedto: 'RDT_USER_001',
+          status: '1'
+        }]);
+      }
+
+      // ═══════════════════════════════════════════════════════════
       // F5: LOTTABLE TRACKING / INVENTORY QUERIES
       // ═══════════════════════════════════════════════════════════
 
