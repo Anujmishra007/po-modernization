@@ -148,17 +148,39 @@ jobs:
         env:
           PGPASSWORD: wms123
         run: |
+          set -e  # Exit on any error
+
+          # Verify database connectivity
+          echo "Testing database connection..."
+          psql -h localhost -p 5433 -U wms -d po_test -c "SELECT 1;" || {
+            echo "ERROR: Cannot connect to database"
+            exit 1
+          }
+
           # Load schema first
+          echo "Loading schema..."
           psql -h localhost -p 5433 -U wms -d po_test \
-            -f local-environment/seed-data/00-schema.sql
+            -f local-environment/seed-data/00-schema.sql || {
+            echo "ERROR: Failed to load schema"
+            exit 1
+          }
 
           # Load all TD-*.sql files in order (02-16)
           for f in local-environment/seed-data/[0-1][0-9]-TD-*.sql; do
             if [ -f "$f" ]; then
               echo "Loading: $f"
-              psql -h localhost -p 5433 -U wms -d po_test -f "$f"
+              psql -h localhost -p 5433 -U wms -d po_test -f "$f" || {
+                echo "ERROR: Failed to load $f"
+                exit 1
+              }
             fi
           done
+
+          # Verify tables were created
+          echo "Verifying tables..."
+          psql -h localhost -p 5433 -U wms -d po_test -c "SELECT COUNT(*) FROM dbo.storer;" || {
+            echo "WARNING: storer table might be empty"
+          }
 
           echo "Test data loaded successfully"
 
@@ -170,24 +192,48 @@ jobs:
 
       - name: Start Application
         run: |
-          java -jar po-api/target/po-api-*-exec.jar \
-            --spring.profiles.active=test \
+          # Verify exec jar exists
+          JAR_FILE=$(ls po-api/target/po-api-*-exec.jar 2>/dev/null | head -1)
+          if [ -z "$JAR_FILE" ]; then
+            echo "ERROR: No exec jar found in po-api/target/"
+            ls -la po-api/target/*.jar 2>/dev/null || echo "No jars at all!"
+            exit 1
+          fi
+          echo "Found JAR: $JAR_FILE"
+
+          # Start application with logging to file
+          java -jar "$JAR_FILE" \
+            --spring.profiles.active=e2e-test,test \
             --spring.datasource.url=jdbc:postgresql://localhost:5433/po_test \
             --spring.datasource.username=wms \
             --spring.datasource.password=wms123 \
             --spring.jpa.hibernate.ddl-auto=none \
             --spring.flyway.enabled=false \
             --temporal.enabled=false \
-            --server.port=8080 &
+            --server.port=8080 \
+            > app.log 2>&1 &
+
+          APP_PID=$!
+          echo "Application PID: $APP_PID"
 
           # Wait for application to start
           for i in {1..90}; do
+            # Check if process is still running
+            if ! kill -0 $APP_PID 2>/dev/null; then
+              echo "ERROR: Application process died!"
+              echo "=== Application Logs ==="
+              cat app.log
+              exit 1
+            fi
+
             if curl -s http://localhost:8080/actuator/health | grep -q "UP"; then
               echo "Application is ready"
               break
             fi
             if [ $i -eq 90 ]; then
               echo "Application failed to start within timeout"
+              echo "=== Application Logs (last 100 lines) ==="
+              tail -100 app.log
               exit 1
             fi
             echo "Waiting for application... ($i/90)"
