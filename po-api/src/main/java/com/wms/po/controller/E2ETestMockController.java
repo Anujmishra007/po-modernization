@@ -2543,41 +2543,6 @@ public class E2ETestMockController {
         ));
     }
 
-    // ==================== Saga Orchestration ====================
-
-    @PostMapping("/saga/po-to-inventory")
-    public ResponseEntity<Map<String, Object>> sagaPoToInventory(
-            @RequestBody Map<String, Object> request,
-            @RequestHeader(value = "Authorization", required = false) String authHeader) {
-        log.info("[E2E Mock] Saga PO to inventory: {}", request);
-
-        String failAtStep = (String) request.get("failAtStep");
-        String externalPoKey = (String) request.get("externalPoKey");
-
-        // COMP-33: E2E saga test with all participants
-        if (failAtStep != null && !failAtStep.isBlank()) {
-            Map<String, Object> response = new LinkedHashMap<>();
-            response.put("errorCode", "COMP_001");
-            response.put("sagaStatus", "COMPENSATED");
-            response.put("participantsExecuted", List.of("PO_CREATE", "POPULATE", "FINALIZE"));
-            response.put("participantsCompensated", List.of("FINALIZE", "POPULATE", "PO_CREATE"));
-            response.put("failedAtStep", failAtStep);
-            response.put("externalPoKey", externalPoKey);
-            response.put("message", "Saga failed at step " + failAtStep + ", all participants compensated");
-            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(response);
-        }
-
-        // Success path
-        Map<String, Object> response = new LinkedHashMap<>();
-        response.put("sagaStatus", "COMPLETED");
-        response.put("externalPoKey", externalPoKey);
-        response.put("poKey", "PO-" + System.currentTimeMillis());
-        response.put("receiptKey", "RCV-" + System.currentTimeMillis());
-        response.put("inventoryKey", "INV-" + System.currentTimeMillis());
-        response.put("participantsExecuted", List.of("PO_CREATE", "POPULATE", "FINALIZE", "PUTAWAY_CREATE"));
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
-    }
-
     // ==================== Jobs ====================
 
     @PostMapping("/jobs/generic-inbound-po/trigger")
