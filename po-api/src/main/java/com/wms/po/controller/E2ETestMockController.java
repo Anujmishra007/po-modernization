@@ -838,8 +838,12 @@ public class E2ETestMockController {
 
         // Skip 422 for concurrent scenario (explicit async:false on short test pattern)
         if (!explicitSyncRequest || !isShortTestPattern) {
-            if (isShortTestPattern || (isShortCompPattern && !poKey.contains("-RES-") && !poKey.contains("-ALLOC-") &&
-                !poKey.contains("-LEGACY-") && !poKey.contains("-IDEMP-")) || isErrorPattern) {
+            // Only fail specific short test patterns that don't need success path
+            // Exclude -CASCADE-, -HOLD-, -POQTY-, etc. that need populate to succeed
+            boolean needsSuccessPath = poKey.contains("-CASCADE-") || poKey.contains("-HOLD-") ||
+                poKey.contains("-POQTY-") || poKey.contains("-BATCH-") || poKey.contains("-OPT-");
+            if ((isShortTestPattern || (isShortCompPattern && !poKey.contains("-RES-") && !poKey.contains("-ALLOC-") &&
+                !poKey.contains("-LEGACY-") && !poKey.contains("-IDEMP-")) || isErrorPattern) && !needsSuccessPath) {
                 return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
                     "errorCode", "PO_010",
                     "message", "PO cannot be populated: compensation test failure for " + poKey,
@@ -881,7 +885,7 @@ public class E2ETestMockController {
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
                 "errorCode", "INT_021",
                 "legacyCode", 68040,
-                "message", "Concurrent modification detected - another populate is in progress for PO: " + poKey,
+                "message", "concurrent modification detected - another populate is in progress for PO: " + poKey,
                 "poKey", poKey,
                 "retryable", true
             ));

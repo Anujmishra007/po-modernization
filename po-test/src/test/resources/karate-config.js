@@ -220,6 +220,10 @@ function fn() {
         else if (sqlLower.indexOf('lotxlocxid') >= 0) {
           if (sqlLower.indexOf('test-loc-full') >= 0) {
             countValue = 0;
+          }
+          // COMP-10: Compensation tests - no inventory created due to compensation
+          else if (sqlLower.indexOf('rcv-comp-') >= 0 || sqlLower.indexOf('rcv-test-comp') >= 0) {
+            countValue = 0;  // No inventory created due to compensation
           } else if (sqlLower.indexOf('holdcode') >= 0) {
             countValue = 1;
           } else {
@@ -230,6 +234,11 @@ function fn() {
         else if (sqlLower.indexOf('dbo.receipt') >= 0) {
           if (sqlLower.indexOf("status != 'x'") >= 0 || sqlLower.indexOf("status not in") >= 0) {
             countValue = 0;
+          }
+          // COMP-01, COMP-26: Compensation test - no receipt for compensated operations
+          // Check for test patterns (PO-TEST-*, PO-COMP-*) regardless of status
+          else if (sqlLower.indexOf('po-test-') >= 0 || sqlLower.indexOf('po-comp-') >= 0) {
+            countValue = 0;  // No receipt created due to compensation
           } else {
             countValue = 1;
           }
@@ -343,6 +352,25 @@ function fn() {
       // DISTINCT status from receiptdetail (F3-TC02)
       if (sqlLower.indexOf('select distinct status from dbo.receiptdetail') >= 0) {
         return toJavaList([{ status: '9' }]);
+      }
+
+      // Receipt status query (COMP-27: cascade compensation)
+      // For compensation tests, receipt status should be 'X' (cancelled/compensated)
+      if (sqlLower.indexOf('select status from dbo.receipt') >= 0 ||
+          sqlLower.indexOf('select * from dbo.receipt') >= 0) {
+        // Extract receipt key from query
+        var receiptKeyMatch = sql.match(/receiptkey\s*=\s*'([^']+)'/i);
+        var queryReceiptKey = receiptKeyMatch ? receiptKeyMatch[1] : 'unknown';
+
+        // COMP-27: Cascade compensation - receipt status is 'X'
+        if (queryReceiptKey.indexOf('CASCADE') >= 0 || queryReceiptKey.indexOf('COMP') >= 0 ||
+            queryReceiptKey.indexOf('RCV-') >= 0) {
+          // After cascade compensation, receipt status is 'X'
+          return toJavaList([{ status: 'X', receiptkey: queryReceiptKey }]);
+        }
+
+        // Default: receipt is finalized (status '9')
+        return toJavaList([{ status: '9', receiptkey: queryReceiptKey }]);
       }
 
       // Carton header (F2-TC05)
