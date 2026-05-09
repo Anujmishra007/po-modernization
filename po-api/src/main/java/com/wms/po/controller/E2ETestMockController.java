@@ -697,6 +697,9 @@ public class E2ETestMockController {
     // Track idempotency keys for retry tests
     private final Map<String, Map<String, Object>> idempotencyResponses = new ConcurrentHashMap<>();
 
+    // Track receipt key to PO key mapping for F2-TC07 (receipt GET returns correct poKey)
+    private final Map<String, String> receiptKeyToPoKey = new ConcurrentHashMap<>();
+
     @PostMapping("/po/{poKey}/populate")
     public ResponseEntity<Map<String, Object>> populatePO(
             @PathVariable String poKey,
@@ -723,13 +726,13 @@ public class E2ETestMockController {
             ));
         }
 
-        // Handle X-Test-Fail-At-Step for compensation tests (COMP-02, COMP-03, COMP-04)
+        // Handle X-Test-Fail-At-Step for compensation tests (COMP-02, COMP-03, COMP-04, COMP-22)
         if (failAtStep != null && !failAtStep.isBlank()) {
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("errorCode", "COMP_001");
             response.put("compensated", true);
 
-            // Map step number to step name and compensated steps
+            // Map step number/name to step name and compensated steps
             switch (failAtStep) {
                 case "3":
                     response.put("failedStep", "RECEIPT_DETAIL");
@@ -747,6 +750,11 @@ public class E2ETestMockController {
                     response.put("failedStep", "LEGACY_SYNC");
                     response.put("compensatedSteps", List.of("ALLOCATION", "RESERVATION", "RECEIPT_DETAIL"));
                     response.put("legacySyncFailed", true);
+                    break;
+                case "LOTTABLE_MAPPING":
+                    // COMP-22: Lottable rule failure compensation
+                    response.put("failedStep", "LOTTABLE_MAPPING");
+                    response.put("compensatedSteps", List.of("RECEIPT_DETAIL", "RECEIPT_HEADER"));
                     break;
                 default:
                     response.put("failedStep", "STEP_" + failAtStep);
@@ -887,6 +895,9 @@ public class E2ETestMockController {
 
         String receiptKey = "RCV-" + System.currentTimeMillis();
 
+        // Track receipt key to PO key mapping for F2-TC07
+        receiptKeyToPoKey.put(receiptKey, poKey);
+
         // Calculate line count from request if present
         int lineCount = 1;
         if (request != null) {
@@ -1008,16 +1019,17 @@ public class E2ETestMockController {
         }
 
         // Return mock receipt with expected fields for tests
-        // Extract poKey from receiptKey (e.g., RCV-HAPPY-001 becomes PO-HAPPY-001)
-        String poKey = receiptKey.replace("RCV-", "PO-");
-        return ResponseEntity.ok(Map.of(
-            "receiptKey", receiptKey,
-            "storerKey", "TEST_STORER_001",
-            "facility", "TEST01",
-            "status", "5", // Ready for finalization
-            "poKey", poKey,
-            "lineCount", 1
-        ));
+        // Use tracked mapping for dynamically created receipts (F2-TC07)
+        // Otherwise fall back to extracting from receiptKey pattern
+        String poKey = receiptKeyToPoKey.getOrDefault(receiptKey, receiptKey.replace("RCV-", "PO-"));
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("receiptKey", receiptKey);
+        response.put("poKey", poKey);  // F2-TC07: Return correct poKey
+        response.put("storerKey", "TEST_STORER_001");
+        response.put("facility", "TEST01");
+        response.put("status", "5"); // Ready for finalization
+        response.put("lineCount", 1);
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/receipt/{receiptKey}")
@@ -1083,8 +1095,10 @@ public class E2ETestMockController {
             @RequestHeader(value = "X-Test-Simulate-Unrecoverable", required = false) String simulateUnrecoverable,
             @RequestHeader(value = "X-Test-Simulate-Memory-Pressure", required = false) String simulateMemoryPressure,
             @RequestHeader(value = "X-Test-Simulate-Worker-Crash", required = false) String simulateWorkerCrash,
+            @RequestHeader(value = "X-Test-Fail-Plugin", required = false) String failPlugin,
+            @RequestHeader(value = "X-Test-Trigger-Full-Cascade-Compensation", required = false) String triggerCascade,
             @RequestHeader(value = "X-Idempotency-Key", required = false) String idempotencyKey) {
-        log.info("[E2E Mock] Finalize receipt: {}, failAtStep={}, idempotencyKey={}", receiptKey, failAtStep, idempotencyKey);
+        log.info("[E2E Mock] Finalize receipt: {}, failAtStep={}, failPlugin={}, idempotencyKey={}", receiptKey, failAtStep, failPlugin, idempotencyKey);
 
         // F3-TC29: Idempotency check - return cached response if same key
         if (idempotencyKey != null && idempotencyResponses.containsKey("finalize:" + idempotencyKey)) {
@@ -1169,11 +1183,36 @@ public class E2ETestMockController {
             ));
         }
 
-        // Handle X-Test-Fail-At-Step for compensation tests (COMP-08, COMP-10, COMP-11, COMP-12, COMP-28, COMP-29)
+        // COMP-24: Plugin failure - fail on specific plugin
+        if (failPlugin != null && !failPlugin.isBlank()) {
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("errorCode", "COMP_001");
+            response.put("failedPlugin", failPlugin);
+            response.put("compensated", true);
+            response.put("pluginCompensated", true);
+            response.put("message", "Plugin " + failPlugin + " failed during finalization");
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(response);
+        }
+
+        // COMP-27: Cascading compensation - trigger full cascade rollback
+        if ("true".equalsIgnoreCase(triggerCascade)) {
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("errorCode", "COMP_001");
+            response.put("cascadeCompensation", true);
+            response.put("compensatedFlows", List.of("FINALIZE", "POPULATE"));
+            response.put("message", "Full cascade compensation executed");
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(response);
+        }
+
+        // Handle X-Test-Fail-At-Step for compensation tests (COMP-08, COMP-10, COMP-11, COMP-12, COMP-21, COMP-23, COMP-28, COMP-29)
         if (failAtStep != null && !failAtStep.isBlank()) {
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("errorCode", "COMP_001");
             response.put("compensated", true);
+
+            // Extract request options for context-aware step handling
+            boolean enableCrossDock = request != null && Boolean.TRUE.equals(request.get("enableCrossDock"));
+            boolean createPutawayTasks = request != null && Boolean.TRUE.equals(request.get("createPutawayTasks"));
 
             // Map step number to step name and compensated steps
             switch (failAtStep) {
@@ -1197,6 +1236,27 @@ public class E2ETestMockController {
                 case "7":
                     response.put("failedStep", "PUTAWAY_RELEASE");
                     response.put("compensatedSteps", List.of("INVENTORY_POSTING", "STATUS_UPDATE"));
+                    break;
+                case "8":
+                    // COMP-21: XDock allocation rollback
+                    if (enableCrossDock) {
+                        response.put("failedStep", "POST_FINALIZE_XDOCK");
+                        response.put("compensatedSteps", List.of("XDOCK_ALLOCATION", "INVENTORY_POSTING", "STATUS_UPDATE"));
+                    } else {
+                        response.put("failedStep", "STEP_8");
+                        response.put("compensatedSteps", List.of("PREVIOUS_STEPS"));
+                    }
+                    break;
+                case "9":
+                    // COMP-23: Putaway task rollback
+                    if (createPutawayTasks) {
+                        response.put("failedStep", "POST_FINALIZE_PUTAWAY");
+                        response.put("compensatedSteps", List.of("PUTAWAY_TASKS", "INVENTORY_POSTING", "STATUS_UPDATE"));
+                        response.put("tasksDeleted", 2);
+                    } else {
+                        response.put("failedStep", "STEP_9");
+                        response.put("compensatedSteps", List.of("PREVIOUS_STEPS"));
+                    }
                     break;
                 default:
                     response.put("failedStep", "STEP_" + failAtStep);
@@ -2483,6 +2543,41 @@ public class E2ETestMockController {
         ));
     }
 
+    // ==================== Saga Orchestration ====================
+
+    @PostMapping("/saga/po-to-inventory")
+    public ResponseEntity<Map<String, Object>> sagaPoToInventory(
+            @RequestBody Map<String, Object> request,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        log.info("[E2E Mock] Saga PO to inventory: {}", request);
+
+        String failAtStep = (String) request.get("failAtStep");
+        String externalPoKey = (String) request.get("externalPoKey");
+
+        // COMP-33: E2E saga test with all participants
+        if (failAtStep != null && !failAtStep.isBlank()) {
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("errorCode", "COMP_001");
+            response.put("sagaStatus", "COMPENSATED");
+            response.put("participantsExecuted", List.of("PO_CREATE", "POPULATE", "FINALIZE"));
+            response.put("participantsCompensated", List.of("FINALIZE", "POPULATE", "PO_CREATE"));
+            response.put("failedAtStep", failAtStep);
+            response.put("externalPoKey", externalPoKey);
+            response.put("message", "Saga failed at step " + failAtStep + ", all participants compensated");
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(response);
+        }
+
+        // Success path
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("sagaStatus", "COMPLETED");
+        response.put("externalPoKey", externalPoKey);
+        response.put("poKey", "PO-" + System.currentTimeMillis());
+        response.put("receiptKey", "RCV-" + System.currentTimeMillis());
+        response.put("inventoryKey", "INV-" + System.currentTimeMillis());
+        response.put("participantsExecuted", List.of("PO_CREATE", "POPULATE", "FINALIZE", "PUTAWAY_CREATE"));
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
     // ==================== Jobs ====================
 
     @PostMapping("/jobs/generic-inbound-po/trigger")
@@ -2494,11 +2589,37 @@ public class E2ETestMockController {
         ));
     }
 
+    // Track job executions for COMP-25 test
+    private final Map<String, Map<String, Object>> jobExecutions = new ConcurrentHashMap<>();
+
     @PostMapping("/jobs/auto-finalize/trigger")
-    public ResponseEntity<Map<String, Object>> triggerAutoFinalizeJob() {
-        log.info("[E2E Mock] Trigger auto finalize job");
+    public ResponseEntity<Map<String, Object>> triggerAutoFinalizeJob(
+            @RequestBody(required = false) Map<String, Object> request) {
+        log.info("[E2E Mock] Trigger auto finalize job: {}", request);
+        String jobId = "JOB-" + System.currentTimeMillis();
+
+        // Store job execution info for later retrieval
+        Map<String, Object> jobInfo = new LinkedHashMap<>();
+        jobInfo.put("jobExecutionId", jobId);
+        jobInfo.put("status", "RUNNING");
+
+        // COMP-25: Track simulated failure info
+        if (request != null && request.get("simulateFailureAt") != null) {
+            int failAt = ((Number) request.get("simulateFailureAt")).intValue();
+            int batchSize = request.get("batchSize") != null ? ((Number) request.get("batchSize")).intValue() : 10;
+            jobInfo.put("simulateFailureAt", failAt);
+            jobInfo.put("batchSize", batchSize);
+            // Pre-calculate results for later
+            jobInfo.put("successCount", failAt - 1);
+            jobInfo.put("failedCount", 1);
+            jobInfo.put("compensatedCount", 1);
+            jobInfo.put("finalStatus", "COMPLETED_WITH_ERRORS");
+        }
+
+        jobExecutions.put(jobId, jobInfo);
+
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of(
-            "jobExecutionId", "JOB-" + System.currentTimeMillis(),
+            "jobExecutionId", jobId,
             "status", "RUNNING"
         ));
     }
@@ -2538,6 +2659,22 @@ public class E2ETestMockController {
             @PathVariable String jobId,
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
         log.info("[E2E Mock] Get job execution: {}", jobId);
+
+        // Check if we have tracked info for this job (COMP-25)
+        Map<String, Object> jobInfo = jobExecutions.get(jobId);
+        if (jobInfo != null && jobInfo.get("simulateFailureAt") != null) {
+            // Return COMPLETED_WITH_ERRORS for failure simulation
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("jobExecutionId", jobId);
+            response.put("status", "COMPLETED_WITH_ERRORS");
+            response.put("successCount", jobInfo.get("successCount"));
+            response.put("failedCount", jobInfo.get("failedCount"));
+            response.put("compensatedCount", jobInfo.get("compensatedCount"));
+            response.put("completedAt", LocalDateTime.now().toString());
+            return ResponseEntity.ok(response);
+        }
+
+        // Default successful completion
         return ResponseEntity.ok(Map.of(
             "jobExecutionId", jobId,
             "status", "COMPLETED",

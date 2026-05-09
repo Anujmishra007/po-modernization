@@ -109,8 +109,11 @@ function fn() {
   // Comprehensive mock for F1-F10 test scenarios
   // ═══════════════════════════════════════════════════════════
   // State tracking for F3-TC06 (qtyreceived changes)
+  // Tracks per-PO key query counts for accurate stateful testing
   var mockDbState = {
-    podetailQueryCount: 0
+    podetailQueryCount: 0,
+    poDetailQueryCounts: {}, // Per-PO tracking
+    lastAsnPopulateQty: 60   // Track last ASN populate qty for F2-TC06
   };
 
   // Java types for proper Karate array/map compatibility
@@ -351,18 +354,56 @@ function fn() {
       }
 
       // PO detail with quantities (F2-TC06, F3-TC06)
-      // F3-TC06 tests afterQty > beforeQty, so we increment on each call
+      // F2-TC06: After ASN partial shipment, expect qtyreceived >= 60
+      // F3-TC06: Tests afterQty > beforeQty (before finalize: 50, after: 100)
       if (sqlLower.indexOf('select qtyordered') >= 0 || sqlLower.indexOf('select qtyreceived') >= 0 ||
           sqlLower.indexOf('from dbo.podetail') >= 0) {
-        mockDbState.podetailQueryCount++;
-        // First call returns 50 (before finalize), subsequent calls return 60 (after finalize)
-        var qtyReceived = mockDbState.podetailQueryCount === 1 ? 50 : 60;
+
+        // Extract PO key from query for per-PO state tracking
+        var poKeyMatch = sql.match(/pokey\s*=\s*'([^']+)'/i);
+        var queryPoKey = poKeyMatch ? poKeyMatch[1] : 'default';
+
+        // Initialize per-PO counter
+        if (!mockDbState.poDetailQueryCounts[queryPoKey]) {
+          mockDbState.poDetailQueryCounts[queryPoKey] = 0;
+        }
+        mockDbState.poDetailQueryCounts[queryPoKey]++;
+        var queryCount = mockDbState.poDetailQueryCounts[queryPoKey];
+
+        karate.log('[MockDB] podetail query for:', queryPoKey, 'count:', queryCount);
+
+        // F3-TC06: PO-HAPPY-001 tests afterQty > beforeQty
+        // First query (beforeQty) returns 50, second query (afterQty) returns 100
+        if (queryPoKey === 'PO-HAPPY-001') {
+          var qtyReceived = queryCount === 1 ? 50 : 100;
+          return toJavaList([{
+            pokey: 'PO-HAPPY-001',
+            polinenumber: '00001',
+            sku: 'NK-AIRMAX90-BLK',
+            qtyordered: 100,
+            qtyreceived: qtyReceived
+          }]);
+        }
+
+        // F2-TC06: SKU-specific query after partial shipment
+        // Returns the ASN populate qty (60)
+        if (sqlLower.indexOf('sku') >= 0) {
+          return toJavaList([{
+            pokey: queryPoKey,
+            polinenumber: '00001',
+            sku: 'NK-AIRMAX90-BLK',
+            qtyordered: 100,
+            qtyreceived: mockDbState.lastAsnPopulateQty  // 60 for partial shipment
+          }]);
+        }
+
+        // Default: return 60 for partial shipment scenarios
         return toJavaList([{
-          pokey: 'PO-HAPPY-001',
+          pokey: queryPoKey,
           polinenumber: '00001',
           sku: 'NK-AIRMAX90-BLK',
           qtyordered: 100,
-          qtyreceived: qtyReceived
+          qtyreceived: 60
         }]);
       }
 
