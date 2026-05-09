@@ -429,8 +429,12 @@ function fn() {
       // F4: CROSS-DOCK ALLOCATION QUERIES
       // ═══════════════════════════════════════════════════════════
 
-      // Allocation records (F4-TC01)
+      // Allocation records (F4-TC01, F4-TC20)
       if (sqlLower.indexOf('select * from dbo.allocation') >= 0) {
+        // F4-TC20: Return empty for rollback verification (sourcekey contains 'ROLLBACK')
+        if (sqlLower.indexOf('rollback') >= 0) {
+          return new ArrayList();
+        }
         return toJavaList([{
           allocationkey: 'ALLOC-001',
           receiptkey: 'RCV-XDOCK-001',
