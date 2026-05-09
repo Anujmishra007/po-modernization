@@ -67,7 +67,7 @@ Feature: F4 - Cross-Dock Allocation Happy Path Tests
       """
     When method post
     Then status 201
-    And match response.allocations.length >= 1
+    And assert karate.sizeOf(response.allocations) >= 1
     And match response.totalQtyAllocated == '#? _ > 0'
 
     # Verify receipt marked as XDock
@@ -96,7 +96,7 @@ Feature: F4 - Cross-Dock Allocation Happy Path Tests
       """
     When method post
     Then status 201
-    And match response.allocations.length == 2
+    And assert karate.sizeOf(response.allocations) == 2
     And match response.allocations[0].status == 'ALLOCATED'
     And match response.allocations[1].status == 'ALLOCATED'
 
@@ -120,7 +120,7 @@ Feature: F4 - Cross-Dock Allocation Happy Path Tests
       """
     When method post
     Then status 200
-    And match response.allocations.length >= 1
+    And assert karate.sizeOf(response.allocations) >= 1
     # First allocation should be highest priority
     And match response.allocations[0].orderPriority == '#? _ <= 3'
 
@@ -144,7 +144,7 @@ Feature: F4 - Cross-Dock Allocation Happy Path Tests
       """
     When method post
     Then status 200
-    And match response.allocations.length >= 1
+    And assert karate.sizeOf(response.allocations) >= 1
     # Verify FIFO order (oldest order first)
     * def firstOrderDate = response.allocations[0].orderDate
     * def secondOrderDate = response.allocations[1].orderDate
@@ -170,7 +170,7 @@ Feature: F4 - Cross-Dock Allocation Happy Path Tests
       """
     When method post
     Then status 200
-    And match response.linksProcessed >= 1
+    And assert response.linksProcessed >= 1
 
     # Verify xdocklinkage updated
     * def link = db.query("SELECT status FROM dbo.xdocklinkage WHERE pokey = '" + poKey + "'")

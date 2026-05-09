@@ -53,7 +53,7 @@ Feature: F4 - Cross-Dock Allocation Edge Cases
     Then status 201
     And match response.successCount == 100
     # Should complete under 30 seconds
-    And responseTime < 30000
+    And assert responseTime < 30000
 
   # ─────────────────────────────────────────────────────────────
   # F4-TC17: Concurrent cross-dock requests

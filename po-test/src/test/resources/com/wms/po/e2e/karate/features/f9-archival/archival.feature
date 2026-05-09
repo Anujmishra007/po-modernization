@@ -44,7 +44,7 @@ Feature: F9 - PO Archival Flow Tests
     When method get
     Then status 200
     And match response.status == '#? _ == "COMPLETED" || _ == "RUNNING"'
-    And match response.recordsProcessed >= 0
+    And assert response.recordsProcessed >= 0
 
   # ─────────────────────────────────────────────────────────────
   # F9-TC02: Archive single PO via API
@@ -119,7 +119,7 @@ Feature: F9 - PO Archival Flow Tests
     Then status 422
     And match response.errorCode == 'ARCH_002'
     And match response.message == '#? _.indexOf("open receipts") >= 0'
-    And match response.openReceiptKeys.length >= 1
+    And assert karate.sizeOf(response.openReceiptKeys) >= 1
 
   # ─────────────────────────────────────────────────────────────
   # F9-TC06: Bulk archive via job
@@ -141,7 +141,7 @@ Feature: F9 - PO Archival Flow Tests
       """
     When method post
     Then status 202
-    And match response.estimatedRecords >= 0
+    And assert response.estimatedRecords >= 0
 
   # ─────────────────────────────────────────────────────────────
   # F9-TC07: Retrieve archived PO
@@ -170,8 +170,8 @@ Feature: F9 - PO Archival Flow Tests
     And param dateTo = '2026-12-31'
     When method get
     Then status 200
-    And match response.results.length >= 0
-    And match response.totalCount >= 0
+    And assert karate.sizeOf(response.results) >= 0
+    And assert response.totalCount >= 0
 
   # ─────────────────────────────────────────────────────────────
   # F9-TC09 to F9-TC12: Additional archival scenarios

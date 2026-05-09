@@ -181,7 +181,7 @@ Feature: F1 - PO Creation Compensation Tests
     Then status 200
     And match response.status == 'COMPLETED'
     # Should have retried at least once
-    And match response.attemptCount > 1
+    And assert response.attemptCount > 1
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC24: Idempotency check
@@ -248,7 +248,7 @@ Feature: F1 - PO Creation Compensation Tests
 
     # Verify compensation event logged
     * def compAudit = db.query("SELECT * FROM dbo.compensationaudit WHERE entitykey = '" + externalKey + "'")
-    * match karate.sizeOf(compAudit) >= 1
+    * assert karate.sizeOf(compAudit) >= 1
     * def compRow = karate.toMap(compAudit[0])
     * match compRow.compensationtype == 'PO_CREATION_ROLLBACK'
 

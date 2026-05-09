@@ -83,7 +83,7 @@ Feature: F10 - Cross-Flow Compensation Tests
     When method post
     Then status 422
     And match response.compensated == true
-    And match response.tasksDeleted >= 0
+    And assert response.tasksDeleted >= 0
 
     # Verify no orphan tasks
     * def taskCheck = db.query("SELECT COUNT(*) as cnt FROM dbo.task WHERE fromkey = '" + receiptKey + "' AND tasktype = 'PUTAWAY' AND status = '0'")

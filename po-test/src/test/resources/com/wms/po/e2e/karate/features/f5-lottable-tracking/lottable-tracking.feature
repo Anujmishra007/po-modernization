@@ -299,7 +299,7 @@ Feature: F5 - Lottable Field Tracking Tests
     And param lottable02 = 'BLACK'
     When method get
     Then status 200
-    And match response.results.length >= 1
+    And assert karate.sizeOf(response.results) >= 1
     And match each response.results contains { lottable01: 'AM90-2024', lottable02: 'BLACK' }
 
   # ─────────────────────────────────────────────────────────────
@@ -415,7 +415,7 @@ Feature: F5 - Lottable Field Tracking Tests
       """
     When method put
     Then status 200
-    And match response.linesUpdated >= 1
+    And assert response.linesUpdated >= 1
 
   @F5-TC16 @P3 @Default
   Scenario: Lottable defaults from SKU master
@@ -460,6 +460,6 @@ Feature: F5 - Lottable Field Tracking Tests
     And param entityKey = 'RCV-LOT-AUDIT'
     When method get
     Then status 200
-    And match response.changes.length >= 1
+    And assert karate.sizeOf(response.changes) >= 1
     And match response.changes[0] contains { field: '#present', oldValue: '#present', newValue: '#present' }
 

@@ -44,14 +44,14 @@ Feature: F2 - ASN Population Happy Path Tests
 
     # Verify receipt was created from ASN
     * def receiptResult = db.query("SELECT * FROM dbo.receipt WHERE externreceiptkey LIKE 'ASN-" + uniqueId + "%'")
-    * match karate.sizeOf(receiptResult) == 1
+    * assert karate.sizeOf(receiptResult) == 1
     * def rcptRow = karate.toMap(receiptResult[0])
     * match rcptRow.status == '0'
 
     # Verify receipt details match ASN lines
     * def receiptKey = rcptRow.receiptkey
     * def detailResult = db.query("SELECT * FROM dbo.receiptdetail WHERE receiptkey = '" + receiptKey + "'")
-    * match karate.sizeOf(detailResult) == 3
+    * assert karate.sizeOf(detailResult) == 3
 
   # ─────────────────────────────────────────────────────────────
   # F2-TC02: Nike ASN with lottable tracking

@@ -28,7 +28,7 @@ Feature: F6 - Putaway Task Flow Tests
     And request { "createPutawayTasks": true }
     When method post
     Then status 200
-    And match response.putawayTasksCreated >= 1
+    And assert response.putawayTasksCreated >= 1
     * def taskKeys = response.putawayTaskKeys
 
     # Verify tasks in DB
@@ -356,7 +356,7 @@ Feature: F6 - Putaway Task Flow Tests
     And header Authorization = 'Bearer ' + authToken
     When method get
     Then status 200
-    And match response.events.length >= 1
+    And assert karate.sizeOf(response.events) >= 1
     And match response.events contains { action: 'CREATED' }
 
   @F6-TC17 @P3 @Metrics

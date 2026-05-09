@@ -32,7 +32,7 @@ Feature: F10 - Infrastructure Failure Compensation Tests
     And match response.errorCode == 'INT_016'
     And match response.message == '#? _.indexOf("deadlock") >= 0'
     # Should have retried at least once
-    And match response.retryAttempts >= 1
+    And assert response.retryAttempts >= 1
 
     # Verify state is consistent
     * def receiptStatus = db.getValue("SELECT status FROM dbo.receipt WHERE receiptkey = '" + receiptKey + "'")

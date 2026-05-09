@@ -54,7 +54,7 @@ Feature: F2 - ASN Population Edge Cases
     Then status 201
     And match response.lineCount == 1000
     # Should complete within 30 seconds
-    And responseTime < 30000
+    And assert responseTime < 30000
 
   # ─────────────────────────────────────────────────────────────
   # F2-TC19: ASN with special characters in fields
@@ -231,7 +231,7 @@ Feature: F2 - ASN Population Edge Cases
 
     # Verify audit trail created
     * def auditResult = db.query("SELECT * FROM dbo.receiptaudit WHERE receiptkey = '" + receiptKey + "' ORDER BY auditdate DESC")
-    * match karate.sizeOf(auditResult) >= 1
+    * assert karate.sizeOf(auditResult) >= 1
     * def auditRow = karate.toMap(auditResult[0])
     * match auditRow.action == 'INSERT'
 

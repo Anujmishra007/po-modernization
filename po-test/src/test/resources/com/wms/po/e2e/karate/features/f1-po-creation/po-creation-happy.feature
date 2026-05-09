@@ -43,7 +43,7 @@ Feature: F1 - PO Creation Happy Path Tests
 
     # Verify PO detail
     * def detailResult = db.query("SELECT * FROM dbo.orderdetail WHERE orderkey = '" + createdPoKey + "'")
-    * match karate.sizeOf(detailResult) == 1
+    * assert karate.sizeOf(detailResult) == 1
     * def detailRow = karate.toMap(detailResult[0])
     * match detailRow.qtyordered == 100
 
@@ -93,7 +93,7 @@ Feature: F1 - PO Creation Happy Path Tests
 
     # Verify PO created from EDI
     * def poResult = db.query("SELECT * FROM dbo.orders WHERE externorderkey LIKE 'EDI-" + uniqueId + "%'")
-    * match karate.sizeOf(poResult) == 1
+    * assert karate.sizeOf(poResult) == 1
     * def poRow = karate.toMap(poResult[0])
     * match poRow.status == '0'
 

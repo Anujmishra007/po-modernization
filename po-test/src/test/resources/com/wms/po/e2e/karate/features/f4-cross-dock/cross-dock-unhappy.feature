@@ -39,7 +39,7 @@ Feature: F4 - Cross-Dock Allocation Unhappy Path Tests
     Then status 422
     And match response.errorCode == 'XDOCK_001'
     And match response.message == '#? _.indexOf("Insufficient quantity") >= 0'
-    And match response.availableQty < 99999
+    And assert response.availableQty < 99999
 
   # ─────────────────────────────────────────────────────────────
   # F4-TC10: Cross-dock for non-existent order

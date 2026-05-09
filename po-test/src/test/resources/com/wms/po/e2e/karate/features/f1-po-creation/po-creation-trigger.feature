@@ -39,7 +39,7 @@ Feature: F1 - PO Creation Trigger Tests
 
     # Verify trigger audit log
     * def auditResult = db.query("SELECT * FROM dbo.poaudit WHERE pokey = '" + poKey + "' AND action = 'INSERT'")
-    * match karate.sizeOf(auditResult) >= 1
+    * assert karate.sizeOf(auditResult) >= 1
     * def auditRow = karate.toMap(auditResult[0])
     * match auditRow.triggertype == 'AFTER_INSERT'
     * match auditRow.tablename == 'po'
@@ -97,7 +97,7 @@ Feature: F1 - PO Creation Trigger Tests
 
     # Verify detail audit
     * def detailAudit = db.query("SELECT * FROM dbo.podetailaudit WHERE pokey = '" + poKey + "'")
-    * match karate.sizeOf(detailAudit) >= 2
+    * assert karate.sizeOf(detailAudit) >= 2
 
   # ─────────────────────────────────────────────────────────────
   # F1-TC37: Trigger updates summary fields
@@ -158,4 +158,4 @@ Feature: F1 - PO Creation Trigger Tests
     And request poRequest
     When method post
     Then status 201
-    And responseTime < 10000
+    And assert responseTime < 10000

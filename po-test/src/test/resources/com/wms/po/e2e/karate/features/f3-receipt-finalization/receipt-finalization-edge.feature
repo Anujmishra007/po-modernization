@@ -29,7 +29,7 @@ Feature: F3 - Receipt Finalization Edge Cases
     When method post
     Then status 200
     # Should complete within 60 seconds
-    And responseTime < 60000
+    And assert responseTime < 60000
     And match response.linesFinalized == '#? _ >= 1000'
 
   # ─────────────────────────────────────────────────────────────
@@ -140,7 +140,7 @@ Feature: F3 - Receipt Finalization Edge Cases
 
     # Verify allocation created
     * def alloc = db.query("SELECT * FROM dbo.allocation WHERE sourcekey = '" + receiptKey + "'")
-    * match karate.sizeOf(alloc) >= 1
+    * assert karate.sizeOf(alloc) >= 1
     * def allocRow = karate.toMap(alloc[0])
     * match allocRow.alloctype == 'XDOCK'
 

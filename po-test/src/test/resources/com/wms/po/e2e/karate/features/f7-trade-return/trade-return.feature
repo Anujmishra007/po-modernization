@@ -163,7 +163,7 @@ Feature: F7 - Trade Return Flow Tests
     When method post
     Then status 200
     And match response.creditMemoKey == '#present'
-    And match response.creditAmount > 0
+    And assert response.creditAmount > 0
 
   # ─────────────────────────────────────────────────────────────
   # F7-TC07: Trade return without original order

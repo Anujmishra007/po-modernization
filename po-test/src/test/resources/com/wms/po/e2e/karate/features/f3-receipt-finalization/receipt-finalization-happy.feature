@@ -43,7 +43,7 @@ Feature: F3 - Receipt Finalization Happy Path Tests
 
     # Verify inventory posted to LOTxLOCxID
     * def invResult = db.query("SELECT * FROM dbo.lotxlocxid WHERE receiptkey = '" + receiptKey + "'")
-    * match karate.sizeOf(invResult) >= 1
+    * assert karate.sizeOf(invResult) >= 1
     * def invRow = karate.toMap(invResult[0])
     * assert invRow.qty > 0
 
@@ -117,7 +117,7 @@ Feature: F3 - Receipt Finalization Happy Path Tests
 
     # Verify putaway tasks in DB
     * def tasks = db.query("SELECT * FROM dbo.task WHERE fromkey = '" + receiptKey + "' AND tasktype = 'PUTAWAY'")
-    * match karate.sizeOf(tasks) >= 1
+    * assert karate.sizeOf(tasks) >= 1
     * def taskRow = karate.toMap(tasks[0])
     * match taskRow.status == '0'
 
@@ -204,7 +204,7 @@ Feature: F3 - Receipt Finalization Happy Path Tests
 
     # Verify trigger processed finalization
     * def invResult = db.query("SELECT * FROM dbo.lotxlocxid WHERE receiptkey = '" + receiptKey + "'")
-    * match karate.sizeOf(invResult) >= 1
+    * assert karate.sizeOf(invResult) >= 1
 
     # Verify audit log shows trigger
     * def audit = db.query("SELECT * FROM dbo.receiptaudit WHERE receiptkey = '" + receiptKey + "' AND action = 'FINALIZE'")

@@ -232,7 +232,7 @@ Feature: F8 - PO/Receipt Cancellation Flow Tests
     And request { "reason": "Test", "notifyStakeholders": true }
     When method post
     Then status 200
-    And match response.notificationsSent >= 1
+    And assert response.notificationsSent >= 1
 
   @F8-TC13 @P2 @Audit
   Scenario: Cancel creates audit trail
@@ -259,7 +259,7 @@ Feature: F8 - PO/Receipt Cancellation Flow Tests
     And request { "reason": "Test", "cancelPendingAsn": true }
     When method post
     Then status 200
-    And match response.asnsCancelled >= 1
+    And assert response.asnsCancelled >= 1
 
   @F8-TC15 @P3 @Concurrent
   Scenario: Concurrent cancel blocked
