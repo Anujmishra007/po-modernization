@@ -183,7 +183,7 @@ public class MappingActivityImpl implements MappingActivity {
     private List<Map<String, Object>> loadPODetails(String poKey) {
         try {
             return jdbcTemplate.queryForList(
-                "SELECT * FROM PODETAIL WHERE POKEY = ? ORDER BY POLINENUMBER",
+                "SELECT * FROM dbo.PODETAIL WHERE POKEY = ? ORDER BY POLINENUMBER",
                 poKey
             );
         } catch (Exception e) {

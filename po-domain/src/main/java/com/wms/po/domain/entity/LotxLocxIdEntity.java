@@ -10,63 +10,62 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * Receipt detail entity - maps to RECEIPTDETAIL table
+ * LOTxLOCxID entity - central inventory repository in WMS.
+ * LOT = Lot attributes, LOC = Location, ID = License Plate
  */
 @Entity
-@Table(name = "RECEIPTDETAIL", schema = "dbo")
+@Table(name = "LOTXLOCXID", schema = "dbo")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ReceiptDetailEntity {
+public class LotxLocxIdEntity {
 
     @Id
-    @Column(name = "RECEIPTDETAILKEY", length = 50)
-    private String receiptDetailKey;
+    @Column(name = "LOTXLOCXIDKEY", length = 50)
+    private String lotxlocxidKey;
 
-    @Column(name = "RECEIPTKEY", length = 50, nullable = false)
-    private String receiptKey;
-
-    @Column(name = "RECEIPTLINENUMBER")
-    private Integer lineNumber;
+    @Column(name = "STORERKEY", length = 50, nullable = false)
+    private String storerKey;
 
     @Column(name = "SKU", length = 50, nullable = false)
     private String sku;
 
-    @Column(name = "QTYEXPECTED", precision = 18, scale = 5)
-    private BigDecimal qtyExpected;
+    @Column(name = "LOT", length = 50)
+    private String lot;
 
-    @Column(name = "QTYRECEIVED", precision = 18, scale = 5)
+    @Column(name = "LOC", length = 50)
+    private String loc;
+
+    @Column(name = "ID", length = 50)
+    private String id;
+
+    @Column(name = "QTY", precision = 18, scale = 5)
     @Builder.Default
-    private BigDecimal qtyReceived = BigDecimal.ZERO;
+    private BigDecimal qty = BigDecimal.ZERO;
 
-    @Column(name = "UOM", length = 10)
-    private String uom;
+    @Column(name = "QTYALLOCATED", precision = 18, scale = 5)
+    @Builder.Default
+    private BigDecimal qtyAllocated = BigDecimal.ZERO;
+
+    @Column(name = "QTYPICKED", precision = 18, scale = 5)
+    @Builder.Default
+    private BigDecimal qtyPicked = BigDecimal.ZERO;
+
+    @Column(name = "STATUS", length = 10)
+    @Builder.Default
+    private String status = "OK";
+
+    @Column(name = "HOLD", length = 1)
+    @Builder.Default
+    private String hold = "0";
 
     @Column(name = "PACKKEY", length = 50)
     private String packKey;
 
-    @Column(name = "STATUS", length = 1)
-    @Builder.Default
-    private String status = "0";
+    @Column(name = "UOM", length = 10)
+    private String uom;
 
-    @Column(name = "POKEY", length = 50)
-    private String poKey;
-
-    @Column(name = "POLINENUMBER")
-    private Integer poLineNumber;
-
-    // Location fields for inventory posting
-    @Column(name = "TOLOC", length = 50)
-    private String toLoc;
-
-    @Column(name = "TOID", length = 50)
-    private String toId;
-
-    @Column(name = "STORERKEY", length = 50)
-    private String storerKey;
-
-    // Lottable fields
     @Column(name = "LOTTABLE01", length = 50)
     private String lottable01;
 
@@ -97,6 +96,9 @@ public class ReceiptDetailEntity {
     @Column(name = "LOTTABLE10", length = 50)
     private String lottable10;
 
+    @Column(name = "CREATEDATE")
+    private LocalDateTime createDate;
+
     @Column(name = "ADDDATE")
     private LocalDateTime addDate;
 
@@ -108,14 +110,4 @@ public class ReceiptDetailEntity {
 
     @Column(name = "EDITWHO", length = 50)
     private String editWho;
-
-    @PrePersist
-    protected void onCreate() {
-        addDate = LocalDateTime.now();
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        editDate = LocalDateTime.now();
-    }
 }

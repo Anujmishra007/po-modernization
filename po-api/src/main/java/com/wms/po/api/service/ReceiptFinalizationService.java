@@ -40,7 +40,7 @@ public class ReceiptFinalizationService {
 
     private final WorkflowClient workflowClient;
 
-    @Value("${temporal.task-queue:po-task-queue}")
+    @Value("${temporal.finalize-task-queue:po-finalize-queue}")
     private String taskQueue;
 
     @Value("${temporal.workflow.finalize-timeout-minutes:60}")
