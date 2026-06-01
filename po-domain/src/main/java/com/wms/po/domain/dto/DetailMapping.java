@@ -17,6 +17,7 @@ import java.util.Map;
 @AllArgsConstructor
 public class DetailMapping {
 
+    private String storerKey;
     private String sku;
     private BigDecimal qtyExpected;
     private String uom;

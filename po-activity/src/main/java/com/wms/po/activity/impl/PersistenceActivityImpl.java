@@ -107,6 +107,7 @@ public class PersistenceActivityImpl implements PersistenceActivity {
                 .receiptDetailKey(detailKey)
                 .receiptKey(receiptKey)
                 .lineNumber(i + 1)
+                .storerKey(detail.getStorerKey())
                 .sku(detail.getSku())
                 .qtyExpected(detail.getQtyExpected())
                 .uom(detail.getUom())

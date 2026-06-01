@@ -39,9 +39,13 @@ temporal:
     host: localhost
     port: 7233
   namespace: default
-  task-queue: po-population-queue
+  task-queue: po-populate-queue
+  finalize-task-queue: po-finalize-queue
+  worker:
+    enabled: true
   workflow:
     timeout-minutes: 30
+    finalize-timeout-minutes: 60
   startup:
     retry-attempts: 10
     retry-delay-seconds: 3

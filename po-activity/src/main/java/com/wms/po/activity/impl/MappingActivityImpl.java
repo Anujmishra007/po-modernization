@@ -205,14 +205,32 @@ public class MappingActivityImpl implements MappingActivity {
         }
 
         return DetailMapping.builder()
+            .storerKey(po.getStorerKey())
             .sku((String) detail.getOrDefault("SKU", ""))
             .qtyExpected((BigDecimal) detail.getOrDefault("QTYORDERED", BigDecimal.ZERO))
             .uom((String) detail.getOrDefault("UOM", "EA"))
             .packKey((String) detail.get("PACKKEY"))
             .poKey(po.getPoKey())
-            .poLineNumber(((Number) detail.getOrDefault("POLINENUMBER", 0)).intValue())
+            .poLineNumber(parseLineNumber(detail.get("POLINENUMBER")))
             .lottables(lottables)
             .build();
+    }
+
+    private int parseLineNumber(Object value) {
+        if (value == null) {
+            return 0;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+        if (value instanceof String) {
+            try {
+                return Integer.parseInt(((String) value).trim());
+            } catch (NumberFormatException e) {
+                return 0;
+            }
+        }
+        return 0;
     }
 
     private String generateCustomsCode(DetailMapping detail) {

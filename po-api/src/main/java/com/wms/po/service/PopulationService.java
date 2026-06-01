@@ -31,7 +31,7 @@ public class PopulationService {
 
     private final WorkflowClient workflowClient;
 
-    private static final String TASK_QUEUE = "po-population-queue";
+    private static final String TASK_QUEUE = "po-populate-queue";
 
     /**
      * Start PO population workflow.
