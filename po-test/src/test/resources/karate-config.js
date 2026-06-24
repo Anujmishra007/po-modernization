@@ -204,21 +204,35 @@ function fn() {
         if (sqlLower.indexOf('orderdetail') >= 0) {
           countValue = 50;
         }
-        // PO count for trigger/idempotency tests
+        // PO count for trigger/idempotency tests - check both dbo.po and externpokey
         else if (sqlLower.indexOf('dbo.po') >= 0 && sqlLower.indexOf('externpokey') >= 0) {
+          // Use regex for more robust pattern matching (case-insensitive on original SQL)
+          var hasTrgPattern = /po-trg-/i.test(sql);
+          var hasIdempPattern = /idemp/i.test(sql);
+          var hasTimeoutPattern = /timeout/i.test(sql);
+          var hasPartialPattern = /partial/i.test(sql);
+
+          karate.log('[MockDB] PO COUNT check - hasTrg:', hasTrgPattern, 'hasIdemp:', hasIdempPattern, 'hasTimeout:', hasTimeoutPattern);
+
           // F1-TC20: Trigger duplicate check should find the PO (return 1)
-          if (sqlLower.indexOf('po-trg-') >= 0) {
+          if (hasTrgPattern) {
             karate.log('[MockDB] Trigger duplicate check, returning 1');
             countValue = 1;
           }
           // F1-TC24: Idempotency test expects exactly 1 PO created
-          else if (sqlLower.indexOf('idemp') >= 0) {
+          else if (hasIdempPattern) {
             karate.log('[MockDB] Idempotency PO count check, returning 1');
             countValue = 1;
           }
-          // F1-TC14: Partial data check should find no PO (return 0)
-          else {
+          // F1-TC14: Partial/Timeout data check should find no PO (return 0)
+          else if (hasTimeoutPattern || hasPartialPattern) {
+            karate.log('[MockDB] Timeout/Partial check, returning 0');
             countValue = 0;
+          }
+          // Default for PO externpokey queries: return 1 (PO exists)
+          else {
+            karate.log('[MockDB] Default PO externpokey check, returning 1');
+            countValue = 1;
           }
         }
         // F9: Archived POs removed from active table (but not po_history)

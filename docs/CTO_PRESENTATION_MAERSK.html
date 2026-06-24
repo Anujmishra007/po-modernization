@@ -1,0 +1,990 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PO Modernization | CTO Presentation | Maersk</title>
+    <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --dk1: #141414;
+            --lt1: #FFFFFF;
+            --dk2: #545454;
+            --lt2: #EDEDED;
+            --accent1: #42B0D5;
+            --accent2: #00243D;
+            --accent3: #CFCFCF;
+            --accent4: #ED685F;
+            --accent5: #00796B;
+            --accent6: #F59F19;
+            --maersk-cyan: #42B0D5;
+            --maersk-blue: #00243D;
+            --font-headline: 'Maersk Headline Light', 'Source Sans Pro', sans-serif;
+            --font-text: 'Maersk Text', 'Source Sans Pro', sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: var(--font-text);
+            background: var(--maersk-blue);
+            color: var(--lt1);
+            overflow-x: hidden;
+        }
+
+        /* Slide Container */
+        .slides-container {
+            height: 100vh;
+            overflow-y: scroll;
+            scroll-snap-type: y mandatory;
+        }
+
+        .slide {
+            min-height: 100vh;
+            scroll-snap-align: start;
+            display: flex;
+            flex-direction: column;
+            padding: 60px;
+            position: relative;
+        }
+
+        /* Header */
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: rgba(0, 36, 61, 0.95);
+            backdrop-filter: blur(10px);
+            height: 60px;
+            display: flex;
+            align-items: center;
+            padding: 0 40px;
+            border-bottom: 1px solid rgba(66, 176, 213, 0.2);
+        }
+
+        .header-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .maersk-star {
+            width: 32px;
+            height: 32px;
+        }
+
+        .maersk-star svg {
+            width: 100%;
+            height: 100%;
+            fill: var(--maersk-cyan);
+        }
+
+        .header-title {
+            font-family: var(--font-headline);
+            font-size: 18px;
+            color: var(--lt1);
+        }
+
+        /* Slide Content */
+        .slide-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+            padding-top: 60px;
+        }
+
+        .slide-title {
+            font-family: var(--font-headline);
+            font-size: 48px;
+            font-weight: 400;
+            margin-bottom: 16px;
+            color: var(--lt1);
+        }
+
+        .slide-subtitle {
+            font-size: 24px;
+            color: rgba(255,255,255,0.7);
+            margin-bottom: 48px;
+        }
+
+        /* Slide Numbers */
+        .slide-number {
+            position: absolute;
+            bottom: 30px;
+            right: 40px;
+            font-family: var(--font-headline);
+            font-size: 14px;
+            color: rgba(255,255,255,0.4);
+        }
+
+        /* Title Slide */
+        .title-slide .slide-content {
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        .title-slide .slide-title {
+            font-size: 64px;
+            margin-bottom: 24px;
+            background: linear-gradient(90deg, var(--lt1), var(--maersk-cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .title-slide .slide-subtitle {
+            font-size: 28px;
+            margin-bottom: 40px;
+        }
+
+        .title-meta {
+            display: flex;
+            gap: 40px;
+            font-size: 16px;
+            color: rgba(255,255,255,0.6);
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 24px;
+            margin-bottom: 48px;
+        }
+
+        .stat-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 32px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            background: rgba(66, 176, 213, 0.1);
+            border-color: var(--maersk-cyan);
+            transform: translateY(-4px);
+        }
+
+        .stat-value {
+            font-family: var(--font-headline);
+            font-size: 48px;
+            color: var(--maersk-cyan);
+            margin-bottom: 8px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: rgba(255,255,255,0.7);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        /* Architecture Layers */
+        .architecture-container {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .arch-layer {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 20px 24px;
+            display: flex;
+            align-items: flex-start;
+            gap: 24px;
+            transition: all 0.3s ease;
+        }
+
+        .arch-layer:hover {
+            background: rgba(255,255,255,0.06);
+            border-color: rgba(255,255,255,0.2);
+        }
+
+        .layer-badge {
+            min-width: 120px;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-family: var(--font-headline);
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .layer-api .layer-badge { background: linear-gradient(135deg, #42B0D5, #0891b2); }
+        .layer-orchestration .layer-badge { background: linear-gradient(135deg, #8B5CF6, #7c3aed); }
+        .layer-business .layer-badge { background: linear-gradient(135deg, #10B981, #059669); }
+        .layer-variation .layer-badge { background: linear-gradient(135deg, #F59F19, #d97706); }
+        .layer-data .layer-badge { background: linear-gradient(135deg, #ED685F, #dc2626); }
+        .layer-infrastructure .layer-badge { background: linear-gradient(135deg, #6B7280, #4b5563); }
+
+        .layer-modules {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            flex: 1;
+        }
+
+        .module-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px;
+            padding: 12px 16px;
+            min-width: 180px;
+            flex: 1;
+            max-width: 280px;
+        }
+
+        .module-name {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 4px;
+            color: var(--lt1);
+        }
+
+        .module-desc {
+            font-size: 11px;
+            color: rgba(255,255,255,0.6);
+            line-height: 1.4;
+            margin-bottom: 8px;
+        }
+
+        .module-tech {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+
+        .tech-tag {
+            background: rgba(66, 176, 213, 0.2);
+            color: var(--maersk-cyan);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 500;
+        }
+
+        /* Benefits Grid */
+        .benefits-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
+        }
+
+        .benefit-card {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 32px;
+            display: flex;
+            gap: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .benefit-card:hover {
+            background: rgba(255,255,255,0.06);
+            transform: translateX(8px);
+        }
+
+        .benefit-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            flex-shrink: 0;
+        }
+
+        .benefit-icon.cyan { background: rgba(66, 176, 213, 0.2); }
+        .benefit-icon.purple { background: rgba(139, 92, 246, 0.2); }
+        .benefit-icon.green { background: rgba(16, 185, 129, 0.2); }
+        .benefit-icon.amber { background: rgba(245, 159, 25, 0.2); }
+
+        .benefit-content h3 {
+            font-family: var(--font-headline);
+            font-size: 20px;
+            font-weight: 400;
+            margin-bottom: 8px;
+        }
+
+        .benefit-content p {
+            font-size: 14px;
+            color: rgba(255,255,255,0.7);
+            line-height: 1.6;
+        }
+
+        /* Timeline */
+        .timeline {
+            display: flex;
+            gap: 24px;
+            margin-top: 40px;
+        }
+
+        .timeline-phase {
+            flex: 1;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 24px;
+            position: relative;
+        }
+
+        .timeline-phase::after {
+            content: '';
+            position: absolute;
+            right: -12px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 0;
+            height: 0;
+            border-top: 12px solid transparent;
+            border-bottom: 12px solid transparent;
+            border-left: 12px solid rgba(66, 176, 213, 0.3);
+        }
+
+        .timeline-phase:last-child::after {
+            display: none;
+        }
+
+        .phase-number {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--maersk-cyan);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-headline);
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+
+        .phase-title {
+            font-family: var(--font-headline);
+            font-size: 18px;
+            margin-bottom: 8px;
+        }
+
+        .phase-desc {
+            font-size: 14px;
+            color: rgba(255,255,255,0.7);
+            line-height: 1.5;
+        }
+
+        /* Comparison Table */
+        .comparison-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin-top: 24px;
+        }
+
+        .comparison-table th,
+        .comparison-table td {
+            padding: 16px 20px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .comparison-table th {
+            background: rgba(66, 176, 213, 0.1);
+            font-family: var(--font-headline);
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .comparison-table th:first-child {
+            border-radius: 8px 0 0 0;
+        }
+
+        .comparison-table th:last-child {
+            border-radius: 0 8px 0 0;
+        }
+
+        .comparison-table td {
+            font-size: 14px;
+        }
+
+        .comparison-table tr:hover td {
+            background: rgba(255,255,255,0.02);
+        }
+
+        .before {
+            color: var(--accent4);
+        }
+
+        .after {
+            color: var(--accent5);
+        }
+
+        /* Footer */
+        .slide-footer {
+            position: absolute;
+            bottom: 20px;
+            left: 40px;
+            font-size: 12px;
+            color: rgba(255,255,255,0.4);
+        }
+
+        /* Navigation Dots */
+        .nav-dots {
+            position: fixed;
+            right: 30px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            z-index: 1000;
+        }
+
+        .nav-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.3);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .nav-dot:hover,
+        .nav-dot.active {
+            background: var(--maersk-cyan);
+            transform: scale(1.3);
+        }
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .benefits-grid {
+                grid-template-columns: 1fr;
+            }
+            .timeline {
+                flex-direction: column;
+            }
+            .timeline-phase::after {
+                display: none;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .slide {
+                padding: 20px;
+            }
+            .slide-title {
+                font-size: 32px;
+            }
+            .title-slide .slide-title {
+                font-size: 40px;
+            }
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            .arch-layer {
+                flex-direction: column;
+            }
+            .layer-badge {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-logo">
+            <div class="maersk-star">
+                <svg viewBox="0 0 100 100">
+                    <polygon points="50,5 61,40 98,40 68,62 79,97 50,75 21,97 32,62 2,40 39,40"/>
+                </svg>
+            </div>
+            <span class="header-title">A.P. Moller - Maersk</span>
+        </div>
+    </header>
+
+    <!-- Navigation Dots -->
+    <nav class="nav-dots">
+        <div class="nav-dot active" data-slide="0"></div>
+        <div class="nav-dot" data-slide="1"></div>
+        <div class="nav-dot" data-slide="2"></div>
+        <div class="nav-dot" data-slide="3"></div>
+        <div class="nav-dot" data-slide="4"></div>
+        <div class="nav-dot" data-slide="5"></div>
+        <div class="nav-dot" data-slide="6"></div>
+    </nav>
+
+    <!-- Slides -->
+    <div class="slides-container">
+        <!-- Slide 1: Title -->
+        <section class="slide title-slide">
+            <div class="slide-content">
+                <h1 class="slide-title">Purchase Order Modernization</h1>
+                <p class="slide-subtitle">From Legacy SQL to Cloud-Native Microservices</p>
+                <div class="title-meta">
+                    <span>WMS Engineering</span>
+                    <span>CTO Technical Review</span>
+                    <span>Q4 2024</span>
+                </div>
+            </div>
+            <div class="slide-number">1 / 7</div>
+        </section>
+
+        <!-- Slide 2: Project Scale -->
+        <section class="slide">
+            <div class="slide-content">
+                <h2 class="slide-title">Project Scale</h2>
+                <p class="slide-subtitle">Legacy system complexity being modernized</p>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value">115</div>
+                        <div class="stat-label">Stored Procedures</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">37,300+</div>
+                        <div class="stat-label">Lines of SQL</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">13</div>
+                        <div class="stat-label">Maven Modules</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">65+</div>
+                        <div class="stat-label">Plugin Extensions</div>
+                    </div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value">140</div>
+                        <div class="stat-label">Business Rules (DRL)</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">145</div>
+                        <div class="stat-label">Config Properties</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">28,453</div>
+                        <div class="stat-label">Docs Generated</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">234K+</div>
+                        <div class="stat-label">Dependency Edges</div>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer">PO Modernization | Maersk WMS</div>
+            <div class="slide-number">2 / 7</div>
+        </section>
+
+        <!-- Slide 3: Target Architecture -->
+        <section class="slide">
+            <div class="slide-content">
+                <h2 class="slide-title">Target Architecture</h2>
+                <p class="slide-subtitle">6-Layer Microservice Architecture with 13 Maven Modules</p>
+
+                <div class="architecture-container">
+                    <!-- Layer 1: API -->
+                    <div class="arch-layer layer-api">
+                        <div class="layer-badge">API Layer</div>
+                        <div class="layer-modules">
+                            <div class="module-card">
+                                <div class="module-name">po-api</div>
+                                <div class="module-desc">REST controllers, request/response DTOs, API versioning, OpenAPI spec</div>
+                                <div class="module-tech">
+                                    <span class="tech-tag">Spring MVC</span>
+                                    <span class="tech-tag">OpenAPI 3</span>
+                                </div>
+                            </div>
+                            <div class="module-card">
+                                <div class="module-name">po-gateway</div>
+                                <div class="module-desc">API gateway, rate limiting, circuit breaker, request routing</div>
+                                <div class="module-tech">
+                                    <span class="tech-tag">Spring Cloud</span>
+                                    <span class="tech-tag">Resilience4j</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Layer 2: Orchestration -->
+                    <div class="arch-layer layer-orchestration">
+                        <div class="layer-badge">Orchestration</div>
+                        <div class="layer-modules">
+                            <div class="module-card">
+                                <div class="module-name">po-workflow</div>
+                                <div class="module-desc">Temporal workflows, saga orchestration, long-running processes</div>
+                                <div class="module-tech">
+                                    <span class="tech-tag">Temporal</span>
+                                    <span class="tech-tag">Saga Pattern</span>
+                                </div>
+                            </div>
+                            <div class="module-card">
+                                <div class="module-name">po-event</div>
+                                <div class="module-desc">Kafka producers/consumers, event sourcing, CDC integration</div>
+                                <div class="module-tech">
+                                    <span class="tech-tag">Kafka</span>
+                                    <span class="tech-tag">Debezium</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Layer 3: Business Logic -->
+                    <div class="arch-layer layer-business">
+                        <div class="layer-badge">Business Logic</div>
+                        <div class="layer-modules">
+                            <div class="module-card">
+                                <div class="module-name">po-domain</div>
+                                <div class="module-desc">Core domain entities, value objects, domain services, business logic</div>
+                                <div class="module-tech">
+                                    <span class="tech-tag">DDD</span>
+                                    <span class="tech-tag">Aggregates</span>
+                                </div>
+                            </div>
+                            <div class="module-card">
+                                <div class="module-name">po-rules</div>
+                                <div class="module-desc">Drools rules engine, DRL files, rule validation, hot reload</div>
+                                <div class="module-tech">
+                                    <span class="tech-tag">Drools 8</span>
+                                    <span class="tech-tag">140 Rules</span>
+                                </div>
+                            </div>
+                            <div class="module-card">
+                                <div class="module-name">po-service</div>
+                                <div class="module-desc">Application services, use case orchestration, transaction boundaries</div>
+                                <div class="module-tech">
+                                    <span class="tech-tag">Spring TX</span>
+                                    <span class="tech-tag">Use Cases</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Layer 4: Variation -->
+                    <div class="arch-layer layer-variation">
+                        <div class="layer-badge">Variation</div>
+                        <div class="layer-modules">
+                            <div class="module-card">
+                                <div class="module-name">po-config</div>
+                                <div class="module-desc">YAML configs per client/region, feature flags, environment settings</div>
+                                <div class="module-tech">
+                                    <span class="tech-tag">YAML</span>
+                                    <span class="tech-tag">145 Keys</span>
+                                </div>
+                            </div>
+                            <div class="module-card">
+                                <div class="module-name">po-plugin</div>
+                                <div class="module-desc">Java SPI plugins, client extensions, custom hooks, behavior override</div>
+                                <div class="module-tech">
+                                    <span class="tech-tag">Java SPI</span>
+                                    <span class="tech-tag">65+ Plugins</span>
+                                </div>
+                            </div>
+                            <div class="module-card">
+                                <div class="module-name">po-variation</div>
+                                <div class="module-desc">Variation resolver, V0/V2 context, region/client detection, strategy selection</div>
+                                <div class="module-tech">
+                                    <span class="tech-tag">Resolver</span>
+                                    <span class="tech-tag">Strategy</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Layer 5: Data -->
+                    <div class="arch-layer layer-data">
+                        <div class="layer-badge">Data Layer</div>
+                        <div class="layer-modules">
+                            <div class="module-card">
+                                <div class="module-name">po-repository</div>
+                                <div class="module-desc">Repository interfaces, data access, query builders, pagination</div>
+                                <div class="module-tech">
+                                    <span class="tech-tag">JdbcTemplate</span>
+                                    <span class="tech-tag">SQL Server</span>
+                                </div>
+                            </div>
+                            <div class="module-card">
+                                <div class="module-name">po-legacy</div>
+                                <div class="module-desc">V2Adapter for SP calls, LegacyWMSClient, parity testing bridge</div>
+                                <div class="module-tech">
+                                    <span class="tech-tag">SP Bridge</span>
+                                    <span class="tech-tag">Parity</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Layer 6: Infrastructure -->
+                    <div class="arch-layer layer-infrastructure">
+                        <div class="layer-badge">Infrastructure</div>
+                        <div class="layer-modules">
+                            <div class="module-card">
+                                <div class="module-name">po-common</div>
+                                <div class="module-desc">Shared utilities, constants, exceptions, validation helpers</div>
+                                <div class="module-tech">
+                                    <span class="tech-tag">Utils</span>
+                                    <span class="tech-tag">Shared</span>
+                                </div>
+                            </div>
+                            <div class="module-card">
+                                <div class="module-name">po-test</div>
+                                <div class="module-desc">Karate E2E tests, parity tests, test fixtures, reconciliation engine</div>
+                                <div class="module-tech">
+                                    <span class="tech-tag">Karate</span>
+                                    <span class="tech-tag">JUnit 5</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer">PO Modernization | Maersk WMS</div>
+            <div class="slide-number">3 / 7</div>
+        </section>
+
+        <!-- Slide 4: Migration Strategy -->
+        <section class="slide">
+            <div class="slide-content">
+                <h2 class="slide-title">Migration Strategy</h2>
+                <p class="slide-subtitle">Three-phase approach to SP modernization</p>
+
+                <div class="timeline">
+                    <div class="timeline-phase">
+                        <div class="phase-number">1</div>
+                        <h3 class="phase-title">Understand</h3>
+                        <p class="phase-desc">
+                            AI-powered knowledge extraction using Claude. Generate living documentation,
+                            build knowledge graphs (234K+ edges), map dependencies, extract business rules.
+                        </p>
+                    </div>
+                    <div class="timeline-phase">
+                        <div class="phase-number">2</div>
+                        <h3 class="phase-title">Modernize</h3>
+                        <p class="phase-desc">
+                            Decompose SPs into microservices. Migrate business logic to Drools rules,
+                            configuration to YAML, client variations to plugins. Build variation resolver.
+                        </p>
+                    </div>
+                    <div class="timeline-phase">
+                        <div class="phase-number">3</div>
+                        <h3 class="phase-title">Validate</h3>
+                        <p class="phase-desc">
+                            SP parity testing with dual-write validation. Karate E2E framework for BDD tests.
+                            Field-by-field reconciliation engine. Zero regression guarantee.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer">PO Modernization | Maersk WMS</div>
+            <div class="slide-number">4 / 7</div>
+        </section>
+
+        <!-- Slide 5: Before vs After -->
+        <section class="slide">
+            <div class="slide-content">
+                <h2 class="slide-title">Before vs After</h2>
+                <p class="slide-subtitle">Transformation comparison</p>
+
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>Aspect</th>
+                            <th>Before (Legacy SP)</th>
+                            <th>After (Microservice)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Business Logic</td>
+                            <td class="before">Embedded in 115 SPs (37K LOC SQL)</td>
+                            <td class="after">140 DRL rules, hot-reloadable</td>
+                        </tr>
+                        <tr>
+                            <td>Client Variations</td>
+                            <td class="before">IF/ELSE branches in SQL</td>
+                            <td class="after">65+ Java SPI plugins</td>
+                        </tr>
+                        <tr>
+                            <td>Configuration</td>
+                            <td class="before">Hardcoded in SP logic</td>
+                            <td class="after">145 YAML properties per client/region</td>
+                        </tr>
+                        <tr>
+                            <td>Testing</td>
+                            <td class="before">Manual QA, no unit tests</td>
+                            <td class="after">Karate E2E + parity + reconciliation</td>
+                        </tr>
+                        <tr>
+                            <td>Documentation</td>
+                            <td class="before">Tribal knowledge</td>
+                            <td class="after">28,453 auto-generated docs</td>
+                        </tr>
+                        <tr>
+                            <td>Deployment</td>
+                            <td class="before">Full DB deployment</td>
+                            <td class="after">Independent microservice deploy</td>
+                        </tr>
+                        <tr>
+                            <td>Scalability</td>
+                            <td class="before">Vertical (DB bound)</td>
+                            <td class="after">Horizontal (K8s auto-scale)</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="slide-footer">PO Modernization | Maersk WMS</div>
+            <div class="slide-number">5 / 7</div>
+        </section>
+
+        <!-- Slide 6: Key Benefits -->
+        <section class="slide">
+            <div class="slide-content">
+                <h2 class="slide-title">Key Benefits</h2>
+                <p class="slide-subtitle">Business value delivered</p>
+
+                <div class="benefits-grid">
+                    <div class="benefit-card">
+                        <div class="benefit-icon cyan">⚡</div>
+                        <div class="benefit-content">
+                            <h3>Faster Time to Market</h3>
+                            <p>New client onboarding reduced from weeks to days. Plugin architecture enables rapid customization without core changes.</p>
+                        </div>
+                    </div>
+                    <div class="benefit-card">
+                        <div class="benefit-icon purple">🔒</div>
+                        <div class="benefit-content">
+                            <h3>Zero Regression Risk</h3>
+                            <p>SP parity testing ensures 100% functional equivalence. Field-by-field reconciliation catches any drift.</p>
+                        </div>
+                    </div>
+                    <div class="benefit-card">
+                        <div class="benefit-icon green">📈</div>
+                        <div class="benefit-content">
+                            <h3>Elastic Scalability</h3>
+                            <p>Kubernetes horizontal scaling. Independent service deployment. No more DB bottlenecks.</p>
+                        </div>
+                    </div>
+                    <div class="benefit-card">
+                        <div class="benefit-icon amber">🛠️</div>
+                        <div class="benefit-content">
+                            <h3>Maintainability</h3>
+                            <p>Living documentation stays in sync. Business rules externalized. Clear separation of concerns.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer">PO Modernization | Maersk WMS</div>
+            <div class="slide-number">6 / 7</div>
+        </section>
+
+        <!-- Slide 7: Summary -->
+        <section class="slide">
+            <div class="slide-content">
+                <h2 class="slide-title">Summary</h2>
+                <p class="slide-subtitle">PO Modernization delivers a future-ready architecture</p>
+
+                <div class="stats-grid" style="margin-top: 40px;">
+                    <div class="stat-card">
+                        <div class="stat-value">115 → 13</div>
+                        <div class="stat-label">SPs → Modules</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">100%</div>
+                        <div class="stat-label">Parity Tested</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">0</div>
+                        <div class="stat-label">Regressions</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">∞</div>
+                        <div class="stat-label">Scalability</div>
+                    </div>
+                </div>
+
+                <div class="benefits-grid" style="margin-top: 40px;">
+                    <div class="benefit-card">
+                        <div class="benefit-icon cyan">✓</div>
+                        <div class="benefit-content">
+                            <h3>AI-Powered Knowledge Base</h3>
+                            <p>28,453 living documents, 234K+ dependency edges, Claude-assisted code generation</p>
+                        </div>
+                    </div>
+                    <div class="benefit-card">
+                        <div class="benefit-icon green">✓</div>
+                        <div class="benefit-content">
+                            <h3>Production Ready</h3>
+                            <p>Dual-write validation, shadow mode testing, gradual rollout with feature flags</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="slide-footer">PO Modernization | Maersk WMS</div>
+            <div class="slide-number">7 / 7</div>
+        </section>
+    </div>
+
+    <script>
+        // Slide navigation
+        const slides = document.querySelectorAll('.slide');
+        const dots = document.querySelectorAll('.nav-dot');
+        const container = document.querySelector('.slides-container');
+
+        // Update active dot on scroll
+        container.addEventListener('scroll', () => {
+            const scrollPos = container.scrollTop;
+            const slideHeight = window.innerHeight;
+            const currentSlide = Math.round(scrollPos / slideHeight);
+
+            dots.forEach((dot, index) => {
+                dot.classList.toggle('active', index === currentSlide);
+            });
+        });
+
+        // Click navigation
+        dots.forEach((dot, index) => {
+            dot.addEventListener('click', () => {
+                slides[index].scrollIntoView({ behavior: 'smooth' });
+            });
+        });
+
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            const currentSlide = Math.round(container.scrollTop / window.innerHeight);
+
+            if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') {
+                e.preventDefault();
+                if (currentSlide < slides.length - 1) {
+                    slides[currentSlide + 1].scrollIntoView({ behavior: 'smooth' });
+                }
+            } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+                e.preventDefault();
+                if (currentSlide > 0) {
+                    slides[currentSlide - 1].scrollIntoView({ behavior: 'smooth' });
+                }
+            }
+        });
+    </script>
+</body>
+</html>

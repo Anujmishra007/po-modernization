@@ -52,6 +52,344 @@ Compensation:      25 tests (10%) 🔄
 
 ---
 
+## Architecture Diagrams
+
+### 1. Complete System Architecture
+
+```mermaid
+graph TB
+    subgraph EntryPoints["Entry Points"]
+        WebUI["🖥️ Web UI"]
+        RDT["📡 RDT API"]
+        EDI["📄 EDI Interface"]
+        Jobs["⏰ SQL Jobs"]
+        Triggers["🔔 DB Triggers"]
+    end
+
+    subgraph APILayer["API Layer (po-api)"]
+        POController["POController"]
+        PopCtrl["PopulateController"]
+        FinCtrl["FinalizeController"]
+    end
+
+    subgraph VariationLayer["Variation Layer (po-variation)"]
+        VarResolver["VariationResolver"]
+        PluginReg["PluginRegistry"]
+        RuleEngine["RuleEngine<br/>Drools 8.x"]
+    end
+
+    subgraph Orchestration["Temporal Orchestration (Saga Pattern)"]
+        CreateWF["CreatePOWorkflow"]
+        PopWF["PopulatePOWorkflow"]
+        FinWF["FinalizeWorkflow"]
+        CompWF["CompensationWorkflow"]
+    end
+
+    subgraph Activities["Temporal Activities"]
+        ValidateAct["ValidationActivity"]
+        MappingAct["FieldMappingActivity"]
+        PersistAct["PersistenceActivity"]
+        NotifyAct["NotificationActivity"]
+    end
+
+    subgraph Supporting["Supporting Services"]
+        PluginMgr["Plugin Manager<br/>65+ plugins"]
+        RulesMgr["Rules Manager<br/>Drools"]
+        ConfigMgr["Config Service<br/>Git-backed YAML"]
+    end
+
+    subgraph LegacyBridge["Legacy Bridge (po-legacy-bridge)"]
+        V0Adapter["V0Adapter<br/>nsp_* procedures"]
+        V2Adapter["V2Adapter<br/>isp_* procedures"]
+        Reconcil["Reconciliation<br/>Dual-write"]
+    end
+
+    subgraph DataLayer["Data Layer"]
+        PostgreSQL["🗄️ PostgreSQL<br/>Primary DB"]
+        V0DB["🗄️ SQL Server V0<br/>Legacy"]
+        V2DB["🗄️ SQL Server V2<br/>Legacy"]
+        Kafka["📨 Apache Kafka<br/>Event Bus"]
+        Redis["⚡ Redis<br/>Cache"]
+    end
+
+    EntryPoints -->|routes to| APILayer
+    APILayer -->|calls| VariationLayer
+    VariationLayer -->|triggers| Orchestration
+    Orchestration -->|executes| Activities
+    Activities -->|uses| Supporting
+    Activities -->|calls| LegacyBridge
+    Activities -->|reads/writes| DataLayer
+    LegacyBridge -->|dual-write| V0DB
+    LegacyBridge -->|dual-write| V2DB
+    Orchestration -->|publishes events| Kafka
+
+    style EntryPoints fill:#FFE6E6
+    style APILayer fill:#E6F3FF
+    style VariationLayer fill:#E6FFE6
+    style Orchestration fill:#FFF0E6
+    style Activities fill:#F0E6FF
+    style DataLayer fill:#E6E6E6
+    style LegacyBridge fill:#FFE6F0
+```
+
+### 2. Component Architecture & Dependencies
+
+```mermaid
+graph LR
+    subgraph Request["Request Flow"]
+        Req["HTTP Request"]
+    end
+
+    subgraph Controllers["Controllers"]
+        POCtrl["POController"]
+        ASNCtrl["ASNController"]
+        FinCtrl["FinalizeController"]
+    end
+
+    subgraph Services["Service Layer"]
+        POSvc["POService"]
+        PopSvc["PopulationService"]
+        FinSvc["FinalizationService"]
+    end
+
+    subgraph Temporal["Temporal Workflows"]
+        CreateWF["CreatePO<br/>Workflow"]
+        PopWF["PopulatePO<br/>Workflow"]
+        FinWF["Finalize<br/>Workflow"]
+    end
+
+    subgraph Activities["Activity Workers"]
+        Val["Validation<br/>Activity"]
+        Map["Mapping<br/>Activity"]
+        Persist["Persistence<br/>Activity"]
+        Notify["Notification<br/>Activity"]
+    end
+
+    subgraph Config["Configuration & Rules"]
+        ConfigLoader["Config Loader"]
+        RuleEngine["Rule Engine"]
+        PluginLoader["Plugin Loader"]
+    end
+
+    subgraph Data["Data Access"]
+        PODAO["PO DAO"]
+        ASNDAO["ASN DAO"]
+        RecDAO["Receipt DAO"]
+    end
+
+    Req -->|routes| POCtrl
+    Req -->|routes| ASNCtrl
+    Req -->|routes| FinCtrl
+
+    POCtrl -->|calls| POSvc
+    ASNCtrl -->|calls| PopSvc
+    FinCtrl -->|calls| FinSvc
+
+    POSvc -->|triggers| CreateWF
+    PopSvc -->|triggers| PopWF
+    FinSvc -->|triggers| FinWF
+
+    CreateWF -->|executes| Val
+    CreateWF -->|executes| Map
+    CreateWF -->|executes| Persist
+
+    Val -->|loads| ConfigLoader
+    Val -->|evaluates| RuleEngine
+    Map -->|loads| PluginLoader
+
+    Persist -->|uses| PODAO
+    Persist -->|uses| ASNDAO
+    Persist -->|uses| RecDAO
+
+    style Req fill:#FFE6E6
+    style Controllers fill:#E6F3FF
+    style Services fill:#E6FFE6
+    style Temporal fill:#FFF0E6
+    style Activities fill:#F0E6FF
+    style Data fill:#E6E6E6
+```
+
+### 3. PO Flow: Entry Point to Database
+
+```mermaid
+sequenceDiagram
+    participant Client as External<br/>System
+    participant API as API<br/>Layer
+    participant Service as Service<br/>Layer
+    participant Temporal as Temporal<br/>Orchestrator
+    participant Activity as Activities
+    participant Config as Config &<br/>Rules
+    participant DB as PostgreSQL
+    participant Kafka as Kafka<br/>Event Bus
+
+    Client->>API: POST /api/po/create
+    API->>Service: validateAndCreate(request)
+    Service->>Temporal: startWorkflow(CreatePOWorkflow)
+    
+    Temporal->>Activity: executeActivity(ValidationActivity)
+    Activity->>Config: loadValidationRules()
+    Config-->>Activity: rules loaded
+    Activity-->>Temporal: validation passed
+    
+    Temporal->>Activity: executeActivity(FieldMappingActivity)
+    Activity->>Config: loadMappingConfig()
+    Config-->>Activity: config loaded
+    Activity-->>Temporal: mapping completed
+    
+    Temporal->>Activity: executeActivity(PersistenceActivity)
+    Activity->>DB: INSERT INTO PO
+    Activity->>DB: INSERT INTO PODETAIL
+    DB-->>Activity: records created
+    Activity->>Kafka: publishEvent(POCreated)
+    Kafka-->>Activity: event published
+    Activity-->>Temporal: persistence completed
+    
+    Temporal->>Service: workflowCompleted(result)
+    Service-->>API: success response
+    API-->>Client: HTTP 200 + PO details
+
+    Note over Temporal: If ANY activity fails:<br/>Compensation workflow<br/>executes in REVERSE order
+```
+
+### 4. Saga Pattern: Compensation Flow
+
+```mermaid
+graph TD
+    Start["START: PO Creation Saga"] -->|Step 1| Val["✓ Validate PO Header"]
+    Val -->|Step 2| InsertH["✓ Insert PO Header"]
+    InsertH -->|Step 3| MapF["✓ Map Fields"]
+    MapF -->|Step 4| InsertL1["✓ Insert Line 1"]
+    InsertL1 -->|...| InsertL49["✓ Insert Line 49"]
+    InsertL49 -->|Step 50| InsertL50["❌ INSERT Line 50 FAILS"]
+    
+    InsertL50 -->|COMPENSATION| CompL49["↩️ Delete Line 49"]
+    CompL49 -->|COMPENSATION| CompL1["↩️ Delete Line 1"]
+    CompL1 -->|COMPENSATION| CompMap["↩️ Undo Field Mapping"]
+    CompMap -->|COMPENSATION| CompH["↩️ Delete PO Header"]
+    CompH -->|COMPENSATION| Log["📝 Log Failure + Alert"]
+    
+    Log --> End["🔄 COMPENSATED: Clean State"]
+    
+    style Val fill:#90EE90
+    style InsertH fill:#90EE90
+    style MapF fill:#90EE90
+    style InsertL1 fill:#90EE90
+    style InsertL49 fill:#90EE90
+    style InsertL50 fill:#FF6B6B
+    
+    style CompL49 fill:#FFB6C1
+    style CompL1 fill:#FFB6C1
+    style CompMap fill:#FFB6C1
+    style CompH fill:#FFB6C1
+    style Log fill:#FFE6E6
+    style End fill:#B0E0E6
+```
+
+### 5. Entry Points to Flows Mapping
+
+```mermaid
+graph TB
+    subgraph Sources["Data Sources"]
+        WebAPI["🌐 Web API"]
+        EDIFile["📁 EDI Files"]
+        DBTrig["🔔 DB Trigger"]
+        JobSch["⏰ Job Scheduler"]
+        RDTAPI["📡 RDT API"]
+    end
+
+    subgraph Flows["PO Flows"]
+        F1["F1: PO Creation"]
+        F2["F2: ASN Population"]
+        F3["F3: Receipt Finalization"]
+        F4["F4: Cross-Dock"]
+        F8["F8: Cancellation"]
+    end
+
+    WebAPI -->|POST /po/create| F1
+    EDIFile -->|Batch Process| F1
+    JobSch -->|Scheduled| F1
+    RDTAPI -->|RDT variant| F1
+
+    WebAPI -->|POST /po/populate| F2
+    DBTrig -->|RECEIPT INSERT| F2
+    RDTAPI -->|RDT variant| F2
+
+    WebAPI -->|POST /receipt/finalize| F3
+    JobSch -->|Scheduled Finalize| F3
+    RDTAPI -->|RDT variant| F3
+
+    WebAPI -->|POST /po/crossdock| F4
+    JobSch -->|Scheduled| F4
+
+    DBTrig -->|Date-based Expiry| F8
+    JobSch -->|Scheduled| F8
+
+    style Sources fill:#FFE6E6
+    style Flows fill:#E6F3FF
+```
+
+### 6. Test Automation Architecture
+
+```mermaid
+graph LR
+    subgraph TestLayers["Test Layers"]
+        API["API Tests<br/>Karate DSL"]
+        Integration["Integration<br/>TestNG"]
+        DB["Database<br/>pgTAP"]
+        Temporal["Workflow<br/>Temporal SDK"]
+        Perf["Performance<br/>Gatling"]
+    end
+
+    subgraph TestData["Test Data"]
+        SQL["SQL Scripts"]
+        JSON["JSON Payloads"]
+        Factory["Java Factories"]
+    end
+
+    subgraph LocalEnv["Local Environment"]
+        Postgres["PostgreSQL"]
+        Kafka["Apache Kafka"]
+        TemporalSvr["Temporal Server"]
+        App["PO Service"]
+    end
+
+    subgraph Reporting["Reporting & Tracking"]
+        Allure["Allure Reports"]
+        TestRail["TestRail Dashboard"]
+        Coverage["Coverage Reports"]
+    end
+
+    API -->|uses| JSON
+    Integration -->|uses| Factory
+    DB -->|uses| SQL
+    Temporal -->|uses| Factory
+
+    API -->|tests against| App
+    Integration -->|tests against| App
+    Temporal -->|tests against| TemporalSvr
+
+    App -->|connects to| Postgres
+    App -->|publishes to| Kafka
+    App -->|orchestrates via| TemporalSvr
+
+    API -->|reports to| Allure
+    Integration -->|reports to| Allure
+    DB -->|reports to| Allure
+    Temporal -->|reports to| Allure
+    Perf -->|reports to| Allure
+
+    Allure -->|syncs to| TestRail
+    Allure -->|generates| Coverage
+
+    style API fill:#E6F3FF
+    style Integration fill:#E6FFE6
+    style DB fill:#FFF0E6
+    style Temporal fill:#F0E6FF
+    style Perf fill:#FFE6E6
+```
+
+---
+
 ## Test Automation Stack
 
 ```

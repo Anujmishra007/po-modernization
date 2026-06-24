@@ -44,7 +44,7 @@ services:
       - POSTGRES_USER=wms
       - POSTGRES_PWD=wms123
       - POSTGRES_SEEDS=postgres
-      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+      - SKIP_DEFAULT_NAMESPACE_CREATION=false
     ports:
       - "7233:7233"
     networks:

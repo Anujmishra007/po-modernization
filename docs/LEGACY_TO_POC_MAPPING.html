@@ -1,0 +1,2112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PO Legacy Flows vs POC Coverage Mapping</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --maersk-blue: #003C71;
+            --dark-blue: #1B3A5C;
+            --medium-blue: #2E75B6;
+            --light-blue: #D6E4F0;
+            --white: #FFFFFF;
+            --dark-gray: #333333;
+            --medium-gray: #666666;
+            --light-gray: #F5F5F5;
+            --green: #27AE60;
+            --green-bg: #D5F5E3;
+            --orange: #E67E22;
+            --orange-bg: #FDEBD0;
+            --purple: #8E44AD;
+            --purple-bg: #E8DAEF;
+            --red: #C0392B;
+            --red-bg: #FADBD8;
+            --yellow: #F39C12;
+            --yellow-bg: #FEF9E7;
+            --sidebar-width: 280px;
+            --header-height: 70px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--light-gray);
+            color: var(--dark-gray);
+            line-height: 1.6;
+            transition: all 0.3s ease;
+        }
+
+        body.dark-mode {
+            --light-gray: #1a1a2e;
+            --white: #16213e;
+            --dark-gray: #e0e0e0;
+            --medium-gray: #b0b0b0;
+            --light-blue: #1a365d;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: var(--sidebar-width);
+            height: 100vh;
+            background: linear-gradient(180deg, var(--dark-blue) 0%, var(--maersk-blue) 100%);
+            color: var(--white);
+            z-index: 1000;
+            transition: transform 0.3s ease;
+            overflow-y: auto;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .sidebar-header h2 {
+            font-size: 16px;
+            font-weight: 500;
+            margin-top: 10px;
+        }
+
+        .sidebar-header .version {
+            font-size: 12px;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+
+        .nav-section {
+            padding: 15px 20px 5px;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.5;
+        }
+
+        .nav-links { padding: 10px 0; }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            padding: 12px 20px;
+            color: rgba(255,255,255,0.8);
+            text-decoration: none;
+            font-size: 14px;
+            transition: all 0.2s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .nav-link:hover, .nav-link.active {
+            background: rgba(255,255,255,0.1);
+            color: var(--white);
+            border-left-color: var(--orange);
+        }
+
+        .nav-link i { width: 24px; margin-right: 12px; }
+
+        .nav-link .badge {
+            margin-left: auto;
+            background: var(--green);
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+        }
+
+        .sidebar-footer {
+            padding: 20px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .dark-mode-btn {
+            width: 100%;
+            padding: 10px;
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: var(--white);
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s ease;
+        }
+
+        .dark-mode-btn:hover { background: rgba(255,255,255,0.2); }
+
+        /* Main Content */
+        .main-content {
+            margin-left: var(--sidebar-width);
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            position: sticky;
+            top: 0;
+            height: var(--header-height);
+            background: var(--white);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            padding: 0 30px;
+            z-index: 100;
+        }
+
+        .menu-toggle {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--dark-blue);
+            margin-right: 20px;
+        }
+
+        .header-content { flex: 1; }
+
+        .header-content h1 {
+            font-size: 22px;
+            color: var(--maersk-blue);
+            font-weight: 600;
+        }
+
+        .header-content .subtitle {
+            font-size: 13px;
+            color: var(--medium-gray);
+        }
+
+        .search-box {
+            position: relative;
+            width: 300px;
+        }
+
+        .search-box i {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--medium-gray);
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 10px 15px 10px 40px;
+            border: 1px solid #ddd;
+            border-radius: 25px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+
+        .search-box input:focus { border-color: var(--medium-blue); }
+
+        /* Story Section */
+        .story-banner {
+            background: linear-gradient(135deg, var(--maersk-blue) 0%, var(--dark-blue) 100%);
+            color: white;
+            padding: 40px;
+            margin: 20px;
+            border-radius: 16px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .story-banner::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -10%;
+            width: 400px;
+            height: 400px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 50%;
+        }
+
+        .story-banner h1 {
+            font-size: 32px;
+            margin-bottom: 15px;
+        }
+
+        .story-banner p {
+            font-size: 16px;
+            opacity: 0.9;
+            max-width: 700px;
+        }
+
+        /* Sections */
+        .section {
+            padding: 30px;
+            margin: 20px;
+            background: var(--white);
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid var(--light-blue);
+        }
+
+        .section-header h2 {
+            font-size: 24px;
+            color: var(--maersk-blue);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .badge {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .badge-success { background: var(--green-bg); color: var(--green); }
+        .badge-warning { background: var(--orange-bg); color: var(--orange); }
+        .badge-danger { background: var(--red-bg); color: var(--red); }
+        .badge-info { background: var(--purple-bg); color: var(--purple); }
+
+        /* Metrics Grid */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .metric-card {
+            background: var(--white);
+            border-radius: 12px;
+            padding: 25px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            border-left: 4px solid;
+            transition: transform 0.2s ease;
+        }
+
+        .metric-card:hover { transform: translateY(-5px); }
+
+        .metric-primary { border-color: var(--maersk-blue); }
+        .metric-success { border-color: var(--green); }
+        .metric-warning { border-color: var(--orange); }
+        .metric-info { border-color: var(--purple); }
+        .metric-danger { border-color: var(--red); }
+
+        .metric-icon {
+            font-size: 28px;
+            margin-bottom: 10px;
+            color: var(--medium-blue);
+        }
+
+        .metric-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--dark-blue);
+        }
+
+        .metric-label {
+            font-size: 13px;
+            color: var(--medium-gray);
+            font-weight: 500;
+        }
+
+        .metric-sublabel {
+            font-size: 11px;
+            color: var(--green);
+            margin-top: 5px;
+        }
+
+        /* Architecture Diagram */
+        .architecture-container {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 30px;
+            align-items: start;
+            margin: 30px 0;
+        }
+
+        .arch-box {
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+
+        .arch-header {
+            padding: 15px 20px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .arch-header.legacy {
+            background: var(--red);
+            color: white;
+        }
+
+        .arch-header.modern {
+            background: var(--green);
+            color: white;
+        }
+
+        .arch-body {
+            padding: 20px;
+            background: var(--white);
+        }
+
+        .arch-layer {
+            display: flex;
+            align-items: center;
+            padding: 12px 15px;
+            margin: 8px 0;
+            border-radius: 8px;
+            font-size: 13px;
+            transition: transform 0.2s;
+        }
+
+        .arch-layer:hover {
+            transform: translateX(5px);
+        }
+
+        .arch-layer.api { background: #E3F2FD; border-left: 4px solid #1976D2; }
+        .arch-layer.service { background: #E8F5E9; border-left: 4px solid #388E3C; }
+        .arch-layer.workflow { background: #FFF3E0; border-left: 4px solid #F57C00; }
+        .arch-layer.plugin { background: #F3E5F5; border-left: 4px solid #7B1FA2; }
+        .arch-layer.db { background: #ECEFF1; border-left: 4px solid #546E7A; }
+        .arch-layer.problem { background: #FFEBEE; border-left: 4px solid #C62828; }
+
+        .arch-layer i { margin-right: 10px; width: 20px; }
+
+        .arrow-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 0;
+        }
+
+        .arrow-icon {
+            font-size: 48px;
+            color: var(--medium-blue);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+        }
+
+        .arrow-label {
+            margin-top: 10px;
+            font-size: 12px;
+            color: var(--medium-gray);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Flow Mapping */
+        .flow-mapping {
+            background: var(--light-gray);
+            border-radius: 12px;
+            padding: 25px;
+            margin: 20px 0;
+        }
+
+        .flow-mapping h3 {
+            color: var(--dark-blue);
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .mapping-row {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 20px;
+            align-items: center;
+            padding: 15px;
+            background: var(--white);
+            border-radius: 8px;
+            margin-bottom: 10px;
+            transition: transform 0.2s;
+        }
+
+        .mapping-row:hover {
+            transform: scale(1.01);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .legacy-item {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--red);
+            padding: 8px 12px;
+            background: var(--red-bg);
+            border-radius: 6px;
+        }
+
+        .legacy-item .lines {
+            display: block;
+            font-size: 10px;
+            color: var(--medium-gray);
+            margin-top: 4px;
+        }
+
+        .mapping-arrow {
+            color: var(--medium-blue);
+            font-size: 20px;
+        }
+
+        .poc-item {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--green);
+            padding: 8px 12px;
+            background: var(--green-bg);
+            border-radius: 6px;
+        }
+
+        .poc-item .logic {
+            display: block;
+            font-size: 10px;
+            color: var(--medium-gray);
+            margin-top: 4px;
+        }
+
+        /* Collapsible Sections */
+        .collapsible {
+            margin-bottom: 15px;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .collapsible-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px 20px;
+            background: var(--light-gray);
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .collapsible-header:hover { background: var(--light-blue); }
+
+        .collapsible-header h4 {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 16px;
+            color: var(--dark-blue);
+        }
+
+        .collapsible-header .count {
+            background: var(--medium-blue);
+            color: var(--white);
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+
+        .collapsible-header .toggle-icon {
+            transition: transform 0.3s ease;
+        }
+
+        .collapsible-header.active .toggle-icon {
+            transform: rotate(180deg);
+        }
+
+        .collapsible-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+
+        .collapsible-content.active {
+            max-height: 3000px;
+        }
+
+        /* Tables */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .data-table th {
+            background: var(--dark-blue);
+            color: var(--white);
+            padding: 12px 15px;
+            text-align: left;
+            font-weight: 500;
+            position: sticky;
+            top: 0;
+        }
+
+        .data-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .data-table tr:hover { background: var(--light-blue); }
+
+        .data-table .code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--medium-blue);
+        }
+
+        .data-table .path {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: var(--medium-gray);
+        }
+
+        /* Plugin Cards */
+        .plugin-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .plugin-card {
+            border: 1px solid #eee;
+            border-radius: 12px;
+            overflow: hidden;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .plugin-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .plugin-card-header {
+            padding: 15px 20px;
+            color: white;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .plugin-card-header.pre { background: var(--purple); }
+        .plugin-card-header.post { background: var(--orange); }
+        .plugin-card-header.client { background: var(--medium-blue); }
+        .plugin-card-header.region { background: var(--green); }
+
+        .plugin-card-body {
+            padding: 20px;
+        }
+
+        .plugin-card-body .legacy {
+            font-size: 12px;
+            color: var(--medium-gray);
+            margin-bottom: 8px;
+        }
+
+        .plugin-card-body .logic {
+            font-size: 13px;
+            color: var(--dark-gray);
+        }
+
+        /* Demo Section */
+        .demo-section {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin: 20px 0;
+        }
+
+        .demo-section h3 {
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .demo-step {
+            display: grid;
+            grid-template-columns: 120px 100px 1fr 1fr;
+            gap: 15px;
+            align-items: center;
+            padding: 15px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .demo-step .step-num {
+            background: var(--medium-blue);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .demo-step .method {
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .demo-step .method.post { background: var(--green); }
+        .demo-step .method.get { background: var(--medium-blue); }
+
+        .demo-step .url {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--light-blue);
+        }
+
+        .demo-step .body {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            color: #aaa;
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* Comparison Table */
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .comparison-item {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            background: var(--light-gray);
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .comparison-item i {
+            font-size: 20px;
+            margin-right: 15px;
+            width: 30px;
+        }
+
+        .comparison-item.problem i { color: var(--red); }
+        .comparison-item.solution i { color: var(--green); }
+
+        .comparison-item .text {
+            flex: 1;
+        }
+
+        .comparison-item .label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--dark-blue);
+        }
+
+        .comparison-item .desc {
+            font-size: 12px;
+            color: var(--medium-gray);
+        }
+
+        /* Glossary */
+        .glossary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+        }
+
+        .glossary-item {
+            display: flex;
+            padding: 15px;
+            background: var(--light-gray);
+            border-radius: 8px;
+            border-left: 4px solid var(--medium-blue);
+        }
+
+        .glossary-term {
+            font-weight: 600;
+            color: var(--dark-blue);
+            min-width: 100px;
+        }
+
+        .glossary-def {
+            font-size: 13px;
+            color: var(--medium-gray);
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.open { transform: translateX(0); }
+            .main-content { margin-left: 0; }
+            .menu-toggle { display: block; }
+            .architecture-container { grid-template-columns: 1fr; }
+            .arrow-container {
+                flex-direction: row;
+                padding: 20px 0;
+            }
+            .comparison-grid { grid-template-columns: 1fr; }
+        }
+
+        @media (max-width: 768px) {
+            .demo-step { grid-template-columns: 1fr; gap: 10px; }
+            .mapping-row { grid-template-columns: 1fr; gap: 10px; }
+            .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <nav class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <i class="fas fa-ship" style="font-size: 40px; color: var(--orange);"></i>
+            <h2>PO Modernization</h2>
+            <div class="version">Legacy → POC Mapping v2.0</div>
+        </div>
+
+        <div class="nav-section">Overview</div>
+        <div class="nav-links">
+            <a href="#story" class="nav-link active">
+                <i class="fas fa-book-open"></i> The Story
+            </a>
+            <a href="#summary" class="nav-link">
+                <i class="fas fa-chart-pie"></i> Executive Summary
+            </a>
+        </div>
+
+        <div class="nav-section">The Problem</div>
+        <div class="nav-links">
+            <a href="#problem" class="nav-link">
+                <i class="fas fa-exclamation-triangle"></i> Why Modernize?
+            </a>
+            <a href="#architecture" class="nav-link">
+                <i class="fas fa-project-diagram"></i> Architecture Compare
+            </a>
+            <a href="#architecture" class="nav-link" onclick="setTimeout(() => toggleDeepDive('dynamic-hooks'), 100)" style="padding-left: 35px; font-size: 13px;">
+                <i class="fas fa-bolt"></i> Dynamic Hooks Explained
+                <span class="badge" style="background: var(--red);">NEW</span>
+            </a>
+        </div>
+
+        <div class="nav-section">Flow Mappings</div>
+        <div class="nav-links">
+            <a href="#populate" class="nav-link">
+                <i class="fas fa-arrow-right"></i> PO → ASN Population
+                <span class="badge">COVERED</span>
+            </a>
+            <a href="#finalize" class="nav-link">
+                <i class="fas fa-check-circle"></i> Receipt Finalization
+                <span class="badge">COVERED</span>
+            </a>
+            <a href="#tradereturns" class="nav-link">
+                <i class="fas fa-undo"></i> Trade Returns
+                <span class="badge">COVERED</span>
+            </a>
+            <a href="#postalloc" class="nav-link">
+                <i class="fas fa-tasks"></i> Post-Allocation
+                <span class="badge" style="background: var(--orange);">PARTIAL</span>
+            </a>
+        </div>
+
+        <div class="nav-section">Extensions</div>
+        <div class="nav-links">
+            <a href="#plugins" class="nav-link">
+                <i class="fas fa-puzzle-piece"></i> Plugins (65+)
+            </a>
+            <a href="#demo" class="nav-link">
+                <i class="fas fa-play-circle"></i> Demo & Testing
+            </a>
+        </div>
+
+        <div class="nav-section">Reference</div>
+        <div class="nav-links">
+            <a href="#glossary" class="nav-link">
+                <i class="fas fa-book"></i> Glossary
+            </a>
+        </div>
+
+        <div class="sidebar-footer">
+            <button class="dark-mode-btn" onclick="toggleDarkMode()">
+                <i class="fas fa-moon"></i> Toggle Dark Mode
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Header -->
+        <header class="header">
+            <button class="menu-toggle" onclick="toggleSidebar()">
+                <i class="fas fa-bars"></i>
+            </button>
+            <div class="header-content">
+                <h1>PO Legacy Flows vs POC Coverage</h1>
+                <div class="subtitle">Comprehensive mapping of 156+ stored procedures to modern microservices</div>
+            </div>
+            <div class="search-box">
+                <i class="fas fa-search"></i>
+                <input type="text" placeholder="Search mappings..." id="searchInput" onkeyup="filterContent()">
+            </div>
+        </header>
+
+        <!-- Story Banner -->
+        <section id="story" class="story-banner">
+            <h1><i class="fas fa-rocket"></i> The Story of PO Modernization</h1>
+            <p>We're transforming a 20-year-old warehouse system with 156+ stored procedures and 10,000+ lines of SQL code into a modern, cloud-ready platform. This document maps every legacy flow to its POC implementation.</p>
+        </section>
+
+        <!-- Executive Summary -->
+        <section id="summary" class="section">
+            <div class="section-header">
+                <h2><i class="fas fa-chart-bar"></i> Executive Summary</h2>
+                <span class="badge badge-success">POC Complete</span>
+            </div>
+
+            <div class="metrics-grid">
+                <div class="metric-card metric-primary">
+                    <div class="metric-icon"><i class="fas fa-database"></i></div>
+                    <div class="metric-value">156+</div>
+                    <div class="metric-label">Legacy SPs</div>
+                    <div class="metric-sublabel">10,000+ lines of SQL</div>
+                </div>
+                <div class="metric-card metric-success">
+                    <div class="metric-icon"><i class="fas fa-code-branch"></i></div>
+                    <div class="metric-value">3</div>
+                    <div class="metric-label">Workflows</div>
+                    <div class="metric-sublabel">Temporal + Saga</div>
+                </div>
+                <div class="metric-card metric-warning">
+                    <div class="metric-icon"><i class="fas fa-cogs"></i></div>
+                    <div class="metric-value">18</div>
+                    <div class="metric-label">Activities</div>
+                    <div class="metric-sublabel">With compensation</div>
+                </div>
+                <div class="metric-card metric-info">
+                    <div class="metric-icon"><i class="fas fa-puzzle-piece"></i></div>
+                    <div class="metric-value">65+</div>
+                    <div class="metric-label">Plugins</div>
+                    <div class="metric-sublabel">Client & Region</div>
+                </div>
+                <div class="metric-card metric-danger">
+                    <div class="metric-icon"><i class="fas fa-compress-arrows-alt"></i></div>
+                    <div class="metric-value">93%</div>
+                    <div class="metric-label">Code Reduction</div>
+                    <div class="metric-sublabel">2,956 → 200 lines</div>
+                </div>
+            </div>
+
+            <!-- Coverage Table -->
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Category</th>
+                        <th>Legacy</th>
+                        <th>POC</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><i class="fas fa-arrow-right" style="color: var(--medium-blue);"></i> PO → ASN Population</td>
+                        <td>2 SPs (3,683 lines)</td>
+                        <td>1 Workflow + 7 Activities</td>
+                        <td><span class="badge badge-success">COVERED</span></td>
+                    </tr>
+                    <tr>
+                        <td><i class="fas fa-check-circle" style="color: var(--green);"></i> Receipt Finalization</td>
+                        <td>1 SP (2,956 lines)</td>
+                        <td>1 Workflow + 10 Activities</td>
+                        <td><span class="badge badge-success">COVERED</span></td>
+                    </tr>
+                    <tr>
+                        <td><i class="fas fa-undo" style="color: var(--purple);"></i> Trade Returns</td>
+                        <td>2 SPs (~1,500 lines)</td>
+                        <td>1 Workflow + 1 Activity</td>
+                        <td><span class="badge badge-success">COVERED</span></td>
+                    </tr>
+                    <tr>
+                        <td><i class="fas fa-plug" style="color: var(--orange);"></i> Client Extensions</td>
+                        <td>12+ SPs</td>
+                        <td>65+ Plugins</td>
+                        <td><span class="badge badge-success">COVERED</span></td>
+                    </tr>
+                    <tr>
+                        <td><i class="fas fa-tasks" style="color: var(--yellow);"></i> Post-Allocation</td>
+                        <td>27 SPs</td>
+                        <td>7 Plugins</td>
+                        <td><span class="badge badge-warning">PARTIAL</span></td>
+                    </tr>
+                    <tr>
+                        <td><i class="fas fa-plus-circle" style="color: var(--medium-gray);"></i> PO Creation</td>
+                        <td>4 pathways</td>
+                        <td>—</td>
+                        <td><span class="badge badge-info">OUT OF SCOPE</span></td>
+                    </tr>
+                    <tr>
+                        <td><i class="fas fa-history" style="color: var(--medium-gray);"></i> PO Lifecycle</td>
+                        <td>4 SPs</td>
+                        <td>—</td>
+                        <td><span class="badge" style="background: #E0E0E0; color: #666;">FUTURE</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- The Problem -->
+        <section id="problem" class="section">
+            <div class="section-header">
+                <h2><i class="fas fa-exclamation-triangle"></i> The Problem: Why Modernize?</h2>
+            </div>
+
+            <div class="comparison-grid">
+                <div>
+                    <h3 style="color: var(--red); margin-bottom: 15px;"><i class="fas fa-times-circle"></i> Legacy Problems</h3>
+                    <div class="comparison-item problem">
+                        <i class="fas fa-cube"></i>
+                        <div class="text">
+                            <div class="label">Monolithic SPs</div>
+                            <div class="desc">1,800-3,000 lines per procedure</div>
+                        </div>
+                    </div>
+                    <div class="comparison-item problem">
+                        <i class="fas fa-unlock"></i>
+                        <div class="text">
+                            <div class="label">NOLOCK Everywhere</div>
+                            <div class="desc">Dirty reads, data corruption risk</div>
+                        </div>
+                    </div>
+                    <div class="comparison-item problem">
+                        <i class="fas fa-redo"></i>
+                        <div class="text">
+                            <div class="label">No Compensation</div>
+                            <div class="desc">Manual cleanup on failure</div>
+                        </div>
+                    </div>
+                    <div class="comparison-item problem">
+                        <i class="fas fa-code"></i>
+                        <div class="text">
+                            <div class="label">Dynamic SQL</div>
+                            <div class="desc">Injection risk, plan cache bloat</div>
+                        </div>
+                    </div>
+                    <div class="comparison-item problem">
+                        <i class="fas fa-eye-slash"></i>
+                        <div class="text">
+                            <div class="label">No Observability</div>
+                            <div class="desc">Difficult to debug and monitor</div>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <h3 style="color: var(--green); margin-bottom: 15px;"><i class="fas fa-check-circle"></i> POC Solutions</h3>
+                    <div class="comparison-item solution">
+                        <i class="fas fa-cubes"></i>
+                        <div class="text">
+                            <div class="label">Modular Activities</div>
+                            <div class="desc">50-200 lines each, single responsibility</div>
+                        </div>
+                    </div>
+                    <div class="comparison-item solution">
+                        <i class="fas fa-lock"></i>
+                        <div class="text">
+                            <div class="label">Proper Isolation</div>
+                            <div class="desc">Transaction boundaries with JPA</div>
+                        </div>
+                    </div>
+                    <div class="comparison-item solution">
+                        <i class="fas fa-undo-alt"></i>
+                        <div class="text">
+                            <div class="label">Saga Pattern</div>
+                            <div class="desc">Automatic rollback on failure</div>
+                        </div>
+                    </div>
+                    <div class="comparison-item solution">
+                        <i class="fas fa-file-code"></i>
+                        <div class="text">
+                            <div class="label">YAML Config</div>
+                            <div class="desc">Externalized, secure configuration</div>
+                        </div>
+                    </div>
+                    <div class="comparison-item solution">
+                        <i class="fas fa-eye"></i>
+                        <div class="text">
+                            <div class="label">Temporal UI</div>
+                            <div class="desc">Visual workflow monitoring</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Architecture Comparison -->
+        <section id="architecture" class="section">
+            <div class="section-header">
+                <h2><i class="fas fa-project-diagram"></i> Architecture Comparison</h2>
+            </div>
+
+            <div class="architecture-container">
+                <div class="arch-box">
+                    <div class="arch-header legacy">
+                        <i class="fas fa-times-circle"></i> Legacy Architecture
+                    </div>
+                    <div class="arch-body">
+                        <div class="arch-layer api"><i class="fas fa-globe"></i> REST API</div>
+                        <div class="arch-layer service"><i class="fas fa-server"></i> Java Service (Thin Wrapper)</div>
+                        <div class="arch-layer db"><i class="fas fa-database"></i> JdbcTemplate (SP Caller)</div>
+                        <div class="arch-layer problem"><i class="fas fa-file-code"></i> Stored Procedure (1,800-3,000 lines)</div>
+                        <div class="arch-layer problem"><i class="fas fa-bolt"></i> Triggers (6 on PO tables)</div>
+                        <div class="arch-layer problem"><i class="fas fa-random"></i> Dynamic Hooks (String SP names)</div>
+                    </div>
+                </div>
+
+                <div class="arrow-container">
+                    <i class="fas fa-arrow-right arrow-icon"></i>
+                    <div class="arrow-label">Transform</div>
+                </div>
+
+                <div class="arch-box">
+                    <div class="arch-header modern">
+                        <i class="fas fa-check-circle"></i> POC Architecture
+                    </div>
+                    <div class="arch-body">
+                        <div class="arch-layer api"><i class="fas fa-globe"></i> REST API</div>
+                        <div class="arch-layer service"><i class="fas fa-layer-group"></i> Variation Layer (Context Resolver)</div>
+                        <div class="arch-layer workflow"><i class="fas fa-project-diagram"></i> Temporal Workflow (Saga)</div>
+                        <div class="arch-layer plugin"><i class="fas fa-puzzle-piece"></i> Plugin Registry (65+ plugins)</div>
+                        <div class="arch-layer service"><i class="fas fa-bridge"></i> Legacy Bridge (V0/V2 Adapters)</div>
+                        <div class="arch-layer db"><i class="fas fa-database"></i> PostgreSQL / SQL Server</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Deep Dive: Dynamic Hooks Explanation -->
+            <div class="deep-dive-section" style="margin-top: 40px;">
+                <div class="deep-dive-header" onclick="toggleDeepDive('dynamic-hooks')" style="cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 15px 20px; background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); color: white; border-radius: 10px 10px 0 0;">
+                    <i class="fas fa-chevron-down" id="dynamic-hooks-icon"></i>
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <h3 style="margin: 0; font-size: 18px;">Deep Dive: Dynamic Hooks (String SP names) vs Java Plugins</h3>
+                    <span style="margin-left: auto; font-size: 12px; opacity: 0.8;">Click to expand</span>
+                </div>
+                <div id="dynamic-hooks-content" class="deep-dive-body" style="display: none; background: var(--white); border: 2px solid #e74c3c; border-top: none; border-radius: 0 0 10px 10px; padding: 30px;">
+
+                    <!-- Problem Statement -->
+                    <div style="margin-bottom: 30px;">
+                        <h4 style="color: var(--red); margin-bottom: 15px;"><i class="fas fa-question-circle"></i> The Problem: What are Dynamic Hooks?</h4>
+                        <p style="line-height: 1.8; color: var(--medium-gray);">
+                            In the <strong>legacy system</strong>, when a PO is populated into an ASN/Receipt, the system needs to run <strong>client-specific customizations</strong>.
+                            But instead of hardcoding which client uses which logic, it stores <strong>SP names as strings</strong> in a config table, then executes them dynamically using <code>sp_executesql</code>.
+                        </p>
+                    </div>
+
+                    <!-- Legacy Flow Diagram -->
+                    <div style="margin-bottom: 30px;">
+                        <h4 style="color: var(--maersk-blue); margin-bottom: 15px;"><i class="fas fa-sitemap"></i> Legacy Dynamic Hook Resolution Flow</h4>
+                        <pre style="background: #1a1a2e; color: #00ff88; padding: 20px; border-radius: 8px; overflow-x: auto; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.6;">
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  LEGACY: Dynamic Hook Resolution                                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  1. User calls: lsp_ASN_PopulatePOs_Wrapper('PO-001', 'NIKE', 'KR01')      │
+│                              │                                              │
+│                              ▼                                              │
+│  2. Wrapper calls: isp_PrePopulatePO_Wrapper                               │
+│                              │                                              │
+│                              ▼                                              │
+│  3. Read config:  SELECT PrePopulatePOSP                                   │
+│                   FROM STORERCONFIG                                         │
+│                   WHERE StorerKey = 'NIKE'                                  │
+│                              │                                              │
+│                              ▼                                              │
+│  4. Result:       @spName = 'ispPRPPLPO_NIKEKR'  ← <span style="color: #ff6b6b;">STRING value!</span>           │
+│                              │                                              │
+│                              ▼                                              │
+│  5. Dynamic exec: EXEC sp_executesql @spName, @params  ← <span style="color: #ff6b6b;">Executes string!</span>  │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘</pre>
+                    </div>
+
+                    <!-- Legacy SQL Code Example -->
+                    <div style="margin-bottom: 30px;">
+                        <h4 style="color: var(--maersk-blue); margin-bottom: 15px;"><i class="fas fa-code"></i> Legacy SQL Code (Simplified)</h4>
+                        <pre style="background: #2d2d2d; color: #f8f8f2; padding: 20px; border-radius: 8px; overflow-x: auto; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.6;">
+<span style="color: #66d9ef;">-- isp_PrePopulatePO_Wrapper (148 lines)</span>
+<span style="color: #f92672;">CREATE PROCEDURE</span> isp_PrePopulatePO_Wrapper
+    <span style="color: #fd971f;">@c_ReceiptKey</span> <span style="color: #66d9ef;">NVARCHAR</span>(10),
+    <span style="color: #fd971f;">@c_POKeys</span> <span style="color: #66d9ef;">NVARCHAR</span>(MAX),
+    <span style="color: #fd971f;">@c_StorerKey</span> <span style="color: #66d9ef;">NVARCHAR</span>(15)
+<span style="color: #f92672;">AS</span>
+<span style="color: #f92672;">BEGIN</span>
+    <span style="color: #f92672;">DECLARE</span> <span style="color: #fd971f;">@spName</span> <span style="color: #66d9ef;">NVARCHAR</span>(100)
+
+    <span style="color: #66d9ef;">-- Step 1: Read SP name as STRING from config table</span>
+    <span style="color: #f92672;">SELECT</span> <span style="color: #fd971f;">@spName</span> = PrePopulatePOSP
+    <span style="color: #f92672;">FROM</span> STORERCONFIG
+    <span style="color: #f92672;">WHERE</span> StorerKey = <span style="color: #fd971f;">@c_StorerKey</span>
+
+    <span style="color: #66d9ef;">-- Step 2: If config has a value, execute it DYNAMICALLY</span>
+    <span style="color: #f92672;">IF</span> <span style="color: #fd971f;">@spName</span> <span style="color: #f92672;">IS NOT NULL AND</span> <span style="color: #fd971f;">@spName</span> &lt;&gt; <span style="color: #a6e22e;">''</span>
+    <span style="color: #f92672;">BEGIN</span>
+        <span style="color: #66d9ef;">-- Build dynamic SQL with string SP name</span>
+        <span style="color: #f92672;">DECLARE</span> <span style="color: #fd971f;">@sql</span> <span style="color: #66d9ef;">NVARCHAR</span>(MAX) = <span style="color: #fd971f;">@spName</span> + <span style="color: #a6e22e;">' @ReceiptKey, @POKeys, @StorerKey'</span>
+
+        <span style="color: #ff6b6b;">-- ⚠️ Execute the string as code! DANGEROUS!</span>
+        <span style="color: #f92672;">EXEC</span> sp_executesql <span style="color: #fd971f;">@sql</span>,
+            <span style="color: #a6e22e;">N'@ReceiptKey NVARCHAR(10), @POKeys NVARCHAR(MAX), @StorerKey NVARCHAR(15)'</span>,
+            @ReceiptKey = <span style="color: #fd971f;">@c_ReceiptKey</span>,
+            @POKeys = <span style="color: #fd971f;">@c_POKeys</span>,
+            @StorerKey = <span style="color: #fd971f;">@c_StorerKey</span>
+    <span style="color: #f92672;">END</span>
+<span style="color: #f92672;">END</span></pre>
+                    </div>
+
+                    <!-- Config Table Example -->
+                    <div style="margin-bottom: 30px;">
+                        <h4 style="color: var(--maersk-blue); margin-bottom: 15px;"><i class="fas fa-table"></i> The Config Table Data (STORERCONFIG)</h4>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                            <thead>
+                                <tr style="background: var(--red); color: white;">
+                                    <th style="padding: 12px; text-align: left;">StorerKey</th>
+                                    <th style="padding: 12px; text-align: left;">PrePopulatePOSP</th>
+                                    <th style="padding: 12px; text-align: left;">PostFinalizeSP</th>
+                                    <th style="padding: 12px; text-align: left;">Risk</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr style="background: #fff5f5;">
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee;"><strong>NIKE</strong></td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; font-family: monospace; color: #c0392b;">ispPRPPLPO_NIKEKR</td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; font-family: monospace; color: #c0392b;">ispPOSTFIN_NIKE</td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee;"><span style="background: #ff6b6b; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">String = Code</span></td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee;"><strong>ADIDAS</strong></td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; font-family: monospace; color: #c0392b;">ispPRPPLPO03</td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; font-family: monospace; color: #c0392b;">ispPOSTFIN_ADIDAS</td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee;"><span style="background: #ff6b6b; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">String = Code</span></td>
+                                </tr>
+                                <tr style="background: #fff5f5;">
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee;"><strong>HM</strong></td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; font-family: monospace; color: #c0392b;">ispPRPPLPO_HM</td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; font-family: monospace; color: #888;">NULL</td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee;"><span style="background: #ff6b6b; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">String = Code</span></td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 12px;"><strong>DEFAULT</strong></td>
+                                    <td style="padding: 12px; font-family: monospace; color: #c0392b;">ispPRPPLPO01</td>
+                                    <td style="padding: 12px; font-family: monospace; color: #c0392b;">ispPOSTFIN01</td>
+                                    <td style="padding: 12px;"><span style="background: #ff6b6b; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px;">String = Code</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Problems Table -->
+                    <div style="margin-bottom: 30px;">
+                        <h4 style="color: var(--red); margin-bottom: 15px;"><i class="fas fa-exclamation-circle"></i> Problems with Dynamic Hooks</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px;">
+                            <div style="background: #fff5f5; border-left: 4px solid #e74c3c; padding: 15px; border-radius: 0 8px 8px 0;">
+                                <strong style="color: #c0392b;"><i class="fas fa-times-circle"></i> No compile-time validation</strong>
+                                <p style="margin: 5px 0 0 0; font-size: 13px; color: #666;">SP name typo = runtime crash</p>
+                            </div>
+                            <div style="background: #fff5f5; border-left: 4px solid #e74c3c; padding: 15px; border-radius: 0 8px 8px 0;">
+                                <strong style="color: #c0392b;"><i class="fas fa-times-circle"></i> No dependency tracking</strong>
+                                <p style="margin: 5px 0 0 0; font-size: 13px; color: #666;">IDE can't find "who calls what"</p>
+                            </div>
+                            <div style="background: #fff5f5; border-left: 4px solid #e74c3c; padding: 15px; border-radius: 0 8px 8px 0;">
+                                <strong style="color: #c0392b;"><i class="fas fa-times-circle"></i> SQL injection risk</strong>
+                                <p style="margin: 5px 0 0 0; font-size: 13px; color: #666;">String execution = security hole</p>
+                            </div>
+                            <div style="background: #fff5f5; border-left: 4px solid #e74c3c; padding: 15px; border-radius: 0 8px 8px 0;">
+                                <strong style="color: #c0392b;"><i class="fas fa-times-circle"></i> Hard to test</strong>
+                                <p style="margin: 5px 0 0 0; font-size: 13px; color: #666;">Can't mock the dynamic SP</p>
+                            </div>
+                            <div style="background: #fff5f5; border-left: 4px solid #e74c3c; padding: 15px; border-radius: 0 8px 8px 0;">
+                                <strong style="color: #c0392b;"><i class="fas fa-times-circle"></i> Version control nightmare</strong>
+                                <p style="margin: 5px 0 0 0; font-size: 13px; color: #666;">SP logic lives in database, not Git</p>
+                            </div>
+                            <div style="background: #fff5f5; border-left: 4px solid #e74c3c; padding: 15px; border-radius: 0 8px 8px 0;">
+                                <strong style="color: #c0392b;"><i class="fas fa-times-circle"></i> No type safety</strong>
+                                <p style="margin: 5px 0 0 0; font-size: 13px; color: #666;">Wrong parameters = silent failure</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- POC Solution -->
+                    <div style="margin-bottom: 30px;">
+                        <h4 style="color: var(--green); margin-bottom: 15px;"><i class="fas fa-check-circle"></i> POC Solution: Java Plugins + PostgreSQL for Data Only</h4>
+                        <pre style="background: #1a1a2e; color: #00ff88; padding: 20px; border-radius: 8px; overflow-x: auto; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.6;">
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  POC: Plugin Architecture                                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  <span style="color: #66d9ef;">PostgreSQL/SQL Server = DATA STORAGE ONLY</span>                                  │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  client_config table:                                                │   │
+│  │  ┌──────────┬───────────────┬─────────────────────────────────────┐ │   │
+│  │  │ client   │ region        │ features (JSON)                     │ │   │
+│  │  ├──────────┼───────────────┼─────────────────────────────────────┤ │   │
+│  │  │ NIKE     │ KR            │ {"requiresCustomsCode": true, ...}  │ │   │
+│  │  │ ADIDAS   │ IN            │ {"requiresGST": true, ...}          │ │   │
+│  │  └──────────┴───────────────┴─────────────────────────────────────┘ │   │
+│  │  ↑ <span style="color: #a6e22e;">No SP names! Just data and flags</span>                                 │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  <span style="color: #66d9ef;">Java Plugins = BUSINESS LOGIC (compile-time safe)</span>                         │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  @Component                                                          │   │
+│  │  @ConditionalOnProperty("client.nike.enabled")                      │   │
+│  │  public class NikePrePopulatePlugin implements PrePopulatePlugin {  │   │
+│  │      @Override                                                       │   │
+│  │      public void execute(PopulateContext ctx) {                     │   │
+│  │          <span style="color: #a6e22e;">// Compile-time checked, testable, type-safe</span>               │   │
+│  │      }                                                               │   │
+│  │  }                                                                   │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘</pre>
+                    </div>
+
+                    <!-- POC Java Code Example -->
+                    <div style="margin-bottom: 30px;">
+                        <h4 style="color: var(--green); margin-bottom: 15px;"><i class="fas fa-code"></i> POC Java Code Example</h4>
+                        <pre style="background: #2d2d2d; color: #f8f8f2; padding: 20px; border-radius: 8px; overflow-x: auto; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.6;">
+<span style="color: #66d9ef;">// VariationResolver.java - Resolves which plugins to use</span>
+<span style="color: #f92672;">@Component</span>
+<span style="color: #f92672;">public class</span> <span style="color: #a6e22e;">VariationResolver</span> {
+
+    <span style="color: #f92672;">private final</span> List&lt;PrePopulatePlugin&gt; prePlugins;
+    <span style="color: #f92672;">private final</span> ClientConfigRepository configRepo;  <span style="color: #66d9ef;">// PostgreSQL</span>
+
+    <span style="color: #f92672;">public</span> List&lt;PrePopulatePlugin&gt; <span style="color: #a6e22e;">resolvePlugins</span>(String client, String region) {
+        <span style="color: #66d9ef;">// Read CONFIG DATA from PostgreSQL (not SP names!)</span>
+        ClientConfig config = configRepo.findByClientAndRegion(client, region);
+
+        <span style="color: #66d9ef;">// Return Java plugins that match this client</span>
+        <span style="color: #f92672;">return</span> prePlugins.stream()
+            .filter(p -&gt; p.supports(config))  <span style="color: #a6e22e;">// ✅ Compile-time safe!</span>
+            .collect(toList());
+    }
+}
+
+<span style="color: #66d9ef;">// NikeKoreaPrePopulatePlugin.java</span>
+<span style="color: #f92672;">@Component</span>
+<span style="color: #f92672;">public class</span> <span style="color: #a6e22e;">NikeKoreaPrePopulatePlugin</span> <span style="color: #f92672;">implements</span> PrePopulatePlugin {
+
+    <span style="color: #f92672;">@Override</span>
+    <span style="color: #f92672;">public boolean</span> <span style="color: #a6e22e;">supports</span>(ClientConfig config) {
+        <span style="color: #f92672;">return</span> <span style="color: #a6e22e;">"NIKE"</span>.equals(config.getClient())
+            &amp;&amp; <span style="color: #a6e22e;">"KR"</span>.equals(config.getRegion());
+    }
+
+    <span style="color: #f92672;">@Override</span>
+    <span style="color: #f92672;">public void</span> <span style="color: #a6e22e;">execute</span>(PopulateContext ctx) {
+        <span style="color: #66d9ef;">// This replaces ispPRPPLPO_NIKEKR stored procedure</span>
+        <span style="color: #66d9ef;">// But it's:</span>
+        <span style="color: #a6e22e;">// ✅ Compile-time validated</span>
+        <span style="color: #a6e22e;">// ✅ Unit testable</span>
+        <span style="color: #a6e22e;">// ✅ Type safe</span>
+        <span style="color: #a6e22e;">// ✅ Version controlled in Git</span>
+        <span style="color: #a6e22e;">// ✅ IDE can find all usages</span>
+
+        <span style="color: #f92672;">if</span> (ctx.getHeader().getMissingCustomsCode()) {
+            ctx.addValidationError(<span style="color: #a6e22e;">"Customs code required for Korea"</span>);
+        }
+    }
+}</pre>
+                    </div>
+
+                    <!-- Side-by-Side Comparison Table -->
+                    <div style="margin-bottom: 30px;">
+                        <h4 style="color: var(--maersk-blue); margin-bottom: 15px;"><i class="fas fa-balance-scale"></i> Side-by-Side Comparison</h4>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                            <thead>
+                                <tr style="background: linear-gradient(135deg, var(--maersk-blue), var(--dark-blue)); color: white;">
+                                    <th style="padding: 12px; text-align: left; width: 20%;">Aspect</th>
+                                    <th style="padding: 12px; text-align: left; width: 40%; background: rgba(231,76,60,0.3);">Legacy (Dynamic Hooks)</th>
+                                    <th style="padding: 12px; text-align: left; width: 40%; background: rgba(39,174,96,0.3);">POC (Java Plugins)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; font-weight: bold;">Where is logic?</td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; background: #fff5f5;">SQL Server (SP names as strings)</td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; background: #f0fff4;">Java classes (Spring beans)</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; font-weight: bold;">Where is config?</td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; background: #fff5f5; font-family: monospace; font-size: 11px;">STORERCONFIG.PrePopulatePOSP = 'ispPRPPLPO03'</td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; background: #f0fff4; font-family: monospace; font-size: 11px;">PostgreSQL: {"requiresGST": true}</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; font-weight: bold;">How resolved?</td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; background: #fff5f5; font-family: monospace; font-size: 11px;">EXEC sp_executesql @spName</td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; background: #f0fff4; font-family: monospace; font-size: 11px;">plugins.stream().filter(p -&gt; p.supports(config))</td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; font-weight: bold;">Type safety?</td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; background: #fff5f5;"><span style="color: #e74c3c;">❌ None - string execution</span></td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; background: #f0fff4;"><span style="color: #27ae60;">✅ Compile-time checked</span></td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; font-weight: bold;">Testability?</td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; background: #fff5f5;"><span style="color: #e74c3c;">❌ Requires full DB</span></td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; background: #f0fff4;"><span style="color: #27ae60;">✅ Mock the interface</span></td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; font-weight: bold;">Version control?</td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; background: #fff5f5;"><span style="color: #e74c3c;">❌ Lives in database</span></td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; background: #f0fff4;"><span style="color: #27ae60;">✅ Git tracked</span></td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; font-weight: bold;">IDE support?</td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; background: #fff5f5;"><span style="color: #e74c3c;">❌ "Find usages" fails</span></td>
+                                    <td style="padding: 12px; border-bottom: 1px solid #eee; background: #f0fff4;"><span style="color: #27ae60;">✅ Full refactoring support</span></td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 12px; font-weight: bold;">Debugging?</td>
+                                    <td style="padding: 12px; background: #fff5f5;"><span style="color: #e74c3c;">❌ SQL Profiler + guess</span></td>
+                                    <td style="padding: 12px; background: #f0fff4;"><span style="color: #27ae60;">✅ Breakpoints + stack traces</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Visual Summary -->
+                    <div>
+                        <h4 style="color: var(--maersk-blue); margin-bottom: 15px;"><i class="fas fa-eye"></i> Visual Summary</h4>
+                        <pre style="background: #1a1a2e; color: #e0e0e0; padding: 20px; border-radius: 8px; overflow-x: auto; font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.6;">
+<span style="color: #ff6b6b;">LEGACY:</span>                                    <span style="color: #00ff88;">POC:</span>
+═══════                                    ════
+
+┌──────────────┐                          ┌──────────────┐
+│ STORERCONFIG │                          │  PostgreSQL  │
+│──────────────│                          │──────────────│
+│ PrePopulateSP│                          │ features:    │
+│ = 'ispPRP03' │ ← <span style="color: #ff6b6b;">SP name as string!</span>     │ {json data}  │ ← <span style="color: #00ff88;">Just data!</span>
+└──────┬───────┘                          └──────┬───────┘
+       │                                         │
+       ▼                                         ▼
+┌──────────────────┐                      ┌──────────────────┐
+│ sp_executesql    │                      │ VariationResolver│
+│ @spName          │ ← <span style="color: #ff6b6b;">Dangerous!</span>         │ .resolvePlugins()│ ← <span style="color: #00ff88;">Safe!</span>
+└──────┬───────────┘                      └──────┬───────────┘
+       │                                         │
+       ▼                                         ▼
+┌──────────────────┐                      ┌──────────────────┐
+│ ispPRPPLPO03     │                      │ NikePlugin.java  │
+│ (SQL Server SP)  │                      │ (Spring Bean)    │
+│ 200+ lines T-SQL │                      │ Type-safe Java   │
+└──────────────────┘                      └──────────────────┘
+
+<span style="color: #66d9ef;">KEY INSIGHT:</span> PostgreSQL/SQL Server in POC stores <span style="color: #00ff88;">DATA</span> (config flags,
+feature toggles), not <span style="color: #ff6b6b;">CODE</span> (SP names to execute). The business logic
+lives in version-controlled, compile-time safe Java plugins.</pre>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- Flow 1: PO → ASN Population -->
+        <section id="populate" class="section">
+            <div class="section-header">
+                <h2><i class="fas fa-arrow-right"></i> Flow 1: PO → ASN Population</h2>
+                <span class="badge badge-success">FULLY COVERED</span>
+            </div>
+
+            <div class="flow-mapping">
+                <h3><i class="fas fa-exchange-alt"></i> Legacy → POC Mapping</h3>
+
+                <div class="mapping-row">
+                    <div class="legacy-item">
+                        WM.lsp_ASN_PopulatePOs_Wrapper
+                        <span class="lines">1,871 lines of SQL</span>
+                    </div>
+                    <div class="mapping-arrow"><i class="fas fa-arrow-right"></i></div>
+                    <div class="poc-item">
+                        PopulatePOWorkflow.java
+                        <span class="logic">Temporal workflow with Saga pattern</span>
+                    </div>
+                </div>
+
+                <div class="mapping-row">
+                    <div class="legacy-item">
+                        lsp_SetUser / lsp_ResetUser
+                        <span class="lines">SQL session context</span>
+                    </div>
+                    <div class="mapping-arrow"><i class="fas fa-arrow-right"></i></div>
+                    <div class="poc-item">
+                        VariationResolver.java
+                        <span class="logic">Resolves client, region, version</span>
+                    </div>
+                </div>
+
+                <div class="mapping-row">
+                    <div class="legacy-item">
+                        isp_PrePopulatePO_Wrapper
+                        <span class="lines">148 lines - dynamic SP dispatch</span>
+                    </div>
+                    <div class="mapping-arrow"><i class="fas fa-arrow-right"></i></div>
+                    <div class="poc-item">
+                        PluginActivity.java
+                        <span class="logic">Loads and executes PrePopulatePlugins</span>
+                    </div>
+                </div>
+
+                <div class="mapping-row">
+                    <div class="legacy-item">
+                        PO2ASNMAP field mapping
+                        <span class="lines">Dynamic SQL generation</span>
+                    </div>
+                    <div class="mapping-arrow"><i class="fas fa-arrow-right"></i></div>
+                    <div class="poc-item">
+                        MappingActivity.mapPOToASN()
+                        <span class="logic">Java field mapping with DTOs</span>
+                    </div>
+                </div>
+
+                <div class="mapping-row">
+                    <div class="legacy-item">
+                        nspg_GetKey('RECEIPT')
+                        <span class="lines">NCOUNTER table lookup</span>
+                    </div>
+                    <div class="mapping-arrow"><i class="fas fa-arrow-right"></i></div>
+                    <div class="poc-item">
+                        KeyGeneratorService.java
+                        <span class="logic">Timestamp + sequence generation</span>
+                    </div>
+                </div>
+
+                <div class="mapping-row">
+                    <div class="legacy-item">
+                        INSERT INTO RECEIPT/RECEIPTDETAIL
+                        <span class="lines">Cursor-based inserts</span>
+                    </div>
+                    <div class="mapping-arrow"><i class="fas fa-arrow-right"></i></div>
+                    <div class="poc-item">
+                        PersistenceActivity.java
+                        <span class="logic">JPA batch save with compensation</span>
+                    </div>
+                </div>
+
+                <div class="mapping-row">
+                    <div class="legacy-item">
+                        ispLottableRule_Wrapper
+                        <span class="lines">Dynamic SP per lottable</span>
+                    </div>
+                    <div class="mapping-arrow"><i class="fas fa-arrow-right"></i></div>
+                    <div class="poc-item">
+                        MappingActivity.applyLottables()
+                        <span class="logic">Region-specific rules in Java</span>
+                    </div>
+                </div>
+
+                <div class="mapping-row">
+                    <div class="legacy-item">
+                        Error handling
+                        <span class="lines">Manual rollback required</span>
+                    </div>
+                    <div class="mapping-arrow"><i class="fas fa-arrow-right"></i></div>
+                    <div class="poc-item">
+                        Saga Compensation
+                        <span class="logic">Automatic rollback on failure</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pre-Populate Plugins -->
+            <div class="collapsible">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <h4><i class="fas fa-plug"></i> Pre-Populate Plugins <span class="count">6</span></h4>
+                    <i class="fas fa-chevron-down toggle-icon"></i>
+                </div>
+                <div class="collapsible-content">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Legacy SP</th>
+                                <th>POC Plugin</th>
+                                <th>Client</th>
+                                <th>Logic</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="code">ispPRPPLPO01</td>
+                                <td class="code">StandardPrePopulatePlugin</td>
+                                <td>Standard</td>
+                                <td>PO status check, duplicate validation</td>
+                            </tr>
+                            <tr>
+                                <td class="code">ispPRPPLPO02</td>
+                                <td class="code">GenericPrePopulatePlugin</td>
+                                <td>Variant</td>
+                                <td>Configurable validation rules</td>
+                            </tr>
+                            <tr>
+                                <td class="code">ispPRPPLPO03</td>
+                                <td class="code">AdidasPreFinalizePlugin</td>
+                                <td>Adidas RG</td>
+                                <td>UCC HV/BL/QC stamping</td>
+                            </tr>
+                            <tr>
+                                <td class="code">ispPRPPLPO_GBR_JCB</td>
+                                <td class="code">(Future)</td>
+                                <td>UK JCB</td>
+                                <td>JCB-specific logic</td>
+                            </tr>
+                            <tr>
+                                <td class="code">isp_NIKEKR_PopulatePOTOASN</td>
+                                <td class="code">NikeKRPrePopulatePlugin</td>
+                                <td>Nike KR</td>
+                                <td>Auto ASN + finalization trigger</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Class List -->
+            <div class="collapsible">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <h4><i class="fas fa-file-code"></i> Complete Class List <span class="count">25+</span></h4>
+                    <i class="fas fa-chevron-down toggle-icon"></i>
+                </div>
+                <div class="collapsible-content">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Layer</th>
+                                <th>Class</th>
+                                <th>Location</th>
+                                <th>Purpose</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span class="badge badge-warning">Workflow</span></td>
+                                <td class="code">PopulatePOWorkflow</td>
+                                <td class="path">po-workflow/.../workflow/</td>
+                                <td>Temporal workflow interface</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge badge-warning">Workflow</span></td>
+                                <td class="code">PopulatePOWorkflowImpl</td>
+                                <td class="path">po-workflow/.../workflow/impl/</td>
+                                <td>Saga orchestration implementation</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge badge-success">Activity</span></td>
+                                <td class="code">ValidationActivity</td>
+                                <td class="path">po-activity/.../activity/</td>
+                                <td>Validates PO exists and status</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge badge-success">Activity</span></td>
+                                <td class="code">MappingActivity</td>
+                                <td class="path">po-activity/.../activity/</td>
+                                <td>Maps PO fields to Receipt</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge badge-success">Activity</span></td>
+                                <td class="code">PersistenceActivity</td>
+                                <td class="path">po-activity/.../activity/</td>
+                                <td>Creates Receipt + Details</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge badge-success">Activity</span></td>
+                                <td class="code">PluginActivity</td>
+                                <td class="path">po-activity/.../activity/</td>
+                                <td>Dispatches to plugins</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge badge-info">Plugin</span></td>
+                                <td class="code">StandardPrePopulatePlugin</td>
+                                <td class="path">po-plugin/.../populate/impl/</td>
+                                <td>Standard pre-population</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge badge-info">Plugin</span></td>
+                                <td class="code">NikeKRPrePopulatePlugin</td>
+                                <td class="path">po-plugin/.../populate/impl/</td>
+                                <td>Nike Korea auto-finalize</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge" style="background: #E0E0E0;">Domain</span></td>
+                                <td class="code">POEntity</td>
+                                <td class="path">po-domain/.../entity/</td>
+                                <td>JPA entity for PO table</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge" style="background: #E0E0E0;">Domain</span></td>
+                                <td class="code">ReceiptEntity</td>
+                                <td class="path">po-domain/.../entity/</td>
+                                <td>JPA entity for RECEIPT</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge" style="background: #E0E0E0;">Domain</span></td>
+                                <td class="code">PopulateRequest</td>
+                                <td class="path">po-domain/.../model/</td>
+                                <td>Input DTO</td>
+                            </tr>
+                            <tr>
+                                <td><span class="badge" style="background: #E0E0E0;">Domain</span></td>
+                                <td class="code">PopulateResult</td>
+                                <td class="path">po-domain/.../model/</td>
+                                <td>Output DTO</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Flow 2: Receipt Finalization -->
+        <section id="finalize" class="section">
+            <div class="section-header">
+                <h2><i class="fas fa-check-circle"></i> Flow 2: Receipt Finalization</h2>
+                <span class="badge badge-success">FULLY COVERED</span>
+            </div>
+
+            <p style="margin-bottom: 20px; color: var(--medium-gray);">
+                Replaces <strong>WM.lsp_FinalizeReceipt_Wrapper</strong> (2,956 lines) with an 11-step workflow with Saga compensation.
+            </p>
+
+            <!-- Finalization Steps -->
+            <div class="flow-mapping">
+                <h3><i class="fas fa-list-ol"></i> 11-Step Workflow Mapping</h3>
+
+                <div class="mapping-row">
+                    <div class="legacy-item">Step 1: Validate receipt state<span class="lines">Inline SQL validation</span></div>
+                    <div class="mapping-arrow"><i class="fas fa-arrow-right"></i></div>
+                    <div class="poc-item">ReceiptStatusActivity.validate()<span class="logic">Check status 0-5, has lines</span></div>
+                </div>
+                <div class="mapping-row">
+                    <div class="legacy-item">Step 2: Run ispPRREC* hooks<span class="lines">8 pre-finalize SPs</span></div>
+                    <div class="mapping-arrow"><i class="fas fa-arrow-right"></i></div>
+                    <div class="poc-item">FinalizePluginActivity.pre()<span class="logic">10 PreFinalize plugins</span></div>
+                </div>
+                <div class="mapping-row">
+                    <div class="legacy-item">Step 3: UPDATE Status='6'<span class="lines">In progress status</span></div>
+                    <div class="mapping-arrow"><i class="fas fa-arrow-right"></i></div>
+                    <div class="poc-item">ReceiptStatusActivity.update(6)<span class="logic">JPA update + compensation</span></div>
+                </div>
+                <div class="mapping-row">
+                    <div class="legacy-item">Step 5: INSERT LOTxLOCxID<span class="lines">Inventory posting</span></div>
+                    <div class="mapping-arrow"><i class="fas fa-arrow-right"></i></div>
+                    <div class="poc-item">InventoryPostingActivity.post()<span class="logic">Batch insert + delete compensation</span></div>
+                </div>
+                <div class="mapping-row">
+                    <div class="legacy-item">Step 6: Apply holds<span class="lines">QC, damage, customs</span></div>
+                    <div class="mapping-arrow"><i class="fas fa-arrow-right"></i></div>
+                    <div class="poc-item">InventoryHoldActivity.apply()<span class="logic">Create holds + remove compensation</span></div>
+                </div>
+                <div class="mapping-row">
+                    <div class="legacy-item">Step 7: UPDATE PODETAIL.QtyRcvd<span class="lines">PO quantity update</span></div>
+                    <div class="mapping-arrow"><i class="fas fa-arrow-right"></i></div>
+                    <div class="poc-item">POQuantityActivity.update()<span class="logic">Increment + revert compensation</span></div>
+                </div>
+                <div class="mapping-row">
+                    <div class="legacy-item">Step 8: Generate PA tasks<span class="lines">Putaway release</span></div>
+                    <div class="mapping-arrow"><i class="fas fa-arrow-right"></i></div>
+                    <div class="poc-item">PutawayReleaseActivity.release()<span class="logic">Create tasks + cancel compensation</span></div>
+                </div>
+                <div class="mapping-row">
+                    <div class="legacy-item">Step 9: Run ispASNFZ* hooks<span class="lines">9 post-finalize SPs</span></div>
+                    <div class="mapping-arrow"><i class="fas fa-arrow-right"></i></div>
+                    <div class="poc-item">FinalizePluginActivity.post()<span class="logic">12 PostFinalize plugins</span></div>
+                </div>
+                <div class="mapping-row">
+                    <div class="legacy-item">Step 10: UPDATE Status='9'<span class="lines">Final status</span></div>
+                    <div class="mapping-arrow"><i class="fas fa-arrow-right"></i></div>
+                    <div class="poc-item">ReceiptStatusActivity.update(9)<span class="logic">Final status update</span></div>
+                </div>
+                <div class="mapping-row">
+                    <div class="legacy-item">Step 11: Close PO<span class="lines">UPDATE PO Status='9'</span></div>
+                    <div class="mapping-arrow"><i class="fas fa-arrow-right"></i></div>
+                    <div class="poc-item">POQuantityActivity.closePO()<span class="logic">Check all lines, close PO</span></div>
+                </div>
+            </div>
+
+            <!-- Pre-Finalize Plugins -->
+            <div class="collapsible">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <h4><i class="fas fa-plug" style="color: var(--purple);"></i> Pre-Finalize Plugins <span class="count">10</span></h4>
+                    <i class="fas fa-chevron-down toggle-icon"></i>
+                </div>
+                <div class="collapsible-content">
+                    <div class="plugin-grid">
+                        <div class="plugin-card">
+                            <div class="plugin-card-header pre"><i class="fas fa-tshirt"></i> H&M</div>
+                            <div class="plugin-card-body">
+                                <div class="legacy">Legacy: ispPRREC01</div>
+                                <div class="logic">HMPreFinalizePlugin - Validates batch codes, checks carton manifests</div>
+                            </div>
+                        </div>
+                        <div class="plugin-card">
+                            <div class="plugin-card-header pre"><i class="fas fa-running"></i> Nike</div>
+                            <div class="plugin-card-body">
+                                <div class="legacy">Legacy: ispPRREC02</div>
+                                <div class="logic">NikePreFinalizePlugin - Validates style codes, Nike compliance</div>
+                            </div>
+                        </div>
+                        <div class="plugin-card">
+                            <div class="plugin-card-header pre"><i class="fas fa-shoe-prints"></i> Adidas</div>
+                            <div class="plugin-card-body">
+                                <div class="legacy">Legacy: ispPRREC03</div>
+                                <div class="logic">AdidasPreFinalizePlugin - UCC HV/BL/QC validation</div>
+                            </div>
+                        </div>
+                        <div class="plugin-card">
+                            <div class="plugin-card-header pre"><i class="fas fa-mountain"></i> Columbia</div>
+                            <div class="plugin-card-body">
+                                <div class="legacy">Legacy: ispPRREC04</div>
+                                <div class="logic">ColumbiaPreFinalizePlugin - UCC handling</div>
+                            </div>
+                        </div>
+                        <div class="plugin-card">
+                            <div class="plugin-card-header pre"><i class="fas fa-soap"></i> Unilever</div>
+                            <div class="plugin-card-body">
+                                <div class="legacy">Legacy: ispPRREC05</div>
+                                <div class="logic">UnileverPreFinalizePlugin - Batch & expiry validation</div>
+                            </div>
+                        </div>
+                        <div class="plugin-card">
+                            <div class="plugin-card-header pre"><i class="fas fa-globe-asia"></i> India</div>
+                            <div class="plugin-card-body">
+                                <div class="legacy">Legacy: ispPRREC08</div>
+                                <div class="logic">IndiaPreFinalizePlugin - GST code validation</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Post-Finalize Plugins -->
+            <div class="collapsible">
+                <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                    <h4><i class="fas fa-plug" style="color: var(--orange);"></i> Post-Finalize Plugins <span class="count">12</span></h4>
+                    <i class="fas fa-chevron-down toggle-icon"></i>
+                </div>
+                <div class="collapsible-content">
+                    <div class="plugin-grid">
+                        <div class="plugin-card">
+                            <div class="plugin-card-header post"><i class="fas fa-truck-loading"></i> Auto PA Release</div>
+                            <div class="plugin-card-body">
+                                <div class="legacy">Legacy: ispASNFZ01</div>
+                                <div class="logic">AutoPAReleasePlugin - Auto-releases putaway tasks</div>
+                            </div>
+                        </div>
+                        <div class="plugin-card">
+                            <div class="plugin-card-header post"><i class="fas fa-barcode"></i> UCC Stamp</div>
+                            <div class="plugin-card-body">
+                                <div class="legacy">Legacy: ispASNFZ02</div>
+                                <div class="logic">UCCStampPlugin - Stamps finalization time on UCC</div>
+                            </div>
+                        </div>
+                        <div class="plugin-card">
+                            <div class="plugin-card-header post"><i class="fas fa-layer-group"></i> Batch Release</div>
+                            <div class="plugin-card-body">
+                                <div class="legacy">Legacy: ispASNFZ04</div>
+                                <div class="logic">BatchReleasePlugin - Releases batches for waves</div>
+                            </div>
+                        </div>
+                        <div class="plugin-card">
+                            <div class="plugin-card-header post"><i class="fas fa-clipboard-check"></i> Quality Check</div>
+                            <div class="plugin-card-body">
+                                <div class="legacy">Legacy: ispASNFZ05</div>
+                                <div class="logic">QualityCheckPlugin - Creates QC tasks</div>
+                            </div>
+                        </div>
+                        <div class="plugin-card">
+                            <div class="plugin-card-header post"><i class="fas fa-passport"></i> Customs Update</div>
+                            <div class="plugin-card-body">
+                                <div class="legacy">Legacy: ispASNFZ07</div>
+                                <div class="logic">CustomsUpdatePlugin - Korea customs status</div>
+                            </div>
+                        </div>
+                        <div class="plugin-card">
+                            <div class="plugin-card-header post"><i class="fas fa-exchange-alt"></i> Cross-Dock</div>
+                            <div class="plugin-card-body">
+                                <div class="legacy">Legacy: ispASNFZ08</div>
+                                <div class="logic">AutoAllocatePlugin - XDock allocation</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Flow 3: Trade Returns -->
+        <section id="tradereturns" class="section">
+            <div class="section-header">
+                <h2><i class="fas fa-undo"></i> Flow 3: Trade Returns</h2>
+                <span class="badge badge-success">FULLY COVERED</span>
+            </div>
+
+            <div class="flow-mapping">
+                <h3><i class="fas fa-exchange-alt"></i> Legacy → POC Mapping</h3>
+                <div class="mapping-row">
+                    <div class="legacy-item">WM.lsp_ASN_PopulateSOs_Wrapper<span class="lines">Creates SO from ASN</span></div>
+                    <div class="mapping-arrow"><i class="fas fa-arrow-right"></i></div>
+                    <div class="poc-item">TradeReturnWorkflow.java<span class="logic">Workflow interface</span></div>
+                </div>
+                <div class="mapping-row">
+                    <div class="legacy-item">WM.lsp_ASN_PopulateSODs_Wrapper<span class="lines">Creates SO details</span></div>
+                    <div class="mapping-arrow"><i class="fas fa-arrow-right"></i></div>
+                    <div class="poc-item">TradeReturnActivity.java<span class="logic">createSalesOrder(), createOrderDetails()</span></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Plugins Section -->
+        <section id="plugins" class="section">
+            <div class="section-header">
+                <h2><i class="fas fa-puzzle-piece"></i> Plugin Architecture</h2>
+                <span class="badge badge-info">65+ Plugins</span>
+            </div>
+
+            <div class="plugin-grid">
+                <div class="plugin-card">
+                    <div class="plugin-card-header client"><i class="fas fa-building"></i> Client Plugins</div>
+                    <div class="plugin-card-body">
+                        <div class="logic">
+                            <strong>NikeClientPlugin</strong> - Nike-specific behavior<br>
+                            <strong>HMClientPlugin</strong> - H&M-specific behavior<br>
+                            <strong>ZaraClientPlugin</strong> - Zara-specific behavior
+                        </div>
+                    </div>
+                </div>
+                <div class="plugin-card">
+                    <div class="plugin-card-header region"><i class="fas fa-globe"></i> Region Plugins</div>
+                    <div class="plugin-card-body">
+                        <div class="logic">
+                            <strong>KoreaRegionPlugin</strong> - Customs/compliance<br>
+                            <strong>IndiaRegionPlugin</strong> - GST compliance<br>
+                            <strong>SingaporeRegionPlugin</strong> - Singapore rules
+                        </div>
+                    </div>
+                </div>
+                <div class="plugin-card">
+                    <div class="plugin-card-header pre"><i class="fas fa-history"></i> Lifecycle Hooks</div>
+                    <div class="plugin-card-body">
+                        <div class="logic">
+                            <strong>AuditLoggingHook</strong> - Logs all events<br>
+                            <strong>MetricsHook</strong> - Captures timing<br>
+                            <strong>NotificationHook</strong> - Sends alerts
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Demo Section -->
+        <section id="demo" class="section">
+            <div class="section-header">
+                <h2><i class="fas fa-play-circle"></i> Demo & Testing</h2>
+            </div>
+
+            <div class="demo-section">
+                <h3><i class="fas fa-terminal"></i> API Endpoints</h3>
+
+                <div class="demo-step">
+                    <span class="step-num">1. Populate</span>
+                    <span class="method post">POST</span>
+                    <span class="url">/api/v1/populate/populate</span>
+                    <span class="body">{"poKeys":["PO-NIKE-IN-001"],"storerKey":"NIKE"...}</span>
+                </div>
+                <div class="demo-step">
+                    <span class="step-num">2. Async</span>
+                    <span class="method post">POST</span>
+                    <span class="url">/api/v1/populate/populate/async</span>
+                    <span class="body">Same as above</span>
+                </div>
+                <div class="demo-step">
+                    <span class="step-num">3. Status</span>
+                    <span class="method get">GET</span>
+                    <span class="url">/api/v1/populate/{workflowId}/status</span>
+                    <span class="body">—</span>
+                </div>
+                <div class="demo-step">
+                    <span class="step-num">4. Finalize</span>
+                    <span class="method post">POST</span>
+                    <span class="url">/api/v1/receipts/{key}/finalize/async</span>
+                    <span class="body">{"storerKey":"NIKE","facility":"KR01"}</span>
+                </div>
+                <div class="demo-step">
+                    <span class="step-num">5. Cancel</span>
+                    <span class="method post">POST</span>
+                    <span class="url">/api/v1/receipts/{key}/finalize/{wfId}/cancel</span>
+                    <span class="body">Triggers Saga compensation</span>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px; padding: 20px; background: var(--light-gray); border-radius: 8px;">
+                <h4 style="margin-bottom: 10px;"><i class="fas fa-code"></i> Demo Script</h4>
+                <code style="font-family: 'JetBrains Mono', monospace; color: var(--medium-blue);">
+                    ./scripts/compensation-demo.sh
+                </code>
+            </div>
+
+            <div class="metrics-grid" style="margin-top: 30px;">
+                <div class="metric-card metric-primary">
+                    <div class="metric-icon"><i class="fas fa-tv"></i></div>
+                    <div class="metric-value" style="font-size: 18px;">Temporal UI</div>
+                    <div class="metric-label">localhost:8088</div>
+                </div>
+                <div class="metric-card metric-warning">
+                    <div class="metric-icon"><i class="fas fa-stream"></i></div>
+                    <div class="metric-value" style="font-size: 18px;">Kafka UI</div>
+                    <div class="metric-label">localhost:8090</div>
+                </div>
+                <div class="metric-card metric-success">
+                    <div class="metric-icon"><i class="fas fa-book-open"></i></div>
+                    <div class="metric-value" style="font-size: 18px;">Swagger</div>
+                    <div class="metric-label">localhost:8080/swagger-ui.html</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Glossary -->
+        <section id="glossary" class="section">
+            <div class="section-header">
+                <h2><i class="fas fa-book"></i> Glossary</h2>
+            </div>
+
+            <div class="glossary-grid">
+                <div class="glossary-item">
+                    <span class="glossary-term">PO</span>
+                    <span class="glossary-def">Purchase Order - source document for inbound goods</span>
+                </div>
+                <div class="glossary-item">
+                    <span class="glossary-term">ASN</span>
+                    <span class="glossary-def">Advanced Shipping Notice - notification before goods arrive</span>
+                </div>
+                <div class="glossary-item">
+                    <span class="glossary-term">Receipt</span>
+                    <span class="glossary-def">WMS record created to receive goods</span>
+                </div>
+                <div class="glossary-item">
+                    <span class="glossary-term">Saga</span>
+                    <span class="glossary-def">Sequence of transactions with compensation for rollback</span>
+                </div>
+                <div class="glossary-item">
+                    <span class="glossary-term">Temporal</span>
+                    <span class="glossary-def">Workflow orchestration platform</span>
+                </div>
+                <div class="glossary-item">
+                    <span class="glossary-term">Activity</span>
+                    <span class="glossary-def">Single step in a Temporal workflow</span>
+                </div>
+                <div class="glossary-item">
+                    <span class="glossary-term">Plugin</span>
+                    <span class="glossary-def">Modular code for client/region-specific behavior</span>
+                </div>
+                <div class="glossary-item">
+                    <span class="glossary-term">Lottable</span>
+                    <span class="glossary-def">Lot tracking attributes (batch, serial, expiry)</span>
+                </div>
+                <div class="glossary-item">
+                    <span class="glossary-term">NOLOCK</span>
+                    <span class="glossary-def">SQL hint that reads without locks (causes dirty reads)</span>
+                </div>
+                <div class="glossary-item">
+                    <span class="glossary-term">XDock</span>
+                    <span class="glossary-def">Cross-dock - goods flow directly from receiving to shipping</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer style="text-align: center; padding: 30px; color: var(--medium-gray); font-size: 13px;">
+            <p>Document Version: 2.0 | Generated: 2026-05-31</p>
+            <p>Source: purchase-order-e2e.md + po-modernization POC analysis</p>
+        </footer>
+    </main>
+
+    <script>
+        // Toggle sidebar
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('open');
+        }
+
+        // Toggle dark mode
+        function toggleDarkMode() {
+            document.body.classList.toggle('dark-mode');
+        }
+
+        // Toggle collapsible sections
+        function toggleCollapsible(header) {
+            header.classList.toggle('active');
+            const content = header.nextElementSibling;
+            content.classList.toggle('active');
+        }
+
+        // Toggle deep dive sections
+        function toggleDeepDive(sectionId) {
+            const content = document.getElementById(sectionId + '-content');
+            const icon = document.getElementById(sectionId + '-icon');
+
+            if (content.style.display === 'none' || content.style.display === '') {
+                content.style.display = 'block';
+                icon.classList.remove('fa-chevron-down');
+                icon.classList.add('fa-chevron-up');
+            } else {
+                content.style.display = 'none';
+                icon.classList.remove('fa-chevron-up');
+                icon.classList.add('fa-chevron-down');
+            }
+        }
+
+        // Search functionality
+        function filterContent() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const sections = document.querySelectorAll('.section');
+
+            sections.forEach(section => {
+                const text = section.textContent.toLowerCase();
+                if (text.includes(searchTerm) || searchTerm === '') {
+                    section.style.display = 'block';
+                } else {
+                    section.style.display = 'none';
+                }
+            });
+        }
+
+        // Active nav link
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', function() {
+                document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+                this.classList.add('active');
+            });
+        });
+
+        // Smooth scroll
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

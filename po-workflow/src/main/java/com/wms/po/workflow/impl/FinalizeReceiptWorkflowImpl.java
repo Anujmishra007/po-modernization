@@ -145,6 +145,10 @@ public class FinalizeReceiptWorkflowImpl implements FinalizeReceiptWorkflow {
             .build()
     );
 
+    // Demo mode: Add delays between steps for cancellation demo
+    private static final boolean DEMO_MODE = true;
+    private static final int DEMO_DELAY_SECONDS = 3;
+
     @Override
     public FinalizeResult finalize(FinalizeRequest request) {
         status = WorkflowStatus.RUNNING;
@@ -161,6 +165,7 @@ public class FinalizeReceiptWorkflowImpl implements FinalizeReceiptWorkflow {
             // STEP 1: Resolve Variation Context
             // ═══════════════════════════════════════════════════════════════
             updateStep("RESOLVE_CONTEXT");
+            demoDelay();  // Allow cancellation window
             checkCancellation();
 
             VariationContext context = validationActivity.resolveContext(
@@ -177,6 +182,7 @@ public class FinalizeReceiptWorkflowImpl implements FinalizeReceiptWorkflow {
             // STEP 2: Validate Receipt State
             // ═══════════════════════════════════════════════════════════════
             updateStep("VALIDATE");
+            demoDelay();
             checkCancellation();
 
             String currentStatus = receiptStatusActivity.validateForFinalization(receiptKey);
@@ -186,6 +192,7 @@ public class FinalizeReceiptWorkflowImpl implements FinalizeReceiptWorkflow {
             // STEP 3: Run Pre-Finalize Plugins
             // ═══════════════════════════════════════════════════════════════
             updateStep("PRE_PLUGINS");
+            demoDelay();
             checkCancellation();
 
             PluginResult prePluginResult = finalizePluginActivity.runPreFinalizePlugins(request, context);
@@ -538,6 +545,16 @@ public class FinalizeReceiptWorkflowImpl implements FinalizeReceiptWorkflow {
             Workflow.sleep(Duration.ofSeconds(1));
         }
         checkCancellation();
+    }
+
+    /**
+     * Demo delay for cancellation demonstration.
+     * In production, set DEMO_MODE = false.
+     */
+    private void demoDelay() {
+        if (DEMO_MODE) {
+            Workflow.sleep(Duration.ofSeconds(DEMO_DELAY_SECONDS));
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════
