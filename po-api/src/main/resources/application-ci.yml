@@ -1,0 +1,50 @@
+spring:
+  application:
+    name: po-modernization
+  datasource:
+    url: jdbc:postgresql://localhost:5433/po_modernization
+    driver-class-name: org.postgresql.Driver
+    username: wms
+    password: wms123
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 2
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: false
+
+server:
+  port: 8080
+
+# Temporal configuration for CI
+temporal:
+  enabled: true
+  service-address: localhost:7233
+  namespace: default
+  task-queue: po-modernization-queue
+
+# Springdoc OpenAPI
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    root: INFO
+    com.wms.po: DEBUG
+    io.temporal: WARN

@@ -1,0 +1,196 @@
+stages:
+  - build
+  - test
+  - e2e
+  - performance
+  - notify
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=$CI_PROJECT_DIR/.m2/repository -Xmx1024m"
+  MAVEN_CLI_OPTS: "--batch-mode --errors --fail-at-end"
+  JAVA_VERSION: "17"
+  POSTGRES_USER: wms
+  POSTGRES_PASSWORD: wms123
+  POSTGRES_DB: po_modernization
+
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - .m2/repository
+
+# ============================================
+# Build Stage
+# ============================================
+build:
+  stage: build
+  image: maven:3.9-eclipse-temurin-17
+  script:
+    - mvn $MAVEN_CLI_OPTS clean install -DskipTests
+  artifacts:
+    paths:
+      - "**/target/*.jar"
+    expire_in: 1 hour
+
+# ============================================
+# Unit Tests
+# ============================================
+unit-tests:
+  stage: test
+  image: maven:3.9-eclipse-temurin-17
+  script:
+    - mvn $MAVEN_CLI_OPTS test -DskipITs=true
+  artifacts:
+    when: always
+    paths:
+      - "**/target/surefire-reports/*.xml"
+    reports:
+      junit:
+        - "**/target/surefire-reports/TEST-*.xml"
+    expire_in: 7 days
+
+# ============================================
+# E2E Tests with Docker Compose
+# ============================================
+e2e-tests:
+  stage: e2e
+  image: maven:3.9-eclipse-temurin-17
+  services:
+    - name: postgres:15-alpine
+      alias: postgres-app
+      variables:
+        POSTGRES_USER: wms
+        POSTGRES_PASSWORD: wms123
+        POSTGRES_DB: po_modernization
+    - name: postgres:15-alpine
+      alias: postgres-temporal
+      variables:
+        POSTGRES_USER: temporal
+        POSTGRES_PASSWORD: temporal
+        POSTGRES_DB: temporal
+    - name: temporalio/auto-setup:1.22.3
+      alias: temporal
+      variables:
+        DB: postgresql
+        DB_PORT: 5432
+        POSTGRES_USER: temporal
+        POSTGRES_PWD: temporal
+        POSTGRES_SEEDS: postgres-temporal
+  variables:
+    SPRING_PROFILES_ACTIVE: ci
+    SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-app:5432/po_modernization
+    SPRING_DATASOURCE_USERNAME: wms
+    SPRING_DATASOURCE_PASSWORD: wms123
+    TEMPORAL_SERVICE_ADDRESS: temporal:7233
+  script:
+    # Wait for services
+    - apt-get update && apt-get install -y netcat-openbsd curl
+    - |
+      echo "Waiting for PostgreSQL..."
+      for i in $(seq 1 60); do
+        nc -z postgres-app 5432 && break || sleep 2
+      done
+    - |
+      echo "Waiting for Temporal..."
+      for i in $(seq 1 90); do
+        nc -z temporal 7233 && break || sleep 2
+      done
+
+    # Start application in background
+    - |
+      cd po-api
+      java -jar target/po-api-1.0.0-SNAPSHOT-exec.jar \
+        --spring.profiles.active=ci \
+        --spring.datasource.url=$SPRING_DATASOURCE_URL \
+        --spring.datasource.username=$SPRING_DATASOURCE_USERNAME \
+        --spring.datasource.password=$SPRING_DATASOURCE_PASSWORD \
+        --temporal.service-address=$TEMPORAL_SERVICE_ADDRESS \
+        > ../app.log 2>&1 &
+      cd ..
+
+    # Wait for application
+    - |
+      echo "Waiting for application..."
+      for i in $(seq 1 60); do
+        curl -sf http://localhost:8080/actuator/health && break || sleep 2
+      done
+
+    # Run E2E tests
+    - mvn $MAVEN_CLI_OPTS verify -pl po-test -Dkarate.env=ci -DskipUTs=true
+
+  artifacts:
+    when: always
+    paths:
+      - po-test/target/karate-reports/
+      - app.log
+    reports:
+      junit:
+        - "po-test/target/karate-reports/*.xml"
+    expire_in: 14 days
+  needs:
+    - build
+    - unit-tests
+
+# ============================================
+# Performance Tests (Manual Trigger)
+# ============================================
+performance-tests:
+  stage: performance
+  image: maven:3.9-eclipse-temurin-17
+  when: manual
+  services:
+    - name: postgres:15-alpine
+      alias: postgres-app
+      variables:
+        POSTGRES_USER: wms
+        POSTGRES_PASSWORD: wms123
+        POSTGRES_DB: po_modernization
+  script:
+    - |
+      cd po-api
+      java -jar target/po-api-1.0.0-SNAPSHOT-exec.jar \
+        --spring.profiles.active=ci \
+        --spring.datasource.url=jdbc:postgresql://postgres-app:5432/po_modernization \
+        > ../app.log 2>&1 &
+      cd ..
+    - sleep 30
+    - mvn $MAVEN_CLI_OPTS gatling:test -pl po-test || true
+  artifacts:
+    when: always
+    paths:
+      - po-test/target/gatling/
+    expire_in: 14 days
+  needs:
+    - e2e-tests
+
+# ============================================
+# Notify (Slack/Teams)
+# ============================================
+notify-success:
+  stage: notify
+  image: alpine:latest
+  script:
+    - apk add --no-cache curl
+    - |
+      if [ -n "$SLACK_WEBHOOK" ]; then
+        curl -X POST -H 'Content-type: application/json' \
+          --data "{\"text\":\"✅ PO Modernization E2E Tests PASSED - ${CI_PROJECT_NAME}@${CI_COMMIT_REF_NAME}\"}" \
+          $SLACK_WEBHOOK
+      fi
+  when: on_success
+  needs:
+    - e2e-tests
+
+notify-failure:
+  stage: notify
+  image: alpine:latest
+  script:
+    - apk add --no-cache curl
+    - |
+      if [ -n "$SLACK_WEBHOOK" ]; then
+        curl -X POST -H 'Content-type: application/json' \
+          --data "{\"text\":\"❌ PO Modernization E2E Tests FAILED - ${CI_PROJECT_NAME}@${CI_COMMIT_REF_NAME}\"}" \
+          $SLACK_WEBHOOK
+      fi
+  when: on_failure
+  needs:
+    - e2e-tests
