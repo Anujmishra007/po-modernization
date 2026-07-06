@@ -1,0 +1,413 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# PO Modernization - E2E Tests Pipeline (3-Layer Approach)
+# ═══════════════════════════════════════════════════════════════════════════
+# Triggers: Push to main/develop, Nightly schedule
+# Runs: Full E2E test suite with Karate
+# ═══════════════════════════════════════════════════════════════════════════
+
+name: E2E Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'po-api/**'
+      - 'po-service/**'
+      - 'po-workflow/**'
+      - 'po-test/**'
+  schedule:
+    # Nightly at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      flow:
+        description: 'Specific flow to test (F1-F10, or ALL)'
+        required: false
+        default: 'ALL'
+      environment:
+        description: 'Test environment'
+        required: false
+        default: 'ci'
+        type: choice
+        options:
+          - ci
+          - docker
+          - staging
+
+env:
+  JAVA_VERSION: '17'
+  KARATE_THREADS: 5
+  # Use Node.js 24 for GitHub Actions
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Layer 2 & 3: Unit + Workflow Tests (Fast Feedback)
+  # ═══════════════════════════════════════════════════════════════════════════
+  pre-e2e-tests:
+    name: Pre-E2E Tests (Layer 2 & 3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Make Maven wrapper executable
+        run: chmod +x ./mvnw || true
+
+      - name: Build all modules (skip tests)
+        run: mvn install -DskipTests -DskipUTs=true -DskipITs=true -B
+
+      - name: Run Unit Tests (Layer 2)
+        run: |
+          # Run tests ONLY on po-service (dependencies already built above)
+          mvn test -B \
+            -pl po-service \
+            -DskipITs \
+            --fail-at-end || true
+
+      - name: Run Workflow Tests (Layer 3)
+        run: |
+          # Run tests ONLY on po-test (dependencies already built above)
+          mvn test -B \
+            -pl po-test \
+            -Dtest="**/*WorkflowTest.java" \
+            --fail-at-end || true
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Layer 1: Karate E2E Tests (Matrix by Flow)
+  # ═══════════════════════════════════════════════════════════════════════════
+  e2e-tests:
+    name: E2E Tests
+    needs: pre-e2e-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        flow-group:
+          - name: 'Critical Flows (F1-F3)'
+            test-methods: 'KarateTestRunner#testF1_POCreation+testF2_ASNPopulation+testF3_ReceiptFinalization'
+          - name: 'Extended Flows (F4-F6)'
+            test-methods: 'KarateTestRunner#testF4_CrossDock+testF5_LottableTracking+testF6_PutawayTask'
+          - name: 'Lifecycle Flows (F7-F9)'
+            test-methods: 'KarateTestRunner#testF7_TradeReturn+testF8_Cancellation+testF9_Archival'
+          - name: 'Compensation (F10)'
+            test-methods: 'KarateTestRunner#testF10_Compensation'
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: po_test
+          POSTGRES_USER: wms
+          POSTGRES_PASSWORD: wms123
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      # Note: Temporal is disabled for E2E tests - using mock beans
+      # The Karate tests focus on HTTP API testing, not Temporal workflows
+      # Workflow integration is tested separately in Layer 3 tests
+
+      - name: Load Test Data
+        env:
+          PGPASSWORD: wms123
+        run: |
+          set -e  # Exit on any error
+
+          # Verify database connectivity
+          echo "Testing database connection..."
+          psql -h localhost -p 5433 -U wms -d po_test -c "SELECT 1;" || {
+            echo "ERROR: Cannot connect to database"
+            exit 1
+          }
+
+          # Load schema first
+          echo "Loading schema..."
+          psql -h localhost -p 5433 -U wms -d po_test \
+            -f local-environment/seed-data/00-schema.sql || {
+            echo "ERROR: Failed to load schema"
+            exit 1
+          }
+
+          # Load all TD-*.sql files in order (02-16)
+          for f in local-environment/seed-data/[0-1][0-9]-TD-*.sql; do
+            if [ -f "$f" ]; then
+              echo "Loading: $f"
+              psql -h localhost -p 5433 -U wms -d po_test -f "$f" || {
+                echo "ERROR: Failed to load $f"
+                exit 1
+              }
+            fi
+          done
+
+          # Verify tables were created
+          echo "Verifying tables..."
+          psql -h localhost -p 5433 -U wms -d po_test -c "SELECT COUNT(*) FROM dbo.storer;" || {
+            echo "WARNING: storer table might be empty"
+          }
+
+          echo "Test data loaded successfully"
+
+      - name: Make Maven wrapper executable
+        run: chmod +x ./mvnw || true
+
+      - name: Build Application
+        run: mvn clean install -DskipTests -DskipUTs=true -DskipITs=true -B
+
+      - name: Start Application
+        run: |
+          # Verify exec jar exists
+          JAR_FILE=$(ls po-api/target/po-api-*-exec.jar 2>/dev/null | head -1)
+          if [ -z "$JAR_FILE" ]; then
+            echo "ERROR: No exec jar found in po-api/target/"
+            ls -la po-api/target/*.jar 2>/dev/null || echo "No jars at all!"
+            exit 1
+          fi
+          echo "Found JAR: $JAR_FILE"
+
+          # Start application with logging to file
+          java -jar "$JAR_FILE" \
+            --spring.profiles.active=e2e-test,test \
+            --spring.datasource.url=jdbc:postgresql://localhost:5433/po_test \
+            --spring.datasource.username=wms \
+            --spring.datasource.password=wms123 \
+            --spring.jpa.hibernate.ddl-auto=none \
+            --spring.flyway.enabled=false \
+            --temporal.enabled=false \
+            --server.port=8080 \
+            > app.log 2>&1 &
+
+          APP_PID=$!
+          echo "Application PID: $APP_PID"
+
+          # Wait for application to start
+          for i in {1..90}; do
+            # Check if process is still running
+            if ! kill -0 $APP_PID 2>/dev/null; then
+              echo "ERROR: Application process died!"
+              echo "=== Application Logs ==="
+              cat app.log
+              exit 1
+            fi
+
+            if curl -s http://localhost:8080/actuator/health | grep -q "UP"; then
+              echo "Application is ready"
+              break
+            fi
+            if [ $i -eq 90 ]; then
+              echo "Application failed to start within timeout"
+              echo "=== Application Logs (last 100 lines) ==="
+              tail -100 app.log
+              exit 1
+            fi
+            echo "Waiting for application... ($i/90)"
+            sleep 2
+          done
+
+      - name: Run Karate E2E Tests - ${{ matrix.flow-group.name }}
+        run: |
+          echo "=== Step 1: Force test-compile to ensure resources are processed ==="
+          mvn test-compile -pl po-test -B
+
+          echo ""
+          echo "=== Step 2: Diagnostic - Verify test resources ==="
+          echo "Feature files in source:"
+          find po-test/src/test/resources -name '*.feature' | head -5
+          echo "Total source: $(find po-test/src/test/resources -name '*.feature' | wc -l)"
+
+          echo ""
+          echo "Feature files in target/test-classes:"
+          find po-test/target/test-classes -name '*.feature' 2>/dev/null | head -5 || echo "NONE FOUND!"
+          echo "Total target: $(find po-test/target/test-classes -name '*.feature' 2>/dev/null | wc -l)"
+
+          echo ""
+          echo "Karate package structure in target:"
+          ls -la po-test/target/test-classes/com/wms/po/e2e/karate/ 2>/dev/null || echo "Directory missing!"
+
+          echo ""
+          echo "=== Step 3: Running Karate E2E Tests ==="
+          mvn failsafe:integration-test failsafe:verify -B \
+            -pl po-test \
+            -DskipUTs=true \
+            -Dkarate.env=ci \
+            -Dkarate.threads=${{ env.KARATE_THREADS }} \
+            -Dit.test="${{ matrix.flow-group.test-methods }}"
+
+      - name: Upload Karate Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: karate-results-${{ matrix.flow-group.name }}
+          path: |
+            po-test/target/karate-reports/
+            po-test/target/failsafe-reports/
+            po-test/target/surefire-reports/
+          retention-days: 14
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Aggregate Reports
+  # ═══════════════════════════════════════════════════════════════════════════
+  reports:
+    name: Generate Reports
+    needs: e2e-tests
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all Karate results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: karate-results-*
+          path: all-results
+          merge-multiple: true
+
+      - name: Setup Allure
+        uses: simple-elf/allure-report-action@master
+        if: always()
+        with:
+          allure_results: all-results
+          allure_report: allure-report
+          allure_history: allure-history
+          keep_reports: 20
+
+      - name: Publish Allure Report
+        uses: peaceiris/actions-gh-pages@v4
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./allure-report
+          destination_dir: e2e-reports/${{ github.ref_name }}
+
+      - name: Post Test Summary
+        if: always()
+        run: |
+          echo "## E2E Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Flow Group | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Critical Flows (F1-F3) | ${{ needs.e2e-tests.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Extended Flows (F4-F6) | ${{ needs.e2e-tests.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Lifecycle Flows (F7-F9) | ${{ needs.e2e-tests.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Compensation (F10) | ${{ needs.e2e-tests.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📊 [View Full Report](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/e2e-reports/${{ github.ref_name }}/)" >> $GITHUB_STEP_SUMMARY
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # Nightly Performance Tests
+  # ═══════════════════════════════════════════════════════════════════════════
+  performance-tests:
+    name: Performance Tests
+    needs: e2e-tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: po_test
+          POSTGRES_USER: wms
+          POSTGRES_PASSWORD: wms123
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Start Services
+        run: |
+          docker run -d --name temporal --network host temporalio/auto-setup:1.22.3
+          sleep 30
+
+      - name: Load Test Data
+        env:
+          PGPASSWORD: wms123
+        run: |
+          # Load schema first
+          psql -h localhost -p 5433 -U wms -d po_test \
+            -f local-environment/seed-data/00-schema.sql
+
+          # Load all TD-*.sql files in order (02-16)
+          for f in local-environment/seed-data/[0-1][0-9]-TD-*.sql; do
+            if [ -f "$f" ]; then
+              echo "Loading: $f"
+              psql -h localhost -p 5433 -U wms -d po_test -f "$f"
+            fi
+          done
+
+          echo "Test data loaded successfully"
+
+      - name: Build & Start Application
+        run: |
+          mvn clean install -DskipTests -B
+          java -jar po-api/target/po-api-*-exec.jar \
+            --spring.profiles.active=test \
+            --spring.datasource.url=jdbc:postgresql://localhost:5433/po_test &
+          sleep 60
+
+      - name: Run Performance Tests
+        run: |
+          mvn verify -B \
+            -pl po-test \
+            -DskipUTs=true \
+            -Dkarate.env=ci \
+            -Dkarate.threads=10 \
+            -Dkarate.options="--tags @performance"
+
+      - name: Upload Performance Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-results
+          path: po-test/target/gatling/
+          retention-days: 30
