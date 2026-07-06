@@ -115,52 +115,62 @@ public class KarateTestRunner {
 
     @Karate.Test
     Karate testF1_POCreation() {
-        return Karate.run(F1_FEATURES).relativeTo(KarateTestRunner.class).tags("@F1");
+        // Run all F1 feature files - tag filtering removed as feature-level tags don't filter scenarios
+        return Karate.run(F1_FEATURES).relativeTo(KarateTestRunner.class);
     }
 
     @Karate.Test
     Karate testF2_ASNPopulation() {
-        return Karate.run(F2_FEATURES).relativeTo(KarateTestRunner.class).tags("@F2");
+        // Run all F2 feature files - tag filtering removed as feature-level tags don't filter scenarios
+        return Karate.run(F2_FEATURES).relativeTo(KarateTestRunner.class);
     }
 
     @Karate.Test
     Karate testF3_ReceiptFinalization() {
-        return Karate.run(F3_FEATURES).relativeTo(KarateTestRunner.class).tags("@F3");
+        // Run all F3 feature files - tag filtering removed as feature-level tags don't filter scenarios
+        return Karate.run(F3_FEATURES).relativeTo(KarateTestRunner.class);
     }
 
     @Karate.Test
     Karate testF4_CrossDock() {
-        return Karate.run(F4_FEATURES).relativeTo(KarateTestRunner.class).tags("@F4");
+        // Run all F4 feature files - tag filtering removed as feature-level tags don't filter scenarios
+        return Karate.run(F4_FEATURES).relativeTo(KarateTestRunner.class);
     }
 
     @Karate.Test
     Karate testF5_LottableTracking() {
-        return Karate.run(F5_FEATURES).relativeTo(KarateTestRunner.class).tags("@F5");
+        // Run all F5 feature files - tag filtering removed as feature-level tags don't filter scenarios
+        return Karate.run(F5_FEATURES).relativeTo(KarateTestRunner.class);
     }
 
     @Karate.Test
     Karate testF6_PutawayTask() {
-        return Karate.run(F6_FEATURES).relativeTo(KarateTestRunner.class).tags("@F6");
+        // Run all F6 feature files - tag filtering removed as feature-level tags don't filter scenarios
+        return Karate.run(F6_FEATURES).relativeTo(KarateTestRunner.class);
     }
 
     @Karate.Test
     Karate testF7_TradeReturn() {
-        return Karate.run(F7_FEATURES).relativeTo(KarateTestRunner.class).tags("@F7");
+        // Run all F7 feature files - tag filtering removed as feature-level tags don't filter scenarios
+        return Karate.run(F7_FEATURES).relativeTo(KarateTestRunner.class);
     }
 
     @Karate.Test
     Karate testF8_Cancellation() {
-        return Karate.run(F8_FEATURES).relativeTo(KarateTestRunner.class).tags("@F8");
+        // Run all F8 feature files - tag filtering removed as feature-level tags don't filter scenarios
+        return Karate.run(F8_FEATURES).relativeTo(KarateTestRunner.class);
     }
 
     @Karate.Test
     Karate testF9_Archival() {
-        return Karate.run(F9_FEATURES).relativeTo(KarateTestRunner.class).tags("@F9");
+        // Run all F9 feature files - tag filtering removed as feature-level tags don't filter scenarios
+        return Karate.run(F9_FEATURES).relativeTo(KarateTestRunner.class);
     }
 
     @Karate.Test
     Karate testF10_Compensation() {
-        return Karate.run(F10_FEATURES).relativeTo(KarateTestRunner.class).tags("@F10", "@Compensation");
+        // Run all F10 feature files - tag filtering removed as feature-level tags don't filter scenarios
+        return Karate.run(F10_FEATURES).relativeTo(KarateTestRunner.class);
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -179,7 +189,8 @@ public class KarateTestRunner {
 
     @Karate.Test
     Karate testCompensation() {
-        return Karate.run(F10_FEATURES).relativeTo(KarateTestRunner.class).tags("@Compensation", "@Saga");
+        // Run all F10 compensation feature files
+        return Karate.run(F10_FEATURES).relativeTo(KarateTestRunner.class);
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -231,7 +242,8 @@ public class KarateTestRunner {
 
     @Karate.Test
     Karate testSaga() {
-        return Karate.run(F10_FEATURES).relativeTo(KarateTestRunner.class).tags("@saga");
+        // Run all F10 saga/compensation feature files
+        return Karate.run(F10_FEATURES).relativeTo(KarateTestRunner.class);
     }
 
     @Karate.Test
